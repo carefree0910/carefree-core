@@ -26,6 +26,27 @@ And that's all - the codes are yours, modify them as you wish!
 
 This package is meant to hold the common classes / functions that are used across the whole library.
 
+### `flow` package
+
+> - `core/flow`
+> - Originates from [`carefree-workflow`](https://github.com/carefree0910/carefree-workflow).
+
+This package is a lightweight package for building arbitray workflows, here are the highlights:
+
+- **Async**: `async` is by design.
+- **Parallel**: nodes can be executed in parallel.
+- **Powerful**: complex locks / logics / dependencies can be handled.
+  - You can even perform a loop with loop backs in the workflow!
+- **Automated**:
+  - All nodes, as well as the workflow itself, can be **automatically** turned into RESTful APIs.
+  - Detailed [documentation](https://github.com/carefree0910/carefree-workflow/tree/main/docs.md) of the design / nodes / workflow / ... can be **automatically** generated, which makes this package and its extended versions agent-friendly.
+    - That is to say, you can build a GPT-agent on top of this package by simply feed the auto-generated documentation to it. After which, you can interact with the agent via natural language and it will tell you how to build the workflow you want (it may even be able to give you the final workflow JSON directly)!
+    - We even support auto-generating a 'RAG friendly' version of the documentation, which makes **R**etrieval-**A**ugmented **G**eneration easier. This version uses `__RAG__` as the special separator, so you can chunk the documentation into suitable parts for RAG.
+- **Extensible**: you can easily extend the package with your own nodes.
+- **Serializable**: the workflow can be serialized into / deserialized from a single JSON file.
+- **Human Readable**: the workflow JSON file is human readable and easy to understand.
+- **Lightweight**: the package is lightweight (core implementation is ~500 lines of code in a single file `core/flow/core.py`) and easy to use.
+
 ## License
 
 `carefree-core` is MIT licensed, as found in the [`LICENSE`](https://github.com/carefree0910/carefree-core/blob/main/LICENSE) file.
