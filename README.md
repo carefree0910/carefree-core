@@ -17,6 +17,15 @@ To use this library, follow the instructions below:
 
 And that's all - the codes are yours, modify them as you wish!
 
+## Introductions
+
+### `toolkit` package
+
+> - `core/toolkit`
+> - Originates from [`carefree-toolkit`](https://github.com/carefree0910/carefree-toolkit).
+
+This package is meant to hold the common classes / functions that are used across the whole library.
+
 ## License
 
 `carefree-core` is MIT licensed, as found in the [`LICENSE`](https://github.com/carefree0910/carefree-core/blob/main/LICENSE) file.
