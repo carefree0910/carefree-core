@@ -18,6 +18,7 @@ from .constants import TIME_FORMAT
 
 
 TTypes = TypeVar("TTypes")
+TBundle = TypeVar("TBundle", bound="Bundle")
 TItemData = TypeVar("TItemData")
 TPoolItem = TypeVar("TPoolItem", bound="IPoolItem")
 PItemInit = Callable[[], TPoolItem]
@@ -91,12 +92,13 @@ class Bundle(Generic[TItemData]):
     def get_index(self, index: int) -> Item[TItemData]:
         return self._items[index]
 
-    def push(self, item: Item[TItemData]) -> None:
+    def push(self: TBundle, item: Item[TItemData]) -> TBundle:
         if self.get(item.key) is not None:
             raise ValueError(f"item '{item.key}' already exists")
         self._items.append(item)
         if self._mapping is not None:
             self._mapping[item.key] = item
+        return self
 
     def remove(self, key: str) -> Optional[Item[TItemData]]:
         if self._mapping is None:

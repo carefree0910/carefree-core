@@ -517,6 +517,7 @@ async def offload(future: Coroutine[Any, Any, TFutureResponse]) -> TFutureRespon
 
 
 TRegister = TypeVar("TRegister", bound="WithRegister", covariant=True)
+TTRegister = TypeVar("TTRegister", bound=Type["WithRegister"])
 TSerializable = TypeVar("TSerializable", bound="ISerializable", covariant=True)
 TSArrays = TypeVar("TSArrays", bound="ISerializableArrays", covariant=True)
 TSDataClass = TypeVar("TSDataClass", bound="ISerializableDataClass", covariant=True)
@@ -614,11 +615,11 @@ class WithRegister(Generic[TRegister]):
         name: str,
         *,
         allow_duplicate: bool = False,
-    ) -> Callable:
-        def before(cls_: Type) -> None:
+    ) -> Callable[[TTRegister], TTRegister]:
+        def before(cls_: TTRegister) -> None:
             cls_.__identifier__ = name
 
-        return register_core(
+        return register_core(  # type: ignore
             name,
             cls.d,
             allow_duplicate=allow_duplicate,
@@ -640,7 +641,11 @@ class JsonPack(DataClassBase):
     info: Dict[str, Any]
 
 
-class ISerializable(WithRegister, Generic[TSerializable], metaclass=ABCMeta):
+class ISerializable(
+    Generic[TSerializable],
+    WithRegister[TSerializable],
+    metaclass=ABCMeta,
+):
     # abstract
 
     @abstractmethod
@@ -687,7 +692,11 @@ class PureFromInfoMixin:
             setattr(self, k, v)
 
 
-class ISerializableArrays(ISerializable, Generic[TSArrays], metaclass=ABCMeta):
+class ISerializableArrays(
+    Generic[TSArrays],
+    ISerializable[TSArrays],
+    metaclass=ABCMeta,
+):
     @abstractmethod
     def to_npd(self) -> np_dict_type:
         pass
@@ -702,7 +711,12 @@ class ISerializableArrays(ISerializable, Generic[TSArrays], metaclass=ABCMeta):
         return copied
 
 
-class ISerializableDataClass(PureFromInfoMixin, ISerializable, DataClassBase):
+class ISerializableDataClass(
+    Generic[TSDataClass],
+    PureFromInfoMixin,
+    ISerializable[TSDataClass],
+    DataClassBase,
+):
     def to_info(self) -> Dict[str, Any]:
         return self.asdict()
 
