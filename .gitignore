@@ -1,0 +1,15 @@
+.idea/*
+.DS_Store
+*.pyc
+.vscode/*
+_*/
+build/*
+carefree_core.egg-info
+pip-wheel-metadata
+**/.ipynb_checkpoints/*
+dist/*
+**/mlruns/*
+*.zip
+data/*
+**/datasets
+examples/tmp
