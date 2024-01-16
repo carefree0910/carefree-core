@@ -395,8 +395,6 @@ class BuildOptimizersBlock(InjectDefaultsMixin, Block):
         if config.optimizer_name is not None:
             settings["optimizer_name"] = config.optimizer_name
         if config.scheduler_name is not None:
-            if config.scheduler_name == "none":
-                config.scheduler_name = None
             settings["scheduler_name"] = config.scheduler_name
         if config.optimizer_config is not None:
             settings["optimizer_config"] = config.optimizer_config

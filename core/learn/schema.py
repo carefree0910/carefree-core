@@ -813,8 +813,7 @@ def weighted_loss_score(config: "TrainerConfig", loss_items: Dict[str, float]) -
 
 def get_update_fn(trainer: "ITrainer") -> Callable[[Tensor, Optimizer, bool], None]:
     def update_fn(loss: Tensor, optimizer: Optimizer, update: bool) -> None:
-        accelerator = trainer.accelerator
-        accelerator.backward(loss)
+        trainer.accelerator.backward(loss)
         if update:
             trainer.clip_norm_step()
             optimizer.step()
@@ -1601,8 +1600,6 @@ class ITrainer(ABC):
     state: TrainerState
     train_loader: DataLoader
     valid_loader: Optional[DataLoader]
-    runtime_train_loader: DataLoader
-    runtime_valid_loader: Optional[DataLoader]
     inference: IInference
 
     tqdm_settings: "TqdmSettings"

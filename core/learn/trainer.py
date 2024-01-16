@@ -243,15 +243,15 @@ class Trainer(ITrainer):
         # accelerator prepare
         n_optim = len(optimizers)
         optim_keys = sorted(optimizers)
-        self.train_loader, self.valid_loader = data.get_loaders()
+        train_loader, valid_loader = data.get_loaders()
         prepared = self.accelerator.prepare(
-            self.train_loader,
-            self.valid_loader,
+            train_loader,
+            valid_loader,
             *model.all_modules,
             *[optimizers[k] for k in optim_keys],
         )
-        self.runtime_train_loader = prepared[0]
-        self.runtime_valid_loader = prepared[1]
+        self.train_loader = prepared[0]
+        self.valid_loader = prepared[1]
         self.state = TrainerState(
             self.train_loader,
             num_epoch=self.config.num_epoch,
@@ -304,11 +304,11 @@ class Trainer(ITrainer):
             try:
                 self.state.epoch += 1
                 if not self.is_local_rank_0 or not self.tqdm_settings.use_step_tqdm:
-                    step_iterator = self.runtime_train_loader
+                    step_iterator = self.train_loader
                 else:
                     step_tqdm = step_iterator = tqdm(
-                        self.runtime_train_loader,
-                        total=len(self.runtime_train_loader),
+                        self.train_loader,
+                        total=len(self.train_loader),
                         position=self.tqdm_settings.position + 1,
                         leave=False,
                     )
@@ -349,7 +349,7 @@ class Trainer(ITrainer):
         # finalize
         self.state.set_terminate()
         if self.is_local_rank_0:
-            loader = self.runtime_valid_loader or self.runtime_train_loader
+            loader = self.valid_loader or self.train_loader
             self.final_results = self._get_metrics(loader, self.config.valid_portion)
             self._logging_step(self.final_results)
             if not has_ckpt:
@@ -539,8 +539,8 @@ class Trainer(ITrainer):
             k_incrementer.update(v)
         if self.state.should_monitor:
             # get metrics
-            if self.runtime_valid_loader is not None:
-                loader = self.runtime_valid_loader
+            if self.valid_loader is not None:
+                loader = self.valid_loader
                 self.intermediate = self._get_metrics(loader, self.config.valid_portion)
             else:
                 loss_dict = {
