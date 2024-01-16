@@ -253,9 +253,10 @@ class Trainer(ITrainer):
         self.train_loader = prepared[0]
         self.valid_loader = prepared[1]
         self.state = TrainerState(
-            self.train_loader,
             num_epoch=self.config.num_epoch,
             num_steps=self.config.num_steps,
+            batch_size=train_loader.batch_size,
+            loader_length=len(train_loader),
             **(self.config.state_config or {}),
         )
         self.model_for_training = model.from_accelerator(*prepared[2:-n_optim])

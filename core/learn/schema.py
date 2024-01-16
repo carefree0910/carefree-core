@@ -1340,9 +1340,10 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
 class TrainerState:
     def __init__(
         self,
-        loader: DataLoader,
         *,
         num_epoch: int,
+        batch_size: int,
+        loader_length: int,
         num_steps: Optional[int] = None,
         enable_logging: bool = True,
         min_num_sample: int = 3000,
@@ -1355,8 +1356,8 @@ class TrainerState:
         min_snapshot_epoch_gap: int = 0,
     ):
         self.step = self.epoch = 0
-        self.batch_size = loader.batch_size * get_world_size()
-        self.num_step_per_epoch = len(loader)
+        self.batch_size = batch_size * get_world_size()
+        self.num_step_per_epoch = loader_length
         self.num_epoch = num_epoch
         self.num_steps = num_steps
         self.enable_logging = enable_logging
@@ -1368,7 +1369,7 @@ class TrainerState:
         self.num_snapshot_per_epoch = num_snapshot_per_epoch
         self.num_step_per_log = num_step_per_log
         if num_step_per_snapshot is None:
-            num_step_per_snapshot = max(1, int(len(loader) / num_snapshot_per_epoch))
+            num_step_per_snapshot = max(1, int(loader_length / num_snapshot_per_epoch))
             num_step_per_snapshot = min(max_step_per_snapshot, num_step_per_snapshot)
         self.num_step_per_snapshot = num_step_per_snapshot
         self.max_step_per_snapshot = max_step_per_snapshot
