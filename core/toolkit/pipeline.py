@@ -22,6 +22,7 @@ from .misc import ISerializable
 from .misc import ISerializableDataClass
 
 
+TB = TypeVar("TB", bound="IBlock")
 TBlock = TypeVar("TBlock", bound="IBlock")
 TConfig = TypeVar("TConfig", bound="ISerializableDataClass")
 TPipeline = TypeVar("TPipeline", bound="IPipeline")
@@ -73,7 +74,7 @@ def check_requirement(block: "IBlock", previous: Mapping[str, "IBlock"]) -> None
             )
 
 
-class IBlock(Generic[TBlock], WithRegister["IBlock"], metaclass=ABCMeta):
+class IBlock(Generic[TBlock, TConfig], WithRegister["IBlock"], metaclass=ABCMeta):
     d = pipeline_blocks
 
     """
@@ -103,11 +104,11 @@ class IBlock(Generic[TBlock], WithRegister["IBlock"], metaclass=ABCMeta):
 
 
 class IPipeline(
-    Generic[TBlock, TConfig],
-    ISerializable["IPipeline"],
+    Generic[TBlock, TConfig, TPipeline],
+    ISerializable[TPipeline],
     metaclass=ABCMeta,
 ):
-    d = pipelines
+    d = pipelines  # type: ignore
 
     config: TConfig
     blocks: List[TBlock]
@@ -171,12 +172,12 @@ class IPipeline(
     def block_mappings(self) -> Dict[str, TBlock]:
         return {b.__identifier__: b for b in self.blocks}
 
-    def try_get_block(self, block: Union[str, Type[TBlock]]) -> Optional[TBlock]:
+    def try_get_block(self, block: Union[str, Type[TB]]) -> Optional[TB]:
         if not isinstance(block, str):
             block = block.__identifier__
-        return self.block_mappings.get(block)
+        return self.block_mappings.get(block)  # type: ignore
 
-    def get_block(self, block: Union[str, Type[TBlock]]) -> TBlock:
+    def get_block(self, block: Union[str, Type[TB]]) -> TB:
         b = self.try_get_block(block)
         if b is None:
             raise ValueError(f"cannot find '{block}' in `previous`")
