@@ -513,6 +513,12 @@ async def offload(future: Coroutine[Any, Any, TFutureResponse]) -> TFutureRespon
         )
 
 
+def compress(absolute_folder: str, remove_original: bool = True) -> None:
+    shutil.make_archive(absolute_folder, "zip", absolute_folder)
+    if remove_original:
+        shutil.rmtree(absolute_folder)
+
+
 # util modules
 
 
