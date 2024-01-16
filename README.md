@@ -47,6 +47,20 @@ This package is a lightweight package for building arbitray workflows, here are 
 - **Human Readable**: the workflow JSON file is human readable and easy to understand.
 - **Lightweight**: the package is lightweight (core implementation is ~500 lines of code in a single file `core/flow/core.py`) and easy to use.
 
+### `learn` package
+
+> - `core/learn`
+> - Originates from [`carefree-learn`](https://github.com/carefree0910/carefree-learn).
+
+This package is the 'main' package of the PyTorch framework, here are some main design principles:
+
+- **Data**: Will use `torch.utils.data.DataLoader` as the data loader.
+- **Model**: Will be split into `module` and `model`:
+  - **`module`** is the key part of the Model, and should be self-contained at inference stage.
+  - **`model`** is the wrapper of `module`, and should contain the training / evaluation / ... logic.
+- **Trainer**: Will use the [`accelerate`](https://github.com/huggingface/accelerate) library.
+- **Training Abstraction**: Will use `TrainStep` for fine-grained control.
+
 ## License
 
 `carefree-core` is MIT licensed, as found in the [`LICENSE`](https://github.com/carefree0910/carefree-core/blob/main/LICENSE) file.
