@@ -627,10 +627,6 @@ class WithRegister(Generic[TRegister]):
         )
 
     @classmethod
-    def remove(cls, name: str) -> Callable:
-        return cls.d.pop(name)
-
-    @classmethod
     def check_subclass(cls, name: str) -> bool:
         return issubclass(cls.d[name], cls)
 
