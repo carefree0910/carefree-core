@@ -164,7 +164,7 @@ class Trainer(ITrainer):
         if self.config.clip_norm > 0.0:
             if self.accelerator.sync_gradients:
                 self._gradient_norm = self.accelerator.clip_grad_norm_(
-                    self.model_for_training.parameters(),
+                    self.model.parameters(),
                     max_norm=self.config.clip_norm,
                 )
 
@@ -231,7 +231,6 @@ class Trainer(ITrainer):
                 pass
             os.makedirs(self.checkpoint_folder, exist_ok=True)
         # initialize
-        self.model = model
         self.metrics = metrics
         self.monitors = monitors
         self.callbacks = callbacks
@@ -259,7 +258,7 @@ class Trainer(ITrainer):
             loader_length=len(train_loader),
             **(self.config.state_config or {}),
         )
-        self.model_for_training = model.from_accelerator(*prepared[2:-n_optim])
+        self.model = model.from_accelerator(*prepared[2:-n_optim])
         self.optimizers = {k: prepared[-n_optim + i] for i, k in enumerate(optim_keys)}
         self.schedulers = schedulers
         for sch in schedulers.values():

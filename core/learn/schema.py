@@ -1595,7 +1595,6 @@ class ITrainer(ABC):
     callbacks: List[TrainerCallback]
     optimizers: Dict[str, Optimizer]
     schedulers: Dict[str, Optional[_LRScheduler]]
-    model_for_training: IModel
     accelerator: Accelerator
 
     state: TrainerState
