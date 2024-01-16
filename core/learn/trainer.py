@@ -272,13 +272,16 @@ class Trainer(ITrainer):
         # verbose
         if show_summary is None:
             show_summary = not self.tqdm_settings.in_distributed
-        if self.is_local_rank_0:
+        ## should always summary to sync the statuses in distributed training
+        input_sample = get_input_sample(train_loader, self.device)
+        with self.model.eval_context():
             summary_msg = summary(
                 self.model.m,
-                get_input_sample(self.train_loader, self.device),
-                return_only=not show_summary,
+                input_sample,
+                return_only=not show_summary or not self.is_local_rank_0,
                 summary_forward=self.model.summary_forward,
             )
+        if self.is_local_rank_0:
             with open(os.path.join(self.workspace, self.summary_log_file), "w") as f:
                 f.write(summary_msg)
         # tqdm
