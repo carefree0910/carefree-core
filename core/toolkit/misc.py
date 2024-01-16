@@ -142,7 +142,7 @@ def filter_kw(
 
 
 def safe_execute(
-    fn: Fn[TFnResponse],
+    fn: Union[Fn[TFnResponse], Type[TFnResponse]],
     kw: Dict[str, Any],
     *,
     strict: bool = False,
@@ -587,7 +587,7 @@ class WithRegister(Generic[TRegister]):
         base = cls.get(name)
         if not ensure_safe:
             return base(**config)  # type: ignore
-        return safe_execute(base.__init__, config)
+        return safe_execute(base, config)
 
     @classmethod
     def make_multiple(
