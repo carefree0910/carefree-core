@@ -218,7 +218,10 @@ class Trainer(ITrainer):
                 os.environ["CUDA_VISIBLE_DEVICES"] = str(device.index or 0)
         self.accelerator = Accelerator(
             cpu=cpu,
+            split_batches=self.config.split_batches,
             mixed_precision=self.config.mixed_precision,
+            dispatch_batches=self.config.dispatch_batches,
+            even_batches=self.config.even_batches,
         )
         # initialize artifact structure
         if self.is_local_rank_0:

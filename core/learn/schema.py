@@ -1677,7 +1677,6 @@ class TrainerConfig:
     num_steps: Optional[int] = None
     log_steps: Optional[int] = None
     valid_portion: float = 1.0
-    mixed_precision: str = "no"  # this is the `PrecisionType` from `accelerate`
     clip_norm: float = 0.0
     grad_accumulate: int = 1
     metric_names: Optional[Union[str, List[str]]] = None
@@ -1702,6 +1701,11 @@ class TrainerConfig:
     use_zero: bool = False
     finetune_config: Optional[Dict[str, Any]] = None
     tqdm_settings: Optional[Dict[str, Any]] = None
+    # `accelerator` attributes
+    split_batches: bool = False
+    mixed_precision: str = "no"
+    dispatch_batches: Optional[str] = None
+    even_batches: bool = True
 
 
 @dataclass
