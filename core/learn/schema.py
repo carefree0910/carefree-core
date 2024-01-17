@@ -564,7 +564,7 @@ class IData(Generic[TData, TDataset], ISerializableArrays[TData], metaclass=ABCM
     ) -> DataBundle:
         return DataBundle(x_train, y_train, x_valid, y_valid)
 
-    def get_loaders(self) -> TDataLoaders:
+    def build_loaders(self) -> TDataLoaders:
         if not self.processor.is_ready:
             raise ValueError(
                 "`processor` should be ready before calling `initialize`, "

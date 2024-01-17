@@ -245,7 +245,7 @@ class Trainer(ITrainer):
         # accelerator prepare
         n_optim = len(optimizers)
         optim_keys = sorted(optimizers)
-        train_loader, valid_loader = data.get_loaders()
+        train_loader, valid_loader = data.build_loaders()
         ## 'valid_loader' is often only used at 'rank 0', so it should not be
         ## 'prepared' for distributed behaviors
         prepared = self.accelerator.prepare(

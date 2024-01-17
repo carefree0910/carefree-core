@@ -138,7 +138,7 @@ class ExtractStateInfoBlock(TryLoadBlock):
         if self.data is None:
             raise ValueError(f"`data` should be provided for `ExtractStateInfoBlock`")
         # from loader
-        loader = self.data.get_loaders()[0]
+        loader = self.data.build_loaders()[0]
         batch_size = loader.batch_size
         num_batches = len(loader)
         num_samples = len(loader.dataset)

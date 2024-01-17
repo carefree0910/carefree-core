@@ -28,7 +28,7 @@ class TestLinear(unittest.TestCase):
         pipeline = cflearn.TrainingPipeline.init(config).fit(data)
 
         learned_w = pipeline.build_model.model.m.net.weight.view(-1).detach().numpy()
-        console.log(f"> evaluation {pipeline.evaluate(data.get_loaders()[0])}")
+        console.log(f"> evaluation {pipeline.evaluate(data.build_loaders()[0])}")
         console.log(f"> learned weights {learned_w}")
         console.log(f"> ground truth weights {w.ravel()}")
 
@@ -38,7 +38,7 @@ class TestLinear(unittest.TestCase):
         )
         loaded = cflearn.PipelineSerializer.load_evaluation(pipeline_dir)
         loaded_w = loaded.build_model.model.m.net.weight.view(-1).detach().numpy()
-        console.log(f"> loaded evaluation {loaded.evaluate(data.get_loaders()[0])}")
+        console.log(f"> loaded evaluation {loaded.evaluate(data.build_loaders()[0])}")
         console.log(f"> loaded weights {loaded_w}")
 
     def test_linear_custom(self) -> None:
@@ -65,7 +65,7 @@ class TestLinear(unittest.TestCase):
         pipeline = cflearn.TrainingPipeline.init(config).fit(data)
 
         learned_w = pipeline.build_model.model.m.net.weight.view(-1).detach().numpy()
-        console.log(f"> evaluation {pipeline.evaluate(data.get_loaders()[0])}")
+        console.log(f"> evaluation {pipeline.evaluate(data.build_loaders()[0])}")
         console.log(f"> learned weights {learned_w}")
         console.log(f"> ground truth weights {w.ravel()}")
 
@@ -75,7 +75,7 @@ class TestLinear(unittest.TestCase):
         )
         loaded = cflearn.PipelineSerializer.load_evaluation(pipeline_dir)
         loaded_w = loaded.build_model.model.m.net.weight.view(-1).detach().numpy()
-        console.log(f"> loaded evaluation {loaded.evaluate(data.get_loaders()[0])}")
+        console.log(f"> loaded evaluation {loaded.evaluate(data.build_loaders()[0])}")
         console.log(f"> loaded weights {loaded_w}")
 
     def test_linear_ddp(self) -> None:
