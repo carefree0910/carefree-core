@@ -1,3 +1,4 @@
+import os
 import csv
 
 import numpy as np
@@ -119,8 +120,16 @@ def main() -> None:
     pipeline = cflearn.TrainingPipeline.init(config).fit(data)
 
     test_loader = pipeline.data.build_loader(test_path)
-    predictions = pipeline.predict(test_loader, return_classes=True)
-    classes = predictions[cflearn.PREDICTIONS_KEY]
+    predictions = pipeline.predict(test_loader)[cflearn.PREDICTIONS_KEY]
+    class_predictions = pipeline.predict(test_loader, return_classes=True)
+    classes = class_predictions[cflearn.PREDICTIONS_KEY]
+
+    workspace = pipeline.config.workspace
+    pipeline_dir = os.path.join(workspace, cflearn.PipelineSerializer.pipeline_folder)
+    loaded = cflearn.PipelineSerializer.load_inference(pipeline_dir)
+    loaded_loader = loaded.data.build_loader(test_path)
+    loaded_predictions = loaded.predict(loaded_loader)[cflearn.PREDICTIONS_KEY]
+    assert np.allclose(predictions, loaded_predictions)
 
     with open(test_path, "r") as f:
         f.readline()
