@@ -34,6 +34,7 @@ from torch.optim import Optimizer
 from torch.cuda.amp import autocast
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import Dataset
+from torch.utils.data import WeightedRandomSampler
 from torch.utils.data import DataLoader as TorchDataLoader
 
 from .toolkit import TPath
@@ -485,10 +486,16 @@ class IData(  # type: ignore
         batch_size: int,
         sample_weights: Optional[np.ndarray] = None,
     ) -> DataLoader:
+        if sample_weights is None or not shuffle:
+            sampler = None
+        else:
+            shuffle = False
+            sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
         loader = DataLoader(
             dataset,
             shuffle=shuffle,
             batch_size=batch_size,
+            sampler=sampler,
         )
         loader.data = self
         loader.for_inference = self.config.for_inference
