@@ -632,6 +632,27 @@ class IData(Generic[TData, TDataset], ISerializableArrays[TData], metaclass=ABCM
     def recover_labels(self, y: np.ndarray) -> np.ndarray:
         return self.processor.recover_labels(y)
 
+    def build_loader(
+        self,
+        x: data_type,
+        y: Optional[data_type] = None,
+        *,
+        shuffle: bool = False,
+        batch_size: Optional[int] = None,
+        sample_weights: Optional[np.ndarray] = None,
+    ) -> DataLoader:
+        bundle = self.transform(x, y)
+        dataset = self.to_datasets(bundle)[0]
+        loader = self.to_loader(
+            dataset,
+            shuffle=shuffle,
+            batch_size=batch_size
+            or self.config.valid_batch_size
+            or self.config.batch_size,
+            sample_weights=sample_weights,
+        )
+        return loader
+
 
 # loss
 
