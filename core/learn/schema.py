@@ -106,13 +106,11 @@ configs: Dict[str, Type["Config"]] = {}
 
 Design of the `IData` system:
 
-* `IData` itself only holds minimal configurations, but will hold some data - which are
-constructed into a `DataBundle` - temporarily, in case we need to use the data immediately
-(e.g. use them for training), or need to serialize them.
-* Complicated logics are maintained by `DataProcessor`, which is an `IPipeline` constructed
-by a series of `IDataBlock`.
-* `DataProcessor` itself has no information, and logics are held in each `IDataBlock`.
-* An `IDataBlock` need to do three jobs:
+* `IData` is an `IPipeline` constructed by a series of `IDataBlock`, it may also
+hold some data - which are constructed into a `DataBundle` - temporarily, in case
+we need to use the data immediately (e.g. use them for training), or need to serialize them.
+* Complicated logics are maintained in each `IDataBlock`.
+* An `IDataBlock` need to do four jobs:
   * `transform`: transform a `DataBundle` into a new `DataBundle`.
   * `fit_transform`: collect necessary info and perform `transform`.
   * `process_batch` (optional): process an incoming batch at runtime.
@@ -127,8 +125,8 @@ Typical workflows are:
              -> data_loader -> `process_batch` -> model -> predictions -> `recover_labels`
 
 > When serializing, a property called `bundle` (the `DataBundle`) will be saved, which holds
-the 'transformed data'. So after the serialization, we don't need to run `fit_transform`/`transform`
-anymore, and can reuse the `bundle` property directly.
+the 'transformed data'. So after the serialization, we don't need to run `fit_transform` or
+`transform` anymore, and can reuse the `bundle` property directly.
 > However we can also serialize `IData` without saving `bundle` (which is a better choice when
 we only want to serialize it for inference). In this case, we need to run `transform` on new datasets.
 
@@ -140,11 +138,11 @@ The above statements indicate that:
 
 Common use cases are:
 
-* ML datasets: will mostly utilize `transform`/`fit_transform`, because most ML datasets
+* ML datasets: will mostly utilize `transform` / `fit_transform`, because most ML datasets
 can be transfered into a numpy-based datasets, which should be calculated beforehand
 because directly indexing numpy arrays is very fast while streaming them will be slow.
 
-* CV/NLP datasets: will mostly utilize `process_batch`, because most CV/NLP datasets
+* CV / NLP datasets: will mostly utilize `process_batch`, because most CV / NLP datasets
 are very large, which means it is impossible to be pre-calculated because that will
 cost too much RAM. Instead, common practice is to 'stream' the datasets, which means many
 calculations must be done at runtime.
@@ -200,17 +198,17 @@ class IDataset(Dataset):
 class DataLoader(TorchDataLoader):
     """
     A thin wrapper of the `torch.utils.data.DataLoader` class, which forces the user
-    to assign the `processor` attribute and the `for_inference` attribute, which are used
+    to assign the `data` attribute and the `for_inference` attribute, which are used
     to process the collated batch from `IDataset` objects.
     """
 
-    processor: "DataProcessor"
+    data: "IData"
     for_inference: bool
 
     def get_collate_fn(self) -> Callable[[tensor_dict_type], tensor_dict_type]:
         # here, the `collate_fn` only needs to process on batches, as we have already
         # done the collation at `__getitems__` method of the `IDataset` object.
-        return partial(self.processor.process_batch, for_inference=self.for_inference)
+        return partial(self.data.process_batch, for_inference=self.for_inference)
 
     def get_one_batch(self, device: device_type = None) -> tensor_dict_type:
         batch = next(iter(self))
@@ -399,68 +397,12 @@ class IDataBlock(  # type: ignore
         return y
 
 
-class DataProcessor(IPipeline[IDataBlock, DataConfig, "DataProcessor"]):
-    is_ready: bool = False
-
-    # inheritance
-
-    @classmethod
-    def init(cls, config: DataConfig) -> "DataProcessor":
-        self: DataProcessor = cls()
-        self.config = config
-        if self.config.block_names is not None:
-            self.build(*(IDataBlock.get(name)() for name in self.config.block_names))  # type: ignore
-        return self
-
-    @property
-    def config_base(self) -> Type[DataConfig]:
-        return DataConfig
-
-    @property
-    def block_base(self) -> Type[IDataBlock]:
-        return IDataBlock
-
-    def to_info(self) -> Dict[str, Any]:
-        info = super().to_info()
-        info.pop("config")
-        return info
-
-    def after_load(self) -> None:
-        self.is_ready = True
-
-    # api
-
-    def _run(self, fn: str, bundle: DataBundle, for_inference: bool) -> DataBundle:
-        kw = dict(bundle=bundle.copy(), for_inference=for_inference)
-        previous: Dict[str, IDataBlock] = {}
-        for block in self.blocks:
-            block.previous = shallow_copy_dict(previous)
-            kw["bundle"] = safe_execute(getattr(block, fn), kw)
-            previous[block.__identifier__] = block
-        return kw["bundle"]  # type: ignore
-
-    def transform(self, bundle: DataBundle, *, for_inference: bool) -> DataBundle:
-        return self._run("transform", bundle, for_inference)
-
-    def fit_transform(self, bundle: DataBundle) -> DataBundle:
-        bundle = self._run("fit_transform", bundle, False)
-        self.is_ready = True
-        return bundle
-
-    ## changes can happen inplace
-    def process_batch(self, batch: td_type, *, for_inference: bool) -> td_type:
-        for block in self.blocks:
-            batch = block.process_batch(batch, for_inference=for_inference)
-        return batch
-
-    ## changes can happen inplace
-    def recover_labels(self, y: np.ndarray) -> np.ndarray:
-        for block in self.blocks[::-1]:
-            y = block.recover_labels(y)
-        return y
-
-
-class IData(Generic[TData, TDataset], ISerializableArrays[TData], metaclass=ABCMeta):
+class IData(  # type: ignore
+    Generic[TData, TDataset],
+    ISerializableArrays[TData],
+    IPipeline[IDataBlock, DataConfig, TData],
+    metaclass=ABCMeta,
+):
     d = data_dict  # type: ignore
 
     train_dataset: TDataset
@@ -469,11 +411,11 @@ class IData(Generic[TData, TDataset], ISerializableArrays[TData], metaclass=ABCM
     train_weights: Optional[np.ndarray]
     valid_weights: Optional[np.ndarray]
 
-    config: DataConfig
-    processor: DataProcessor
     bundle: Optional[DataBundle]
+    is_ready: bool = False
 
     def __init__(self) -> None:
+        super().__init__()
         self.train_weights = None
         self.valid_weights = None
 
@@ -486,7 +428,8 @@ class IData(Generic[TData, TDataset], ISerializableArrays[TData], metaclass=ABCM
         self: TData = cls()
         self.bundle = None
         self.config = config or DataConfig()
-        self.processor = DataProcessor.init(self.config)
+        if self.config.block_names is not None:
+            self.build(*(IDataBlock.get(name)() for name in self.config.block_names))  # type: ignore
         return self
 
     # abstract
@@ -497,26 +440,22 @@ class IData(Generic[TData, TDataset], ISerializableArrays[TData], metaclass=ABCM
 
     # inheritance
 
+    @property
+    def config_base(self) -> Type[DataConfig]:
+        return DataConfig
+
+    @property
+    def block_base(self) -> Type[IDataBlock]:
+        return IDataBlock
+
     def to_info(self) -> Dict[str, Any]:
-        if not self.processor.is_ready:
-            raise ValueError(
-                "`processor` should be ready before calling `to_info`, "
-                "did you forget to call the `fit` method first?"
-            )
-        return {
-            "type": self.__identifier__,
-            "processor": self.processor.to_pack().asdict(),
-            "config": self.config.to_pack().asdict(),
-            "bundle": None if self.bundle is None else self.bundle.to_info(),
-        }
+        self._check_ready("to_info")
+        info = super().to_info()
+        info["bundle"] = None if self.bundle is None else self.bundle.to_info()
+        return info
 
     def from_info(self, info: Dict[str, Any]) -> None:
-        if self.__identifier__ != info["type"]:
-            msg = f"type does not match: {self.__identifier__} != {info['type']}"
-            raise ValueError(msg)
-        self.config = DataConfig.from_pack(info["config"])
-        info["processor"]["info"]["config"] = self.config.to_pack().asdict()
-        self.processor = DataProcessor.from_pack(info["processor"])
+        super().from_info(info)
         bundle_info = info["bundle"]
         if not bundle_info:
             self.bundle = None
@@ -533,6 +472,9 @@ class IData(Generic[TData, TDataset], ISerializableArrays[TData], metaclass=ABCM
                 self.bundle = DataBundle.empty()
             self.bundle.from_npd(npd)
 
+    def after_load(self) -> None:
+        self.is_ready = True
+
     # optional callbacks
 
     def to_loader(
@@ -548,7 +490,7 @@ class IData(Generic[TData, TDataset], ISerializableArrays[TData], metaclass=ABCM
             shuffle=shuffle,
             batch_size=batch_size,
         )
-        loader.processor = self.processor
+        loader.data = self
         loader.for_inference = self.config.for_inference
         loader.collate_fn = loader.get_collate_fn()
         return loader
@@ -565,11 +507,7 @@ class IData(Generic[TData, TDataset], ISerializableArrays[TData], metaclass=ABCM
         return DataBundle(x_train, y_train, x_valid, y_valid)
 
     def build_loaders(self) -> TDataLoaders:
-        if not self.processor.is_ready:
-            raise ValueError(
-                "`processor` should be ready before calling `initialize`, "
-                "did you forget to call the `prepare` method first?"
-            )
+        self._check_ready("build_loaders")
         if self.bundle is None:
             raise ValueError(
                 "`bundle` property is not initialized, "
@@ -610,8 +548,9 @@ class IData(Generic[TData, TDataset], ISerializableArrays[TData], metaclass=ABCM
     ) -> TData:
         args = x_train, y_train, x_valid, y_valid, *args
         bundle = self.get_bundle(*args, **kwargs)
-        bundle = self.processor.fit_transform(bundle)
+        bundle = self._run("fit_transform", bundle, False)
         self.bundle = bundle
+        self.is_ready = True
         return self
 
     def transform(
@@ -623,14 +562,10 @@ class IData(Generic[TData, TDataset], ISerializableArrays[TData], metaclass=ABCM
         *args: Any,
         **kwargs: Any,
     ) -> DataBundle:
-        if not self.processor.is_ready:
-            raise ValueError("`processor` should be ready before calling `transform`")
+        self._check_ready("transform")
         bundle = self.get_bundle(x_train, y_train, x_valid, y_valid, *args, **kwargs)
-        bundle = self.processor.transform(bundle, for_inference=True)
+        bundle = self._run("transform", bundle, for_inference=True)
         return bundle
-
-    def recover_labels(self, y: np.ndarray) -> np.ndarray:
-        return self.processor.recover_labels(y)
 
     def build_loader(
         self,
@@ -652,6 +587,36 @@ class IData(Generic[TData, TDataset], ISerializableArrays[TData], metaclass=ABCM
             sample_weights=sample_weights,
         )
         return loader
+
+    ## changes can happen inplace
+    def process_batch(self, batch: td_type, *, for_inference: bool) -> td_type:
+        for block in self.blocks:
+            batch = block.process_batch(batch, for_inference=for_inference)
+        return batch
+
+    ## changes can happen inplace
+    def recover_labels(self, y: np.ndarray) -> np.ndarray:
+        for block in self.blocks[::-1]:
+            y = block.recover_labels(y)
+        return y
+
+    # internal
+
+    def _run(self, fn: str, bundle: DataBundle, for_inference: bool) -> DataBundle:
+        kw = dict(bundle=bundle.copy(), for_inference=for_inference)
+        previous: Dict[str, IDataBlock] = {}
+        for block in self.blocks:
+            block.previous = shallow_copy_dict(previous)
+            kw["bundle"] = safe_execute(getattr(block, fn), kw)
+            previous[block.__identifier__] = block
+        return kw["bundle"]  # type: ignore
+
+    def _check_ready(self, method_name: str) -> None:
+        if not self.is_ready:
+            raise ValueError(
+                f"`{self.__class__.__name__}` should be ready before calling "
+                f"`{method_name}`, did you forget to call the `fit` method first?"
+            )
 
 
 # loss
@@ -1777,6 +1742,5 @@ class Config(TrainerConfig, DLSettings, ISerializableDataClass):
 
 DataConfig.d = data_configs  # type: ignore
 DataConfig.register("$base")(DataConfig)
-IPipeline.register("$data_processor")(DataProcessor)
 Config.d = configs  # type: ignore
 Config.register("$base")(Config)

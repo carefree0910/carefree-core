@@ -103,7 +103,7 @@ def main() -> None:
     data_config.batch_size = 16
     data_config.add_blocks(TitanicBlock)
     data = cflearn.ArrayData.init(data_config).fit(train_path, x_valid=train_path)
-    titanic_block = data.processor.get_block(TitanicBlock)
+    titanic_block = data.get_block(TitanicBlock)
     config = cflearn.Config(
         module_name="fcnn",
         module_config=dict(
