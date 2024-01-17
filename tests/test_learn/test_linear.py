@@ -81,7 +81,7 @@ class TestLinear(unittest.TestCase):
     def test_linear_ddp(self) -> None:
         ddp_task_path = Path(__file__).parent / "ddp_linear_task.py"
         cmd = ["accelerate", "launch", "--num_processes=2", str(ddp_task_path)]
-        subprocess.run(cmd)
+        subprocess.run(cmd, check=True)
 
 
 if __name__ == "__main__":
