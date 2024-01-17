@@ -28,13 +28,13 @@ from typing import ContextManager
 from onnxsim import simplify as onnx_simplify
 from functools import partial
 from accelerate import Accelerator
+from contextlib import nullcontext
 from dataclasses import dataclass
 from torch.optim import Optimizer
 from torch.cuda.amp import autocast
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader as TorchDataLoader
-from torch.utils.data.dataloader import _BaseDataLoaderIter
 
 from .toolkit import TPath
 from .toolkit import device_type
@@ -825,6 +825,10 @@ def get_update_fn(trainer: "ITrainer") -> Callable[[Tensor, Optimizer, bool], No
     return update_fn
 
 
+def get_no_sync_context(update: bool, trainer: "ITrainer") -> ContextManager:
+    return nullcontext() if update else trainer.accelerator.no_sync(trainer.model.m)
+
+
 def get_inputs(model: onnx.ModelProto) -> List[onnx.ValueInfoProto]:
     initializer_names = [x.name for x in model.graph.initializer]
     return [inp for inp in model.graph.input if inp.name not in initializer_names]
@@ -1109,26 +1113,27 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         for i, train_step in enumerate(self.train_steps):
             if train_step.should_skip(self, state):
                 continue
-            if i == 0 or train_step.requires_new_forward:
-                no_grad = not train_step.requires_grad_in_forward
-                with no_grad_context(enabled=no_grad), autocast_ctx:
-                    if train_step.num_forward == 1:
-                        forward = get_fw()
-                    else:
-                        forward = [get_fw() for _ in range(train_step.num_forward)]
-            optimizer = trainer.optimizers[train_step.scope]
-            should_toggle_optimizer = train_step.enable_toggle_optimizer
-            with toggle_optimizer(self.m, optimizer, enabled=should_toggle_optimizer):
-                with autocast_ctx:
-                    loss_args = self, state, batch, forward
-                    loss_res = train_step.loss_fn(*loss_args, **loss_kwargs)
-                update = (
-                    state.step
-                    % (train_step.grad_accumulate or trainer.config.grad_accumulate)
-                    == 0
-                )
-                update_fn(loss_res.loss, optimizer, update)
-                loss_dict.update(loss_res.losses)
+            update = (
+                state.step
+                % (train_step.grad_accumulate or trainer.config.grad_accumulate)
+                == 0
+            )
+            with get_no_sync_context(update, trainer):
+                if i == 0 or train_step.requires_new_forward:
+                    no_grad = not train_step.requires_grad_in_forward
+                    with no_grad_context(enabled=no_grad), autocast_ctx:
+                        if train_step.num_forward == 1:
+                            forward = get_fw()
+                        else:
+                            forward = [get_fw() for _ in range(train_step.num_forward)]
+                optimizer = trainer.optimizers[train_step.scope]
+                should_toggle = train_step.enable_toggle_optimizer
+                with toggle_optimizer(self.m, optimizer, enabled=should_toggle):
+                    with autocast_ctx:
+                        loss_args = self, state, batch, forward
+                        loss_res = train_step.loss_fn(*loss_args, **loss_kwargs)
+                    update_fn(loss_res.loss, optimizer, update)
+                    loss_dict.update(loss_res.losses)
             if update:
                 any_update = True
         if any_update:
