@@ -1272,10 +1272,10 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                 self.m = model.m
 
             def forward(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-                rs = onnx_forward(batch)
-                if isinstance(rs, Tensor):
-                    return {k: rs for k in output_names}  # type: ignore
-                return {k: rs[k] for k in output_names}  # type: ignore
+                res = onnx_forward(batch)
+                if isinstance(res, Tensor):
+                    return {k: res for k in output_names}  # type: ignore
+                return {k: res[k] for k in output_names}  # type: ignore
 
         m_onnx = ONNXWrapper()
         original_states = model.state_dict()

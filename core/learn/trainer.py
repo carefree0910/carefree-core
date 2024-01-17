@@ -359,7 +359,7 @@ class Trainer(ITrainer):
             # unwanted distributed behaviors (e.g., hang when `dispatch_batches=True`)
             loader = valid_loader or train_loader
             self.final_results = self._get_metrics(loader, self.config.valid_portion)
-            self._logging_step(self.final_results)
+            self._logging(self.final_results)
             if not has_ckpt:
                 self.save_checkpoint(self.final_results.final_score)
         for callback in self.callbacks:
@@ -511,7 +511,7 @@ class Trainer(ITrainer):
             should_log_lr &= self.lr_metrics_updated
         return should_log_lr, kwargs
 
-    def _logging_step(self, metrics_outputs: MetricsOutputs) -> None:
+    def _logging(self, metrics_outputs: MetricsOutputs) -> None:
         if not self.is_local_rank_0:
             return None
         if self.epoch_tqdm is not None:
@@ -559,7 +559,7 @@ class Trainer(ITrainer):
                 self.intermediate = MetricsOutputs(loss_score, loss_dict, is_positive)
             self.lr_metrics_updated = True
             # logging
-            self._logging_step(self.intermediate)
+            self._logging(self.intermediate)
             # check terminate
             if self.state.should_start_snapshot:
                 score = self.intermediate.final_score

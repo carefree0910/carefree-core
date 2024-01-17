@@ -26,14 +26,14 @@ class TestArray(unittest.TestCase):
 
     def test_get_unique_indices(self):
         arr = np.array([1, 2, 3, 2, 4, 1, 0, 1], np.int64)
-        rs = get_unique_indices(arr)
-        self.assertTrue(np.allclose(rs.unique, np.array([0, 1, 2, 3, 4])))
-        self.assertTrue(np.allclose(rs.unique_cnt, np.array([1, 3, 2, 1, 1])))
+        res = get_unique_indices(arr)
+        self.assertTrue(np.allclose(res.unique, np.array([0, 1, 2, 3, 4])))
+        self.assertTrue(np.allclose(res.unique_cnt, np.array([1, 3, 2, 1, 1])))
         gt = np.array([6, 0, 5, 7, 1, 3, 2, 4])
-        self.assertTrue(np.allclose(rs.sorting_indices, gt))
-        self.assertTrue(np.allclose(rs.split_arr, np.array([1, 4, 6, 7])))
+        self.assertTrue(np.allclose(res.sorting_indices, gt))
+        self.assertTrue(np.allclose(res.split_arr, np.array([1, 4, 6, 7])))
         gt_indices_list = list(map(np.array, [[6], [0, 5, 7], [1, 3], [2], [4]]))
-        for rs_indices, gt_indices in zip(rs.split_indices, gt_indices_list):
+        for rs_indices, gt_indices in zip(res.split_indices, gt_indices_list):
             self.assertTrue(np.allclose(rs_indices, gt_indices))
 
     def test_counter_from_arr(self):
