@@ -1598,8 +1598,6 @@ class ITrainer(ABC):
     accelerator: Accelerator
 
     state: TrainerState
-    train_loader: DataLoader
-    valid_loader: Optional[DataLoader]
     inference: IInference
 
     tqdm_settings: "TqdmSettings"

@@ -51,6 +51,9 @@ from ..toolkit.array import to_device
 from ..toolkit.types import tensor_dict_type
 
 
+T_Lo = Optional[DataLoader]
+
+
 def get_scores(folder: str) -> Dict[str, float]:
     scores_path = os.path.join(folder, SCORES_FILE)
     if not os.path.isfile(scores_path):
@@ -243,14 +246,14 @@ class Trainer(ITrainer):
         n_optim = len(optimizers)
         optim_keys = sorted(optimizers)
         train_loader, valid_loader = data.get_loaders()
+        ## 'valid_loader' is often only used at 'rank 0', so it should not be
+        ## 'prepared' for distributed behaviors
         prepared = self.accelerator.prepare(
             train_loader,
-            valid_loader,
             *model.all_modules,
             *[optimizers[k] for k in optim_keys],
         )
-        self.train_loader = prepared[0]
-        self.valid_loader = prepared[1]
+        distributed_train_loader = prepared[0]
         self.state = TrainerState(
             num_epoch=self.config.num_epoch,
             num_steps=self.config.num_steps,
@@ -258,7 +261,7 @@ class Trainer(ITrainer):
             loader_length=len(train_loader),
             **(self.config.state_config or {}),
         )
-        self.model = model.from_accelerator(*prepared[2:-n_optim])
+        self.model = model.from_accelerator(*prepared[1:-n_optim])
         self.optimizers = {k: prepared[-n_optim + i] for i, k in enumerate(optim_keys)}
         self.schedulers = schedulers
         for sch in schedulers.values():
@@ -307,11 +310,11 @@ class Trainer(ITrainer):
             try:
                 self.state.epoch += 1
                 if not self.is_local_rank_0 or not self.tqdm_settings.use_step_tqdm:
-                    step_iterator = self.train_loader
+                    step_iterator = distributed_train_loader
                 else:
                     step_tqdm = step_iterator = tqdm(
-                        self.train_loader,
-                        total=len(self.train_loader),
+                        distributed_train_loader,
+                        total=len(distributed_train_loader),
                         position=self.tqdm_settings.position + 1,
                         leave=False,
                     )
@@ -320,7 +323,7 @@ class Trainer(ITrainer):
                     train_step_outputs = self._step(i, batch)
                     for callback in self.callbacks:
                         callback.after_train_step(train_step_outputs, self.state)
-                    monitor_results = self._monitor_step(train_step_outputs)
+                    monitor_results = self._monitor(valid_loader, train_step_outputs)
                     for callback in self.callbacks:
                         callback.after_monitor(monitor_results, self.state)
                     if self.is_local_rank_0 and monitor_results.save_checkpoint:
@@ -352,7 +355,9 @@ class Trainer(ITrainer):
         # finalize
         self.state.set_terminate()
         if self.is_local_rank_0:
-            loader = self.valid_loader or self.train_loader
+            # should use the 'non-distributed' loaders here to avoid
+            # unwanted distributed behaviors (e.g., hang when `dispatch_batches=True`)
+            loader = valid_loader or train_loader
             self.final_results = self._get_metrics(loader, self.config.valid_portion)
             self._logging_step(self.final_results)
             if not has_ckpt:
@@ -526,7 +531,7 @@ class Trainer(ITrainer):
                     self.state,
                 )
 
-    def _monitor_step(self, step_outputs: TrainStepOutputs) -> MonitorResults:
+    def _monitor(self, loader: T_Lo, step_outputs: TrainStepOutputs) -> MonitorResults:
         extension = 0
         terminate = False
         save_checkpoint = False
@@ -542,8 +547,7 @@ class Trainer(ITrainer):
             k_incrementer.update(v)
         if self.state.should_monitor:
             # get metrics
-            if self.valid_loader is not None:
-                loader = self.valid_loader
+            if loader is not None:
                 self.intermediate = self._get_metrics(loader, self.config.valid_portion)
             else:
                 loss_dict = {
