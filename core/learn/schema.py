@@ -682,16 +682,6 @@ class MetricsOutputs(NamedTuple):
 class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
     d = metrics
 
-    def __init__(
-        self,
-        *args: Any,
-        labels_key: Optional[str] = LABEL_KEY,
-        predictions_key: Optional[str] = PREDICTIONS_KEY,
-        **kwargs: Any,
-    ):
-        self.labels_key = labels_key
-        self.predictions_key = predictions_key
-
     # abstract
 
     @property
@@ -720,7 +710,19 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
         fail to evaluate itself on only a batch, because the labels in this batch may
         be all the same, which breaks the calculation of AUC).
         """
+
         return False
+
+    def requires(self, key: str) -> bool:
+        """
+        This method should tell the inference stage whether this metric needs a
+        specific data key.
+
+        For instance, the `Accuracy` metric only needs the `LABEL_KEY`,
+        so it should return `False` when other keys are passed in.
+        """
+
+        return key == LABEL_KEY
 
     # api
 

@@ -119,23 +119,17 @@ class Inference(IInference):
                     if np_batch is None:
                         np_batch = tensor_batch_to_np(tensor_batch)
                     for k, v_np in np_batch.items():
-                        is_lk = False
-                        if metrics is not None:
-                            if not isinstance(metrics, MultipleMetrics):
-                                is_lk = k == metrics.labels_key
-                            else:
-                                is_lk = any(k == m.labels_key for m in metrics.metrics)
-                        if not is_lk and (
-                            k == INPUT_KEY
-                            or k.endswith(LABEL_KEY)
-                            or k.endswith(BATCH_INDICES_KEY)
-                        ):
-                            continue
                         if v_np is None:
                             continue
-                        if not is_lk and k != LABEL_KEY and len(v_np.shape) > 2:  # type: ignore
+                        if metrics is None:
                             continue
-                        labels.setdefault(k, []).append(v_np)  # type: ignore
+                        if not isinstance(metrics, MultipleMetrics):
+                            requires_k = metrics.requires(k)
+                        else:
+                            requires_k = any(m.requires(k) for m in metrics.metrics)
+                        if not requires_k:
+                            continue
+                        labels.setdefault(k, []).append(v_np)
                 # metrics
                 if requires_metrics:
                     if np_batch is None:
