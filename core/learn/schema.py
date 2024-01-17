@@ -506,31 +506,6 @@ class IData(  # type: ignore
     ) -> DataBundle:
         return DataBundle(x_train, y_train, x_valid, y_valid)
 
-    def build_loaders(self) -> TDataLoaders:
-        self._check_ready("build_loaders")
-        if self.bundle is None:
-            raise ValueError(
-                "`bundle` property is not initialized, "
-                "did you forget to call the `fit` method first?"
-            )
-        self.train_dataset, self.valid_dataset = self.to_datasets(self.bundle)
-        train_loader = self.to_loader(
-            self.train_dataset,
-            shuffle=self.config.shuffle_train,
-            batch_size=self.config.batch_size,
-            sample_weights=self.train_weights,
-        )
-        if self.valid_dataset is None:
-            valid_loader = None
-        else:
-            valid_loader = self.to_loader(
-                self.valid_dataset,
-                shuffle=self.config.shuffle_valid,
-                batch_size=self.config.valid_batch_size or self.config.batch_size,
-                sample_weights=self.valid_weights,
-            )
-        return train_loader, valid_loader
-
     def set_sample_weights(self: TData, sample_weights: sample_weights_type) -> TData:
         self.train_weights, self.valid_weights = split_sw(sample_weights)
         return self
@@ -576,6 +551,7 @@ class IData(  # type: ignore
         batch_size: Optional[int] = None,
         sample_weights: Optional[np.ndarray] = None,
     ) -> DataLoader:
+        self._check_ready("build_loader")
         bundle = self.transform(x, y)
         dataset = self.to_datasets(bundle)[0]
         loader = self.to_loader(
@@ -587,6 +563,31 @@ class IData(  # type: ignore
             sample_weights=sample_weights,
         )
         return loader
+
+    def build_loaders(self) -> TDataLoaders:
+        self._check_ready("build_loaders")
+        if self.bundle is None:
+            raise ValueError(
+                "`bundle` property is not initialized, "
+                "did you forget to call the `fit` method first?"
+            )
+        self.train_dataset, self.valid_dataset = self.to_datasets(self.bundle)
+        train_loader = self.to_loader(
+            self.train_dataset,
+            shuffle=self.config.shuffle_train,
+            batch_size=self.config.batch_size,
+            sample_weights=self.train_weights,
+        )
+        if self.valid_dataset is None:
+            valid_loader = None
+        else:
+            valid_loader = self.to_loader(
+                self.valid_dataset,
+                shuffle=self.config.shuffle_valid,
+                batch_size=self.config.valid_batch_size or self.config.batch_size,
+                sample_weights=self.valid_weights,
+            )
+        return train_loader, valid_loader
 
     ## changes can happen inplace
     def process_batch(self, batch: td_type, *, for_inference: bool) -> td_type:
