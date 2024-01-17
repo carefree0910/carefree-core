@@ -71,9 +71,8 @@ from ..toolkit.pipeline import IPipeline
 # types
 
 
-npd_type = np_dict_type
 td_type = tensor_dict_type
-data_type = Optional[Union[str, np.ndarray, npd_type, td_type, Any]]
+data_type = Optional[Union[str, np.ndarray, np_dict_type, td_type, Any]]
 configs_type = Optional[Union[List[Dict[str, Any]], Dict[str, Any]]]
 sample_weights_type = Optional[Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]]
 raw_forward_results_type = Union[Tensor, td_type]
@@ -294,14 +293,14 @@ class DataBundle(DataClassBase):
         for k, v in info.items():
             setattr(self, k, v)
 
-    def to_npd(self) -> npd_type:
+    def to_npd(self) -> np_dict_type:
         def _to_np(key: str, data: Union[np.ndarray, Tensor]) -> np.ndarray:
             if isinstance(data, np.ndarray):
                 return data
             tensor_keys.append(key)
             return to_numpy(data)
 
-        npd: npd_type = {}
+        npd: np_dict_type = {}
         tensor_keys: List[str] = []
         for k, v in self.asdict().items():
             if isinstance(v, dict):
@@ -313,8 +312,8 @@ class DataBundle(DataClassBase):
             npd["__tensor_keys__"] = np.array(tensor_keys)
         return npd
 
-    def from_npd(self, npd: npd_type) -> None:
-        attr_collections: Dict[str, Union[npd_type, td_type]] = {}
+    def from_npd(self, npd: np_dict_type) -> None:
+        attr_collections: Dict[str, Union[np_dict_type, td_type]] = {}
         tensor_keys = set(npd.pop("__tensor_keys__", np.array([])).tolist())
         for k, v in npd.items():
             attr = None
@@ -525,10 +524,10 @@ class IData(Generic[TData, TDataset], ISerializableArrays[TData], metaclass=ABCM
             self.bundle = DataBundle.empty()
             self.bundle.from_info(bundle_info)
 
-    def to_npd(self) -> npd_type:
+    def to_npd(self) -> np_dict_type:
         return {} if self.bundle is None else self.bundle.to_npd()
 
-    def from_npd(self, npd: npd_type) -> None:
+    def from_npd(self, npd: np_dict_type) -> None:
         if npd:
             if self.bundle is None:
                 self.bundle = DataBundle.empty()
@@ -667,8 +666,8 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
     @abstractmethod
     def forward(
         self,
-        np_batch: npd_type,
-        np_outputs: npd_type,
+        np_batch: np_dict_type,
+        np_outputs: np_dict_type,
         loader: Optional[DataLoader] = None,
     ) -> float:
         pass
@@ -704,8 +703,8 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
 
     def evaluate(
         self,
-        np_batch: npd_type,
-        np_outputs: npd_type,
+        np_batch: np_dict_type,
+        np_outputs: np_dict_type,
         loader: Optional[DataLoader] = None,
     ) -> MetricsOutputs:
         metric = self.forward(np_batch, np_outputs, loader)
@@ -736,16 +735,16 @@ class MultipleMetrics(IMetric):
 
     def forward(
         self,
-        np_batch: npd_type,
-        np_outputs: npd_type,
+        np_batch: np_dict_type,
+        np_outputs: np_dict_type,
         loader: Optional[DataLoader] = None,
     ) -> float:
         raise NotImplementedError
 
     def evaluate(
         self,
-        np_batch: npd_type,
-        np_outputs: npd_type,
+        np_batch: np_dict_type,
+        np_outputs: np_dict_type,
         loader: Optional[DataLoader] = None,
     ) -> MetricsOutputs:
         scores: List[float] = []
@@ -766,7 +765,7 @@ class MultipleMetrics(IMetric):
 
 
 class InferenceOutputs(NamedTuple):
-    forward_results: npd_type
+    forward_results: np_dict_type
     labels: Optional[np.ndarray]
     metric_outputs: Optional[MetricsOutputs]
     loss_items: Optional[Dict[str, float]]
