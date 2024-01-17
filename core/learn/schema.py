@@ -535,6 +535,24 @@ class IData(Generic[TData, TDataset], ISerializableArrays[TData], metaclass=ABCM
 
     # optional callbacks
 
+    def to_loader(
+        self,
+        dataset: IDataset,
+        *,
+        shuffle: bool,
+        batch_size: int,
+        sample_weights: Optional[np.ndarray] = None,
+    ) -> DataLoader:
+        loader = DataLoader(
+            dataset,
+            shuffle=shuffle,
+            batch_size=batch_size,
+        )
+        loader.processor = self.processor
+        loader.for_inference = self.config.for_inference
+        loader.collate_fn = loader.get_collate_fn()
+        return loader
+
     def get_bundle(
         self,
         x_train: data_type,
@@ -558,24 +576,21 @@ class IData(Generic[TData, TDataset], ISerializableArrays[TData], metaclass=ABCM
                 "did you forget to call the `fit` method first?"
             )
         self.train_dataset, self.valid_dataset = self.to_datasets(self.bundle)
-        train_loader = DataLoader(
+        train_loader = self.to_loader(
             self.train_dataset,
-            batch_size=self.config.batch_size,
             shuffle=self.config.shuffle_train,
+            batch_size=self.config.batch_size,
+            sample_weights=self.train_weights,
         )
         if self.valid_dataset is None:
             valid_loader = None
         else:
-            valid_loader = DataLoader(
+            valid_loader = self.to_loader(
                 self.valid_dataset,
-                batch_size=self.config.valid_batch_size or self.config.batch_size,
                 shuffle=self.config.shuffle_valid,
+                batch_size=self.config.valid_batch_size or self.config.batch_size,
+                sample_weights=self.valid_weights,
             )
-        for loader in (train_loader, valid_loader):
-            if loader is not None:
-                loader.processor = self.processor
-                loader.for_inference = self.config.for_inference
-                loader.collate_fn = loader.get_collate_fn()
         return train_loader, valid_loader
 
     def set_sample_weights(self: TData, sample_weights: sample_weights_type) -> TData:
