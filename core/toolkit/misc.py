@@ -822,6 +822,7 @@ class Serializer:
         serializable.from_info(swap_info or cls.load_info(folder))
         if load_npd and isinstance(serializable, ISerializableArrays):
             serializable.from_npd(cls.load_npd(folder))
+        serializable.after_load()
         return serializable
 
     @classmethod
