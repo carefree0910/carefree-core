@@ -9,6 +9,7 @@ from .trainer import *
 from .data import *
 from .modules import *
 from .losses import *
+from .metrics import *
 from .models import *
 from .monitors import *
 from .callbacks import *
