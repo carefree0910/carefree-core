@@ -51,6 +51,7 @@ from ...schedulers import scheduler_dict
 from ...schedulers import WarmupScheduler
 from ....toolkit import console
 from ....toolkit.misc import update_dict
+from ....toolkit.misc import shallow_copy_dict
 from ....toolkit.misc import sort_dict_by_value
 from ....toolkit.misc import prepare_workspace_from
 from ....toolkit.misc import truncate_string_to_length
@@ -327,8 +328,8 @@ class OptimizerSettings(DataClassBase):
     scheduler_config: Optional[Dict[str, Any]] = None
 
     def get_opt_pack(self, state_info: Optional[StateInfo]) -> OptimizerPack:
-        optimizer_config = self.optimizer_config or {}
-        scheduler_config = self.scheduler_config or {}
+        optimizer_config = shallow_copy_dict(self.optimizer_config or {})
+        scheduler_config = shallow_copy_dict(self.scheduler_config or {})
         if self.scheduler_name != "warmup":
             optimizer_config.setdefault("lr", self.lr)
         else:
@@ -358,8 +359,8 @@ class OptimizerSettings(DataClassBase):
         self_pack = self.get_opt_pack(state_info)
         opt_name = pack.optimizer_name
         sch_name = pack.scheduler_name
-        opt_config = pack.optimizer_config or {}
-        sch_config = pack.scheduler_config or {}
+        opt_config = shallow_copy_dict(pack.optimizer_config or {})
+        sch_config = shallow_copy_dict(pack.scheduler_config or {})
         if self_pack.optimizer_name != opt_name:
             opt_config.setdefault("lr", self.lr)
         else:
