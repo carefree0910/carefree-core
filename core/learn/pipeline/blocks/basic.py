@@ -252,8 +252,6 @@ class BuildInferenceBlock(Block):
 @Block.register("set_trainer_defaults")
 class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
     def build(self, config: Config) -> None:
-        model = self.build_model.model
-        model.permute_trainer_config(config)
         # set some trainer defaults to deep learning tasks which work well in practice
         if config.monitor_names is None:
             config.monitor_names = "basic"
@@ -289,14 +287,6 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
         config.callback_names = callback_names
         config.callback_configs = callback_configs
 
-    @property
-    def requirements(self) -> List[Type[Block]]:
-        return [BuildModelBlock]
-
-    @property
-    def build_model(self) -> BuildModelBlock:
-        return self.get_previous(BuildModelBlock)
-
 
 @Block.register("build_monitors")
 class BuildMonitorsBlock(Block):
@@ -329,7 +319,7 @@ class BuildCallbacksBlock(Block):
             callback.initialize()
 
 
-class DefaultOptimizerSettings(NamedTuple):
+class OptimizerSettings(NamedTuple):
     lr: float = 1.0e-3
     optimizer_name: str = "adam"
     scheduler_name: Optional[str] = None
@@ -401,31 +391,39 @@ class BuildOptimizersBlock(InjectDefaultsMixin, Block):
             settings["optimizer_config"] = config.optimizer_config
         if config.scheduler_config is not None:
             settings["scheduler_config"] = config.scheduler_config
-        default_opt_settings = DefaultOptimizerSettings(**settings)
+        default_opt_settings = OptimizerSettings(**settings)
         self._defaults["default_optimizer_settings"] = default_opt_settings._asdict()
+        ## inject defaults from each train step
+        injected_defaults = set()
+        optimizer_settings = config.optimizer_settings or {}
+        model = self.build_model.model
+        for step in model.train_steps:
+            scope = step.scope
+            if scope not in optimizer_settings:
+                injected_defaults.add(scope)
+                optimizer_settings[scope] = step.get_default_optimizer_settings()
         # build
-        optimizer_settings = config.optimizer_settings
-        if optimizer_settings is None:
-            optimizer_packs = [default_opt_settings.get_opt_pack(state_info)]
-        else:
-            optimizer_packs = []
-            for scope, sub_settings in optimizer_settings.items():
-                if sub_settings is None:
-                    _, *defaults = default_opt_settings.get_opt_pack(state_info)
-                    optimizer_packs.append(OptimizerPack(scope, *defaults))  # type: ignore
-                    continue
+        optimizer_packs = []
+        converted_defaults = {}
+        for scope, sub_settings in optimizer_settings.items():
+            if sub_settings is None:
+                _, *defaults = default_opt_settings.get_opt_pack(state_info)
+                scope_pack = OptimizerPack(scope, *defaults)  # type: ignore
+            else:
                 optimizer = sub_settings.get("optimizer")
                 if optimizer is None:
                     raise ValueError(f"optimizer must be provided (scope={scope})")
-                optimizer_packs.append(
-                    OptimizerPack(
-                        scope,
-                        optimizer,
-                        sub_settings.get("scheduler"),
-                        sub_settings.get("optimizer_config"),
-                        sub_settings.get("scheduler_config"),
-                    )
+                scope_pack = OptimizerPack(
+                    scope,
+                    optimizer,
+                    sub_settings.get("scheduler"),
+                    sub_settings.get("optimizer_config"),
+                    sub_settings.get("scheduler_config"),
                 )
+            if scope in injected_defaults:
+                converted_defaults[scope] = scope_pack._asdict()
+            optimizer_packs.append(scope_pack)
+        self._defaults["converted_default_optimizer_settings"] = converted_defaults
         # initialize
         self.optimizers = {}
         self.schedulers = {}

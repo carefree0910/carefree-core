@@ -973,14 +973,6 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
     def init_with_trainer(self, trainer: "ITrainer") -> None:
         pass
 
-    def permute_trainer_config(self, trainer_config: "TrainerConfig") -> None:
-        opt_settings = trainer_config.optimizer_settings or {}
-        for step in self.train_steps:
-            scope = step.scope
-            if scope not in opt_settings:
-                opt_settings[scope] = step.get_default_optimizer_settings()
-        trainer_config.optimizer_settings = opt_settings
-
     def forward(
         self,
         batch_idx: int,
