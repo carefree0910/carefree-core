@@ -47,7 +47,6 @@ from ..toolkit.misc import safe_execute
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.misc import sort_dict_by_value
 from ..toolkit.misc import Incrementer
-from ..toolkit.array import to_device
 from ..toolkit.types import tensor_dict_type
 
 
@@ -572,7 +571,6 @@ class Trainer(ITrainer):
         return MonitorResults(terminate, save_checkpoint, self.intermediate)
 
     def _step(self, batch_idx: int, batch: tensor_dict_type) -> TrainStepOutputs:
-        batch = to_device(batch, self.device)
         forward_kw: Dict[str, Any] = {}
         for callback in self.callbacks:
             callback.mutate_train_forward_kwargs(forward_kw, self)
