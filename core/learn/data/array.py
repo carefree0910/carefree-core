@@ -69,14 +69,14 @@ class ArrayData(IData["ArrayData", ArrayDataset]):
 class ArrayDictData(IData["ArrayDictData", ArrayDictDataset]):
     def to_datasets(self, bundle: DataBundle) -> TDatasets:
         if not isinstance(bundle.x_train, dict):
-            msg = f"bun`dle.x_train` must be a `dict`, got {type(bundle.x_train)}"
+            msg = f"`bundle.x_train` must be a `dict`, got {type(bundle.x_train)}"
             raise ValueError(msg)
         train_dataset = ArrayDictDataset(bundle.x_train)
         if bundle.x_valid is None:
             valid_dataset = None
         else:
             if not isinstance(bundle.x_valid, dict):
-                msg = f"`bundle.x_vali`d must be a `dict`, got {type(bundle.x_valid)}"
+                msg = f"`bundle.x_valid` must be a `dict`, got {type(bundle.x_valid)}"
                 raise ValueError(msg)
             valid_dataset = ArrayDictDataset(bundle.x_valid)
         return train_dataset, valid_dataset
