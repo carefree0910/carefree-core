@@ -1484,6 +1484,20 @@ class TrainerState:
 
 
 class TrainerMonitor(WithRegister["TrainerMonitor"], metaclass=ABCMeta):
+    """
+    This is the base class for monitoring the model, it should decide whether to save the checkpoint, to early stop,
+    or to extend the training process. Here are some brief introductions:
+
+    - `should_snapshot` is called when a new score is obtained, and it should return whether to save the checkpoint.
+    - `should_terminate` is called when a new score is obtained, and it should return whether to terminate the training.
+    - `punish_extension` is called when the training is about to be extended, and it should do some punishment if needed.
+    - `handle_extension` is called when the training is about to be extended, and it should return the number of epochs
+    to extend. `0` means no extension.
+
+    > Examples could be found at `core/learn/monitors.py`.
+
+    """
+
     d = monitors
 
     def __init__(self, *args: Any, **kwargs: Any):
@@ -1569,6 +1583,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
         get metrics -> logging (`log_metrics` / `log_metrics_msg` / `log_artifacts`)
 
     > Examples could be found under `core/learn/callbacks`.
+
     """
 
     d = trainer_callbacks
