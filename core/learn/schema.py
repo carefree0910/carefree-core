@@ -1522,7 +1522,8 @@ class MonitorResults(NamedTuple):
     metric_outputs: Optional[MetricsOutputs]
 
 
-class OptimizerPack(NamedTuple):
+@dataclass
+class OptimizerPack(DataClassBase):
     scope: str
     optimizer_name: str
     scheduler_name: Optional[str] = None

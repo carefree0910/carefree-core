@@ -13,7 +13,6 @@ from typing import List
 from typing import Type
 from typing import Tuple
 from typing import Optional
-from typing import NamedTuple
 from typing import OrderedDict as OrderedDictType
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -319,7 +318,8 @@ class BuildCallbacksBlock(Block):
             callback.initialize()
 
 
-class OptimizerSettings(NamedTuple):
+@dataclass
+class OptimizerSettings(DataClassBase):
     lr: float = 1.0e-3
     optimizer_name: str = "adam"
     scheduler_name: Optional[str] = None
@@ -392,7 +392,6 @@ class BuildOptimizersBlock(InjectDefaultsMixin, Block):
         if config.scheduler_config is not None:
             settings["scheduler_config"] = config.scheduler_config
         default_opt_settings = OptimizerSettings(**settings)
-        self._defaults["default_optimizer_settings"] = default_opt_settings._asdict()
         ## inject defaults from each train step
         injected_defaults = set()
         optimizer_settings = config.optimizer_settings or {}
@@ -407,8 +406,8 @@ class BuildOptimizersBlock(InjectDefaultsMixin, Block):
         converted_defaults = {}
         for scope, sub_settings in optimizer_settings.items():
             if sub_settings is None:
-                _, *defaults = default_opt_settings.get_opt_pack(state_info)
-                scope_pack = OptimizerPack(scope, *defaults)  # type: ignore
+                scope_pack = default_opt_settings.get_opt_pack(state_info)
+                scope_pack.scope = scope
             else:
                 optimizer = sub_settings.get("optimizer")
                 if optimizer is None:
@@ -421,9 +420,9 @@ class BuildOptimizersBlock(InjectDefaultsMixin, Block):
                     sub_settings.get("scheduler_config"),
                 )
             if scope in injected_defaults:
-                converted_defaults[scope] = scope_pack._asdict()
+                converted_defaults[scope] = str(scope_pack)
             optimizer_packs.append(scope_pack)
-        self._defaults["converted_default_optimizer_settings"] = converted_defaults
+        self._defaults["default_optimizer_settings"] = converted_defaults
         # initialize
         self.optimizers = {}
         self.schedulers = {}

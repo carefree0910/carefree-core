@@ -2,7 +2,6 @@ import io
 import os
 import copy
 import json
-import math
 import torch
 import random
 import hashlib
@@ -12,10 +11,8 @@ import urllib.request
 import numpy as np
 import torch.nn as nn
 import matplotlib.pyplot as plt
-import torch.nn.functional as F
 
 from PIL import Image
-from PIL import ImageDraw
 from enum import Enum
 from torch import device
 from torch import Tensor
@@ -35,6 +32,7 @@ from pathlib import Path
 from zipfile import ZipFile
 from collections import defaultdict
 from collections import OrderedDict
+from dataclasses import dataclass
 from onnxruntime import InferenceSession
 from torch.optim import Optimizer
 from matplotlib.pyplot import figure as Figure
@@ -48,6 +46,7 @@ from ..toolkit.misc import prod
 from ..toolkit.misc import check_requires
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.misc import truncate_string_to_length
+from ..toolkit.misc import DataClassBase
 from ..toolkit.misc import DownloadProgressBar
 from ..toolkit.array import to_torch
 from ..toolkit.array import is_string
@@ -1735,9 +1734,10 @@ def summary(
     return msg
 
 
-class DDPInfo(NamedTuple):
+@dataclass
+class DDPInfo(DataClassBase):
     """
-    A named tuple for storing Distributed Data Parallel (DDP) information.
+    A dataclass for storing Distributed Data Parallel (DDP) information.
 
     Attributes
     ----------

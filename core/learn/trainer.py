@@ -104,7 +104,7 @@ class Trainer(ITrainer):
     @property
     def export_config(self) -> Dict[str, Any]:
         ddp_info = get_ddp_info()
-        ddp_d = None if ddp_info is None else ddp_info._asdict()
+        ddp_d = None if ddp_info is None else ddp_info.asdict()
         return {
             "state_config": self.state.config,
             "valid_portion": self.config.valid_portion,
