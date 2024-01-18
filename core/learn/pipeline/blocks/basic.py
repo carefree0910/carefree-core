@@ -3,6 +3,7 @@ import json
 import math
 import torch
 import shutil
+import inspect
 
 from torch import nn
 from typing import Any
@@ -872,6 +873,24 @@ class SerializeOptimizerBlock(Block):
                 k_sch.load_state_dict(states)
 
 
+@Block.register("serialize_script")
+class SerializeScriptBlock(Block):
+    script_file = "script.py"
+
+    def build(self, config: Config) -> None:
+        pass
+
+    def save_extra(self, folder: str) -> None:
+        os.makedirs(folder, exist_ok=True)
+        frame = inspect.currentframe()
+        if frame is None:
+            return None
+        while frame.f_back is not None:
+            frame = frame.f_back
+        with open(os.path.join(folder, self.script_file), "w") as f:
+            f.write(inspect.getsource(frame))
+
+
 __all__ = [
     "SetDefaultsBlock",
     "PrepareWorkplaceBlock",
@@ -890,4 +909,5 @@ __all__ = [
     "SerializeDataBlock",
     "SerializeModelBlock",
     "SerializeOptimizerBlock",
+    "SerializeScriptBlock",
 ]

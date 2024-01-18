@@ -37,6 +37,7 @@ from .blocks import TrainingBlock
 from .blocks import SerializeDataBlock
 from .blocks import SerializeModelBlock
 from .blocks import SerializeOptimizerBlock
+from .blocks import SerializeScriptBlock
 from .schema import IEvaluationPipeline
 from ..schema import device_type
 from ..schema import sample_weights_type
@@ -245,6 +246,7 @@ class TrainingPipeline(Pipeline["TrainingPipeline"], _DeviceMixin, _EvaluationMi
             SerializeDataBlock(),
             SerializeModelBlock(),
             SerializeOptimizerBlock(),
+            SerializeScriptBlock(),
             TrainingBlock(),
         ]
 
