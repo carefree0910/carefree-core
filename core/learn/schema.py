@@ -1532,6 +1532,45 @@ class OptimizerPack(DataClassBase):
 
 
 class TrainerCallback(WithRegister["TrainerCallback"]):
+    """
+    This is the base class for various callbacks used in the training process, here are some brief introductions:
+
+    - `initialize` is called before the trainer is constructed.
+    - `before_loop` is called right before the training loop starts.
+    - `mutate_forward_kwargs` is used to mutate the `forward_kwargs` of the model.
+    > `forward_kwargs` will be used in `IModel.run` method, which will affect both `m.forward` & `self.postprocess`.
+    - `mutate_loss_kwargs` is used to mutate the `loss_kwargs` of the model.
+    > `loss_kwargs` will be used in each `train_step.loss_fn` method.
+    - `log_*` methods will be triggered when the `log` event is triggered, so you can use them to do custom logging.
+    - `after_train_step` is called after each training step.
+    - `after_monitor` is called after each monitor step.
+    - `finalize` is called at the end of the `fit` method of the trainer.
+
+    And here's the lifecycle of the callbacks:
+
+    overall:
+
+        `initialize` -> `before_loop` -> training loop -> `finalize`
+
+    * training loop:
+
+        train step -> `after_train_step` -> monitor step -> `after_monitor`
+
+    * train step:
+
+       `mutate_forward_kwargs`
+    -> `mutate_loss_kwargs`
+    ->  IModel.run
+    ->  train_step.loss_fn
+    ->  scheduler_step (`log_lr`)
+
+    * monitor step:
+
+        get metrics -> logging (`log_metrics` / `log_metrics_msg` / `log_artifacts`)
+
+    > Examples could be found under `core/learn/callbacks`.
+    """
+
     d = trainer_callbacks
 
     def __init__(self, *args: Any, **kwargs: Any):
