@@ -573,10 +573,10 @@ class Trainer(ITrainer):
     def _step(self, batch_idx: int, batch: tensor_dict_type) -> TrainStepOutputs:
         forward_kw: Dict[str, Any] = {}
         for callback in self.callbacks:
-            callback.mutate_train_forward_kwargs(forward_kw, self)
+            callback.mutate_forward_kwargs(forward_kw, self)
         loss_kw: Dict[str, Any] = {}
         for callback in self.callbacks:
-            callback.mutate_train_loss_kwargs(loss_kw, self)
+            callback.mutate_loss_kwargs(loss_kw, self)
         return self.model.train(batch_idx, batch, self, forward_kw, loss_kw)
 
 

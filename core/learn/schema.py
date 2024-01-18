@@ -1544,21 +1544,13 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     def initialize(self) -> None:
         pass
 
-    def mutate_train_forward_kwargs(
-        self,
-        kwargs: Dict[str, Any],
-        trainer: "ITrainer",
-    ) -> None:
-        pass
-
-    def mutate_train_loss_kwargs(
-        self,
-        kwargs: Dict[str, Any],
-        trainer: "ITrainer",
-    ) -> None:
-        pass
-
     def before_loop(self, trainer: "ITrainer") -> None:
+        pass
+
+    def mutate_forward_kwargs(self, kw: Dict[str, Any], trainer: "ITrainer") -> None:
+        pass
+
+    def mutate_loss_kwargs(self, kw: Dict[str, Any], trainer: "ITrainer") -> None:
         pass
 
     def log_lr(self, key: str, lr: float, state: TrainerState) -> None:
