@@ -1,3 +1,4 @@
 from .common import *
 from .activations import *
-from .ml import *
+from .linear import *
+from .fcnn import *

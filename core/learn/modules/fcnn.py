@@ -4,8 +4,8 @@ from torch import Tensor
 from typing import List
 from typing import Optional
 
-from ..common import register_module
-from ..activations import build_activation
+from .common import register_module
+from .activations import build_activation
 
 
 @register_module("fcnn")

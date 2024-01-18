@@ -1,7 +1,7 @@
 from torch import nn
 from torch import Tensor
 
-from ..common import register_module
+from .common import register_module
 
 
 @register_module("linear")
