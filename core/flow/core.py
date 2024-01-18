@@ -478,9 +478,11 @@ class Flow(Bundle[Node]):
     push(node: Node) -> Flow:
         Pushes a node into the workflow.
     loop(n: int, node: Node, loop_back_injections: List[LoopBackInjection], ...) -> str:
-        Loops the given `node` for `n` times.
-        > Usually this is useful if and only if you want to perform iterative tasks on the same node,
-        in which case `loop_back_injections` should be required.
+        Loops the given `node` for `n` times, this is useful when you want to perform:
+        > iterative tasks on the same node, in which case `loop_back_injections` should be set.
+        > the same task for `n` times, in which case `loop_back_injections` should be `None`.
+          In this case, the `node` should have some randomness inside, and what you are doing
+          is kind of like 'ensemble' or 'mixture of experts'.
     gather(*targets: str) -> str:
         Gathers targets into a single node, and returns the key of the node.
     to_json() -> Dict[str, Any]:
@@ -525,7 +527,7 @@ class Flow(Bundle[Node]):
         self,
         n: int,
         node: Node,
-        loop_back_injections: List[LoopBackInjection],
+        loop_back_injections: Optional[List[LoopBackInjection]],
         *,
         extract_hierarchy: Optional[str] = None,
         verbose: bool = False,
