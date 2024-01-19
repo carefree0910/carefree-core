@@ -323,8 +323,9 @@ class Trainer(ITrainer):
                     for callback in self.callbacks:
                         callback.after_train_step(train_step_outputs, self.state)
                     monitor_results = self._monitor(valid_loader, train_step_outputs)
-                    for callback in self.callbacks:
-                        callback.after_monitor(monitor_results, self.state)
+                    if self.state.should_monitor:
+                        for callback in self.callbacks:
+                            callback.after_monitor(monitor_results, self.state)
                     if self.is_local_rank_0 and monitor_results.save_checkpoint:
                         metric_outputs = monitor_results.metric_outputs
                         assert metric_outputs is not None
