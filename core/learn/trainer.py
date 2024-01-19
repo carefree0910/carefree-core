@@ -16,6 +16,7 @@ from typing import Optional
 from accelerate import Accelerator
 from tqdm.autonotebook import tqdm
 from torch.optim import Optimizer
+from torch.profiler import profile
 from torch.optim.lr_scheduler import _LRScheduler
 
 from .schema import device_type
@@ -209,6 +210,7 @@ class Trainer(ITrainer):
         config_export_file: Optional[str] = None,
         show_summary: Optional[bool] = None,
         device: device_type = None,
+        p: Optional[profile] = None,
     ) -> "Trainer":
         # accelerator
         cpu = False
@@ -333,6 +335,8 @@ class Trainer(ITrainer):
                     terminate = monitor_results.terminate or self.state.should_terminate
                     if terminate:
                         break
+                    if p is not None:
+                        p.step()
             except KeyboardInterrupt:
                 if dist.is_initialized():
                     raise

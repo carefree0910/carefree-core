@@ -31,6 +31,7 @@ from accelerate import Accelerator
 from contextlib import nullcontext
 from dataclasses import dataclass
 from torch.optim import Optimizer
+from torch.profiler import profile
 from torch.cuda.amp import autocast
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import Dataset
@@ -1700,6 +1701,7 @@ class ITrainer(ABC):
         config_export_file: Optional[str] = None,
         show_summary: Optional[bool] = None,
         device: device_type = None,
+        p: Optional[profile] = None,
     ) -> "ITrainer":
         pass
 
@@ -1750,6 +1752,10 @@ class TrainerConfig:
     use_zero: bool = False
     finetune_config: Optional[Dict[str, Any]] = None
     tqdm_settings: Optional[Dict[str, Any]] = None
+    # profile settings
+    profile: bool = False
+    profile_config: Optional[Dict[str, Any]] = None
+    profile_schedule_config: Optional[Dict[str, Any]] = None
     # `accelerator` attributes
     split_batches: bool = False
     mixed_precision: str = "no"

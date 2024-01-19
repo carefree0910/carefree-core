@@ -17,6 +17,8 @@ from typing import OrderedDict as OrderedDictType
 from collections import OrderedDict
 from dataclasses import dataclass
 from torch.optim import Optimizer
+from torch.profiler import profile
+from torch.profiler import schedule
 from torch.optim.lr_scheduler import _LRScheduler
 
 from .utils import TryLoadBlock
@@ -650,10 +652,11 @@ class ReportBlock(Block):
 
 @Block.register("training")
 class TrainingBlock(Block):
+    config: Config
     trainer_config_file = "trainer_config.json"
 
     def build(self, config: Config) -> None:
-        pass
+        self.config = config
 
     @property
     def requirements(self) -> List[Type[Block]]:
@@ -703,19 +706,51 @@ class TrainingBlock(Block):
         device: device_type = None,
         **kwargs: Any,
     ) -> None:
-        self.build_trainer.trainer.fit(
-            data,
-            self.build_model.model,
-            self.build_metrics.metrics,
-            self.build_inference.inference,
-            self.build_optimizers.optimizers,
-            self.build_optimizers.schedulers,
-            self.build_monitors.monitors,
-            self.build_callbacks.callbacks,
-            self.build_optimizers.schedulers_requires_metric,
-            config_export_file=self.trainer_config_file,
-            device=device,
-        )
+        def fit(p: Optional[profile] = None) -> None:
+            self.build_trainer.trainer.fit(
+                data,
+                self.build_model.model,
+                self.build_metrics.metrics,
+                self.build_inference.inference,
+                self.build_optimizers.optimizers,
+                self.build_optimizers.schedulers,
+                self.build_monitors.monitors,
+                self.build_callbacks.callbacks,
+                self.build_optimizers.schedulers_requires_metric,
+                config_export_file=self.trainer_config_file,
+                device=device,
+                p=p,
+            )
+
+        def trace_handler(p: profile) -> None:
+            workspace = self.training_workspace
+            if workspace is None:
+                return
+            trace_folder = os.path.join(workspace, "traces")
+            trace_path = os.path.join(trace_folder, f"trace_{p.step_num}.json")
+            os.makedirs(trace_folder, exist_ok=True)
+            p.export_chrome_trace(trace_path)
+
+        if not self.config.profile:
+            fit()
+        else:
+            os.environ["KINETO_LOG_LEVEL"] = "5"
+            schedule_config = self.config.profile_schedule_config or {}
+            schedule_config.setdefault("skip_first", 0)
+            schedule_config.setdefault("wait", 1)
+            schedule_config.setdefault("warmup", 3)
+            schedule_config.setdefault("active", 5)
+            schedule_config.setdefault("repeat", 5)
+            profile_config = self.config.profile_config or {}
+            profile_config["schedule"] = schedule(**schedule_config)
+            profile_config["on_trace_ready"] = trace_handler
+            profile_config.setdefault("record_shapes", True)
+            profile_config.setdefault("profile_memory", True)
+            profile_config.setdefault("with_stack", True)
+            profile_config.setdefault("with_flops", True)
+            profile_config.setdefault("with_modules", True)
+            with profile(**profile_config) as p:
+                fit(p)
 
 
 # serialization blocks
