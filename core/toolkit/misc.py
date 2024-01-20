@@ -63,14 +63,14 @@ dill._dill._reverse_typemap["ClassType"] = type
 
 
 T = TypeVar("T")
+T_co = TypeVar("T_co", covariant=True)
 TDict = TypeVar("TDict", bound="dict")
-TFnResponse = TypeVar("TFnResponse", covariant=True)
 TRetryResponse = TypeVar("TRetryResponse")
 TFutureResponse = TypeVar("TFutureResponse")
 
 
-class Fn(Protocol[TFnResponse]):
-    def __call__(self, *args: Any, **kwargs: Any) -> TFnResponse:
+class Fn(Protocol[T_co]):
+    def __call__(self, *args: Any, **kwargs: Any) -> T_co:
         pass
 
 
@@ -141,13 +141,12 @@ def filter_kw(
     return kw
 
 
-def safe_execute(
-    fn: Union[Fn[TFnResponse], Type[TFnResponse]],
-    kw: Dict[str, Any],
-    *,
-    strict: bool = False,
-) -> TFnResponse:
+def safe_execute(fn: Fn[T], kw: Dict[str, Any], *, strict: bool = False) -> T:
     return fn(**filter_kw(fn, kw, strict=strict))
+
+
+def safe_instantiate(cls: Type[T], kw: Dict[str, Any], *, strict: bool = False) -> T:
+    return cls(**filter_kw(cls, kw, strict=strict))
 
 
 def get_num_positional_args(fn: Callable) -> Union[int, float]:
@@ -593,7 +592,7 @@ class WithRegister(Generic[TRegister]):
         base = cls.get(name)
         if not ensure_safe:
             return base(**config)  # type: ignore
-        return safe_execute(base, config)
+        return safe_instantiate(base, config)
 
     @classmethod
     def make_multiple(

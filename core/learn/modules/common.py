@@ -17,8 +17,8 @@ from typing import Optional
 from torch.nn import Module
 
 from ...toolkit.misc import update_dict
-from ...toolkit.misc import safe_execute
 from ...toolkit.misc import register_core
+from ...toolkit.misc import safe_instantiate
 from ...toolkit.misc import shallow_copy_dict
 from ...toolkit.types import tensor_dict_type
 
@@ -51,7 +51,7 @@ def build_module(
                 kw = json.load(f)
         kw = shallow_copy_dict(kw)
         update_dict(shallow_copy_dict(kwargs), kw)
-    return safe_execute(module_dict[name], kw)
+    return safe_instantiate(module_dict[name], kw)
 
 
 class PrefixModules:
