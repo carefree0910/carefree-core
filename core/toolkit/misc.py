@@ -49,9 +49,9 @@ from dataclasses import Field
 from concurrent.futures import ThreadPoolExecutor
 
 from . import console
+from .types import TConfig
 from .types import arr_type
 from .types import np_dict_type
-from .types import general_config_type
 from .constants import TIME_FORMAT
 
 
@@ -88,7 +88,7 @@ def walk(
             hierarchy_callback(hierarchy, os.path.join(folder, file))
 
 
-def parse_config(config: general_config_type) -> Dict[str, Any]:
+def parse_config(config: TConfig) -> Dict[str, Any]:
     if config is None:
         return {}
     if isinstance(config, str):
