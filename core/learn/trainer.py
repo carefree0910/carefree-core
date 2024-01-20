@@ -320,18 +320,18 @@ class Trainer(ITrainer):
                     )
                 for i, batch in enumerate(step_iterator):
                     self.state.step += 1
-                    train_step_outputs = self._step(i, batch)
+                    train_steped = self._step(i, batch)
                     for callback in self.callbacks:
-                        callback.after_train_step(train_step_outputs, self.state)
-                    monitor_results = self._monitor(valid_loader, train_step_outputs)
+                        callback.after_train_step(train_steped, self.state)
+                    monitored = self._monitor(train_loader, valid_loader, train_steped)
                     if self.state.should_monitor:
                         for callback in self.callbacks:
-                            callback.after_monitor(monitor_results, self.state)
-                    if self.is_local_rank_0 and monitor_results.save_checkpoint:
-                        metric_outputs = monitor_results.metric_outputs
+                            callback.after_monitor(monitored, self.state)
+                    if self.is_local_rank_0 and monitored.save_checkpoint:
+                        metric_outputs = monitored.metric_outputs
                         assert metric_outputs is not None
                         self.save_checkpoint(metric_outputs.final_score)
-                    terminate = monitor_results.terminate or self.state.should_terminate
+                    terminate = monitored.terminate or self.state.should_terminate
                     if terminate:
                         break
                     if p is not None:
@@ -534,7 +534,12 @@ class Trainer(ITrainer):
                     self.state,
                 )
 
-    def _monitor(self, loader: T_Lo, step_outputs: TrainStepOutputs) -> MonitorResults:
+    def _monitor(
+        self,
+        train_loader: DataLoader,
+        valid_loader: T_Lo,
+        step_outputs: TrainStepOutputs,
+    ) -> MonitorResults:
         extension = 0
         terminate = False
         save_checkpoint = False
@@ -544,19 +549,29 @@ class Trainer(ITrainer):
                 extension = max(extension, monitor.handle_extension(self.state))
         if extension:
             self.state.num_epoch += extension
-        window = max(3, self.state.num_step_per_snapshot)
-        for k, v in step_outputs.loss_dict.items():
-            k_incrementer = self.loss_incrementers.setdefault(k, Incrementer(window))
-            k_incrementer.update(v)
+        if self.config.use_incrementer_for_train_losses_in_eval:
+            window = max(3, self.state.num_step_per_snapshot)
+            for k, v in step_outputs.loss_dict.items():
+                k_inc = self.loss_incrementers.setdefault(k, Incrementer(window))
+                k_inc.update(v)
         if self.state.should_monitor:
             # get metrics
-            if loader is not None:
-                self.intermediate = self._get_metrics(loader, self.config.valid_portion)
+            valid_portion = self.config.valid_portion
+            if valid_loader is not None:
+                self.intermediate = self._get_metrics(valid_loader, valid_portion)
+            elif (
+                not self.config.use_incrementer_for_train_losses_in_eval
+                and self.config.recompute_train_losses_in_eval
+            ):
+                self.intermediate = self._get_metrics(train_loader, valid_portion)
             else:
-                loss_dict = {
-                    k: incrementer.mean
-                    for k, incrementer in self.loss_incrementers.items()
-                }
+                if not self.config.use_incrementer_for_train_losses_in_eval:
+                    loss_dict = shallow_copy_dict(step_outputs.loss_dict)
+                else:
+                    loss_dict = {
+                        k: incrementer.mean
+                        for k, incrementer in self.loss_incrementers.items()
+                    }
                 is_positive = {k: False for k in loss_dict}
                 loss_score = weighted_loss_score(self.config, loss_dict)
                 self.intermediate = MetricsOutputs(loss_score, loss_dict, is_positive)

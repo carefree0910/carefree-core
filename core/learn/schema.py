@@ -1634,16 +1634,10 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     def log_artifacts(self, trainer: "ITrainer") -> None:
         pass
 
-    def after_train_step(
-        self, step_outputs: TrainStepOutputs, state: TrainerState
-    ) -> None:
+    def after_train_step(self, steped: TrainStepOutputs, state: TrainerState) -> None:
         pass
 
-    def after_monitor(
-        self,
-        monitor_results: MonitorResults,
-        state: TrainerState,
-    ) -> None:
+    def after_monitor(self, monitored: MonitorResults, state: TrainerState) -> None:
         pass
 
     def finalize(self, trainer: "ITrainer") -> None:
@@ -1744,8 +1738,9 @@ class TrainerConfig:
     metric_weights: Optional[Dict[str, float]] = None
     metric_forward_kwargs: Optional[Dict[str, Any]] = None
     use_losses_as_metrics: Optional[bool] = None
-    loss_metrics_weights: Optional[Dict[str, float]] = None
+    use_incrementer_for_train_losses_in_eval: bool = True
     recompute_train_losses_in_eval: bool = True
+    loss_metrics_weights: Optional[Dict[str, float]] = None
     monitor_names: Optional[Union[str, List[str]]] = None
     monitor_configs: Optional[Dict[str, Any]] = None
     auto_callback: bool = True
