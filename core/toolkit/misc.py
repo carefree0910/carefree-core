@@ -50,7 +50,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 from . import console
 from .types import arr_type
-from .types import configs_type
 from .types import np_dict_type
 from .types import general_config_type
 from .constants import TIME_FORMAT
@@ -598,7 +597,7 @@ class WithRegister(Generic[TRegister]):
     def make_multiple(
         cls: Type[TRegister],
         names: Union[str, List[str]],
-        configs: configs_type = None,
+        configs: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]] = None,
         *,
         ensure_safe: bool = False,
     ) -> List[TRegister]:
