@@ -1,4 +1,3 @@
-import json
 import torch
 
 import torch.nn as nn
@@ -16,6 +15,7 @@ from typing import Optional
 from torch.nn import Module
 
 from ...toolkit.misc import update_dict
+from ...toolkit.misc import parse_config
 from ...toolkit.misc import register_core
 from ...toolkit.misc import safe_instantiate
 from ...toolkit.misc import shallow_copy_dict
@@ -36,17 +36,9 @@ def register_module(name: str, **kwargs: Any) -> Callable[[TModule], TModule]:
 
 
 def build_module(name: str, *, config: TConfig = None, **kwargs: Any) -> Module:
-    if config is None:
-        kw = shallow_copy_dict(kwargs)
-    else:
-        if isinstance(config, dict):
-            kw = config
-        else:
-            with open(config, "r") as f:
-                kw = json.load(f)
-        kw = shallow_copy_dict(kw)
-        update_dict(shallow_copy_dict(kwargs), kw)
-    return safe_instantiate(module_dict[name], kw)
+    config = parse_config(config)
+    kwargs = update_dict(shallow_copy_dict(kwargs), config)
+    return safe_instantiate(module_dict[name], kwargs)
 
 
 class PrefixModules:
