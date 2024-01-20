@@ -1,7 +1,6 @@
 import numpy as np
 
 from tqdm import tqdm
-from torch import Tensor
 from typing import Any
 from typing import Dict
 from typing import List
@@ -13,19 +12,16 @@ from .schema import IMetric
 from .schema import IInference
 from .schema import DataLoader
 from .schema import MetricsOutputs
-from .schema import MultipleMetrics
 from .schema import InferenceOutputs
 from .toolkit import get_device
-from .toolkit import np_batch_to_tensor
 from .toolkit import tensor_batch_to_np
 from .toolkit import ONNX
-from .constants import INPUT_KEY
 from .constants import LABEL_KEY
-from .constants import BATCH_INDICES_KEY
 from ..toolkit.misc import shallow_copy_dict
-from ..toolkit.types import np_dict_type
-from ..toolkit.array import to_numpy
 from ..toolkit.array import to_device
+
+
+TArrays = Dict[str, List[Union[np.ndarray, Any]]]
 
 
 class Inference(IInference):
@@ -40,6 +36,8 @@ class Inference(IInference):
         self.model = model
         if onnx is None and model is None:
             raise ValueError("either `onnx` or `model` should be provided")
+        if onnx is not None and model is not None:
+            raise ValueError("only one of `onnx` and `model` should be provided")
         self.use_grad_in_predict = use_grad_in_predict
 
     def get_outputs(
@@ -50,30 +48,40 @@ class Inference(IInference):
         metrics: Optional[IMetric] = None,
         use_losses_as_metrics: bool = False,
         return_outputs: bool = True,
+        return_labels: bool = False,
         stack_outputs: bool = True,
         use_tqdm: bool = False,
         **kwargs: Any,
     ) -> InferenceOutputs:
-        def _core() -> InferenceOutputs:
-            results: Dict[str, Optional[List[np.ndarray]]] = {}
+        def stack(arrays: TArrays, return_nones: bool, should_stack: bool) -> Any:
+            if not return_nones:
+                return {k: None for k in arrays}
+            if not should_stack:
+                return arrays
+            return {
+                k: np.vstack(v) if isinstance(v[0], np.ndarray) else v
+                for k, v in arrays.items()
+            }
+
+        def run() -> InferenceOutputs:
+            all_np_outputs: TArrays = {}
+            all_labels: TArrays = {}
+            all_metrics_requires: TArrays = {}
             metric_outputs_list: List[MetricsOutputs] = []
             loss_items: Dict[str, List[float]] = {}
-            labels: Dict[str, List[np.ndarray]] = {}
+
             iterator = enumerate(loader)
             if use_tqdm:
                 iterator = tqdm(iterator, "inference", len(loader))
-            requires_all_outputs = return_outputs
-            if metrics is not None and metrics.requires_all:
-                requires_all_outputs = True
             for i, tensor_batch in iterator:
                 if i / len(loader) >= portion:
                     break
                 np_batch = None
-                local_outputs = None
+                np_outputs = None
                 if self.onnx is not None:
                     np_batch = tensor_batch_to_np(tensor_batch)
-                    local_outputs = np_batch_to_tensor(self.onnx.predict(np_batch))
-                if self.model is not None:
+                    np_outputs = self.onnx.predict(np_batch)
+                elif self.model is not None:
                     tensor_batch = to_device(tensor_batch, get_device(self.model))
                     step_outputs = self.model.step(
                         i,
@@ -82,96 +90,57 @@ class Inference(IInference):
                         use_grad=use_grad,
                         get_losses=use_losses_as_metrics,
                     )
-                    if local_outputs is None:
-                        local_outputs = step_outputs.forward_results
+                    np_outputs = tensor_batch_to_np(step_outputs.forward_results)
                     if use_losses_as_metrics:
-                        for k, v in step_outputs.loss_dict.items():
-                            loss_items.setdefault(k, []).append(v)
-                assert local_outputs is not None
-                # gather outputs
-                requires_metrics = metrics is not None and not metrics.requires_all
-                requires_np = requires_metrics or requires_all_outputs
-                np_outputs: np_dict_type = {}
-                for k, v in local_outputs.items():
-                    if not requires_np:
-                        results[k] = None
-                        continue
-                    if v is None:
-                        continue
-                    v_np: Union[np.ndarray, List[np.ndarray]]
-                    if isinstance(v, np.ndarray):
-                        v_np = v
-                    elif isinstance(v, Tensor):
-                        v_np = to_numpy(v)
-                    elif isinstance(v, list):
-                        if isinstance(v[0], np.ndarray):  # type: ignore
-                            v_np = v
-                        else:
-                            v_np = list(map(to_numpy, v))
-                    else:
-                        raise ValueError(f"unrecognized value ({k}={type(v)}) occurred")
-                    np_outputs[k] = v_np
-                    if not requires_all_outputs:
-                        results[k] = None
-                    else:
-                        results.setdefault(k, []).append(v_np)  # type: ignore
-                if requires_np:
-                    if np_batch is None:
-                        np_batch = tensor_batch_to_np(tensor_batch)
-                    for k, v_np in np_batch.items():
-                        if v_np is None:
-                            continue
-                        if metrics is None:
-                            continue
-                        if not isinstance(metrics, MultipleMetrics):
-                            requires_k = metrics.requires(k)
-                        else:
-                            requires_k = any(m.requires(k) for m in metrics.metrics)
-                        if not requires_k:
-                            continue
-                        labels.setdefault(k, []).append(v_np)
+                        for k, vl in step_outputs.loss_dict.items():
+                            loss_items.setdefault(k, []).append(vl)
+                assert np_outputs is not None
                 # metrics
-                if requires_metrics:
+                if metrics is not None and not metrics.requires_all:
                     if np_batch is None:
                         np_batch = tensor_batch_to_np(tensor_batch)
-                    sub_outputs = metrics.evaluate(np_batch, np_outputs, loader)  # type: ignore
-                    metric_outputs_list.append(sub_outputs)
-            # gather outputs
-            final_results: Dict[str, Union[np.ndarray, Any]]
-            if not requires_all_outputs:
-                final_results = {k: None for k in results}
-            else:
-                final_results = {
-                    batch_key: batch_results
-                    if not stack_outputs
-                    else np.vstack(batch_results)
-                    if isinstance(batch_results[0], np.ndarray)
-                    else [
-                        np.vstack([batch[i] for batch in batch_results])
-                        for i in range(len(batch_results[0]))
-                    ]
-                    for batch_key, batch_results in results.items()
-                    if batch_results is not None
-                }
+                    metric_outputs = metrics.evaluate(np_batch, np_outputs)
+                    metric_outputs_list.append(metric_outputs)
+                # gather
+                if return_outputs:
+                    for k, v in np_outputs.items():
+                        if v is not None:
+                            all_np_outputs.setdefault(k, []).append(v)
+                if return_labels:
+                    if np_batch is None:
+                        np_batch = tensor_batch_to_np(tensor_batch)
+                    for k, v in np_batch.items():
+                        if v is not None and k.endswith(LABEL_KEY):
+                            all_labels.setdefault(k, []).append(v)
+                if metrics is not None and metrics.requires_all:
+                    if np_batch is None:
+                        np_batch = tensor_batch_to_np(tensor_batch)
+                    for k, v in np_batch.items():
+                        if v is not None and metrics.requires(k):
+                            all_metrics_requires.setdefault(k, []).append(v)
+
+            # stack
+            stacked_np_outputs = stack(all_np_outputs, return_outputs, stack_outputs)
+            stacked_labels = stack(all_labels, return_labels, stack_outputs)
             # gather metric outputs
             if metrics is None:
-                metric_outputs = None
+                final_metric_outputs = None
             elif metrics.requires_all:
-                metric_outputs = metrics.evaluate(
-                    {k: np.vstack(v) for k, v in labels.items()},
-                    final_results,
+                final_metric_outputs = metrics.evaluate(
+                    stack(all_metrics_requires, False, True),
+                    stacked_np_outputs,
                     loader,
                 )
             else:
                 scores = []
                 metric_values: Dict[str, List[float]] = {}
                 is_positive: Dict[str, bool] = {}
-                for sub_outputs in metric_outputs_list:
-                    scores.append(sub_outputs.final_score)
-                    for k, v in sub_outputs.metric_values.items():
+                for metric_outputs in metric_outputs_list:
+                    scores.append(metric_outputs.final_score)
+                    for k, v in metric_outputs.metric_values.items():
                         metric_values.setdefault(k, []).append(v)
                         existing_is_positive = is_positive.get(k)
-                        k_is_positive = sub_outputs.is_positive[k]
+                        k_is_positive = metric_outputs.is_positive[k]
                         if (
                             existing_is_positive is not None
                             and existing_is_positive != k_is_positive
@@ -181,17 +150,16 @@ class Inference(IInference):
                                 f"{existing_is_positive} (previous) != {k_is_positive}"
                             )
                         is_positive[k] = k_is_positive
-                metric_outputs = MetricsOutputs(
+                final_metric_outputs = MetricsOutputs(
                     sum(scores) / len(scores),
                     {k: sum(vl) / len(vl) for k, vl in metric_values.items()},
                     is_positive,
                 )
 
-            target_labels = labels.get(LABEL_KEY, [])
             return InferenceOutputs(
-                final_results,
-                None if not target_labels else np.vstack(target_labels),
-                metric_outputs,
+                stacked_np_outputs,
+                stacked_labels,
+                final_metric_outputs,
                 None
                 if not use_losses_as_metrics
                 else {k: sum(v) / len(v) for k, v in loss_items.items()},
@@ -199,10 +167,10 @@ class Inference(IInference):
 
         use_grad = kwargs.pop("use_grad", self.use_grad_in_predict)
         try:
-            return _core()
+            return run()
         except:
             use_grad = self.use_grad_in_predict = True
-            return _core()
+            return run()
 
 
 __all__ = [

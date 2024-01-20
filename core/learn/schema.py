@@ -661,7 +661,13 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
     @property
     @abstractmethod
     def is_positive(self) -> bool:
-        pass
+        """
+        Specify whether this Metric is a 'positive' metric.
+
+        > A 'positive' metric means that the larger the better (e.g., accuracy),
+        and a 'negative' metric means that the smaller the better (e.g., loss).
+
+        """
 
     @abstractmethod
     def forward(
@@ -672,14 +678,14 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
     ) -> float:
         pass
 
-    # optional callback
+    # optional callbacks
 
     @property
     def requires_all(self) -> bool:
         """
         Specify whether this Metric needs 'all' data.
 
-        Typical metrics often does not need to evaluate itself on the entire dataset,
+        > Typical metrics often does not need to evaluate itself on the entire dataset,
         but some does need to avoid corner cases. (for instance, the AUC metrics may
         fail to evaluate itself on only a batch, because the labels in this batch may
         be all the same, which breaks the calculation of AUC).
@@ -689,11 +695,11 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
 
     def requires(self, key: str) -> bool:
         """
-        This method should tell the inference stage whether this metric needs a
-        specific data key.
+        This method is only useful when `requires_all` returns `True`, and should tell
+        the inference stage whether this metric needs a specific data key.
 
-        For instance, the `Accuracy` metric only needs the `LABEL_KEY`,
-        so it should return `False` when other keys are passed in.
+        > For instance, most of the metrics only needs the labels - which is often the
+        value of `LABEL_KEY`, so it should return `False` when other keys are passed in.
         """
 
         return key == LABEL_KEY
@@ -719,9 +725,9 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
         np_outputs: np_dict_type,
         loader: Optional[DataLoader] = None,
     ) -> MetricsOutputs:
+        k = self.__identifier__
         metric = self.forward(np_batch, np_outputs, loader)
         score = metric * (1.0 if self.is_positive else -1.0)
-        k = self.__identifier__
         return MetricsOutputs(score, {k: metric}, {k: self.is_positive})
 
 
@@ -744,6 +750,9 @@ class MultipleMetrics(IMetric):
     @property
     def requires_all(self) -> bool:
         return any(metric.requires_all for metric in self.metrics)
+
+    def requires(self, key: str) -> bool:
+        return any(metric.requires(key) for metric in self.metrics)
 
     def forward(
         self,
@@ -778,7 +787,7 @@ class MultipleMetrics(IMetric):
 
 class InferenceOutputs(NamedTuple):
     forward_results: np_dict_type
-    labels: Optional[np.ndarray]
+    labels: np_dict_type
     metric_outputs: Optional[MetricsOutputs]
     loss_items: Optional[Dict[str, float]]
 
