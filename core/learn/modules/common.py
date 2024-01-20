@@ -9,7 +9,6 @@ from typing import Dict
 from typing import List
 from typing import Type
 from typing import Tuple
-from typing import Union
 from typing import TypeVar
 from typing import Callable
 from typing import Iterator
@@ -20,6 +19,7 @@ from ...toolkit.misc import update_dict
 from ...toolkit.misc import register_core
 from ...toolkit.misc import safe_instantiate
 from ...toolkit.misc import shallow_copy_dict
+from ...toolkit.types import TConfig
 from ...toolkit.types import tensor_dict_type
 
 
@@ -35,12 +35,7 @@ def register_module(name: str, **kwargs: Any) -> Callable[[TModule], TModule]:
     return register_core(name, module_dict, **kwargs)  # type: ignore
 
 
-def build_module(
-    name: str,
-    *,
-    config: Optional[Union[str, Dict[str, Any]]] = None,
-    **kwargs: Any,
-) -> Module:
+def build_module(name: str, *, config: TConfig = None, **kwargs: Any) -> Module:
     if config is None:
         kw = shallow_copy_dict(kwargs)
     else:
@@ -71,13 +66,7 @@ class PrefixModules:
     def register(self, name: str, **kwargs: Any) -> Callable[[TModule], TModule]:
         return register_module(self.prefix(name), **kwargs)
 
-    def build(
-        self,
-        name: str,
-        *,
-        config: Optional[Union[str, Dict[str, Any]]] = None,
-        **kwargs: Any,
-    ) -> Module:
+    def build(self, name: str, *, config: TConfig = None, **kwargs: Any) -> Module:
         return build_module(self.prefix(name), config=config, **kwargs)
 
     def prefix(self, name: str) -> str:

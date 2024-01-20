@@ -1,13 +1,11 @@
 from typing import Any
-from typing import Dict
 from typing import Type
-from typing import Union
 from typing import TypeVar
 from typing import Callable
-from typing import Optional
 
 from ..schema import ILoss
 from ..modules.common import PrefixModules
+from ...toolkit.types import TConfig
 
 
 TLoss = TypeVar("TLoss", bound=Type[ILoss])
@@ -24,12 +22,7 @@ def register_loss(name: str, **kwargs: Any) -> Callable[[TLoss], TLoss]:
     return losses.register(name, **kwargs)
 
 
-def build_loss(
-    name: str,
-    *,
-    config: Optional[Union[str, Dict[str, Any]]] = None,
-    **kwargs: Any,
-) -> ILoss:
+def build_loss(name: str, *, config: TConfig = None, **kwargs: Any) -> ILoss:
     return losses.build(name, config=config, **kwargs)
 
 
