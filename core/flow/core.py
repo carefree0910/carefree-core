@@ -32,6 +32,7 @@ from ..toolkit.data_structures import Bundle
 
 
 TPath = Union[str, Path]
+TNode = TypeVar("TNode", bound="Node")
 TTNode = TypeVar("TTNode", bound=Type["Node"])
 nodes: Dict[str, Type["Node"]] = {}
 _shared_pool: Dict[str, Any] = {}
@@ -295,7 +296,7 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
     def shared_pool(self) -> Dict[str, Any]:
         return _shared_pool
 
-    def copy(self) -> "Node":
+    def copy(self: TNode) -> TNode:
         copied = self.__class__()
         copied.from_info(shallow_copy_dict(self.to_info()))
         return copied
@@ -309,7 +310,7 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
             lock_key=self.lock_key,
         )
 
-    def to_item(self) -> Item["Node"]:
+    def to_item(self: TNode) -> Item[TNode]:
         if self.key is None:
             raise ValueError("node key cannot be None")
         return Item(self.key, self)
