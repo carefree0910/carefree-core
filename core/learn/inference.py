@@ -28,16 +28,18 @@ class Inference(IInference):
     def __init__(
         self,
         *,
-        onnx: Optional[ONNX] = None,
+        onnx: Optional[Union[str, ONNX]] = None,
         model: Optional[IModel] = None,
         use_grad_in_predict: bool = False,
     ):
-        self.onnx = onnx
-        self.model = model
         if onnx is None and model is None:
             raise ValueError("either `onnx` or `model` should be provided")
         if onnx is not None and model is not None:
             raise ValueError("only one of `onnx` and `model` should be provided")
+        if isinstance(onnx, str):
+            onnx = ONNX(onnx)
+        self.onnx = onnx
+        self.model = model
         self.use_grad_in_predict = use_grad_in_predict
 
     def get_outputs(
