@@ -308,6 +308,7 @@ __all__ = [
     "LoopBackInjectionModel",
     "LoopNode",
     "GatherNode",
+    "ParametersNode",
     "EchoNode",
     "DownloadImageNode",
     "SaveImageNode",
