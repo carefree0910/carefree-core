@@ -514,6 +514,9 @@ class Flow(Bundle[Node]):
 
     __repr__ = __str__
 
+    def __eq__(self, other: "Flow") -> bool:
+        return self.to_json() == other.to_json()
+
     @property
     def shared_pool(self) -> Dict[str, Any]:
         return _shared_pool
@@ -720,9 +723,9 @@ class Flow(Bundle[Node]):
         reachable_nodes: List[Node] = []
         try:
             workflow = self.copy()
-            reachable = workflow.get_reachable(target)
             if target not in workflow:
                 raise ValueError(f"cannot find target '{target}' in the workflow")
+            reachable = workflow.get_reachable(target)
             reachable_nodes = [item.data for item in workflow if item.key in reachable]
             for node in reachable_nodes:
                 node.check_injections()
