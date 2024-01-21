@@ -198,11 +198,8 @@ class ImageBox:
     def copy(self) -> "ImageBox":
         return ImageBox(*self.tuple)
 
-    def crop(self, image: ndarray) -> ndarray:
-        return image[self.t : self.b, self.l : self.r]
-
-    def crop_tensor(self, image: torch.Tensor) -> torch.Tensor:
-        return image[..., self.t : self.b, self.l : self.r]
+    def crop(self, image: arr_type) -> arr_type:
+        return image[self.t : self.b + 1, self.l : self.r + 1]
 
     def pad(
         self,
