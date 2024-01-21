@@ -514,7 +514,9 @@ class Flow(Bundle[Node]):
 
     __repr__ = __str__
 
-    def __eq__(self, other: "Flow") -> bool:
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Flow):
+            return False
         return self.to_json() == other.to_json()
 
     @property
