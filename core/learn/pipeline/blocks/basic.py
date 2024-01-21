@@ -736,8 +736,8 @@ class TrainingBlock(Block):
         else:
             os.environ["KINETO_LOG_LEVEL"] = "5"
             schedule_config = self.config.profile_schedule_config or {}
-            schedule_config.setdefault("skip_first", 0)
-            schedule_config.setdefault("wait", 1)
+            schedule_config.setdefault("skip_first", 5)
+            schedule_config.setdefault("wait", 3)
             schedule_config.setdefault("warmup", 3)
             schedule_config.setdefault("active", 5)
             schedule_config.setdefault("repeat", 5)
@@ -745,10 +745,12 @@ class TrainingBlock(Block):
             profile_config["schedule"] = schedule(**schedule_config)
             profile_config["on_trace_ready"] = trace_handler
             profile_config.setdefault("record_shapes", True)
-            profile_config.setdefault("profile_memory", True)
+            profile_config.setdefault("profile_memory", False)
             profile_config.setdefault("with_stack", True)
             profile_config.setdefault("with_flops", True)
             profile_config.setdefault("with_modules", True)
+            with profile(use_cuda=True):
+                console.debug("running dummy profiler warmup for CUPTI")
             with profile(**profile_config) as p:
                 fit(p)
 
