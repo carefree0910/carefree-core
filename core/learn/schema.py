@@ -497,6 +497,7 @@ class IData(  # type: ignore
         shuffle: bool,
         batch_size: int,
         sample_weights: Optional[np.ndarray] = None,
+        **kwargs: Any,
     ) -> DataLoader:
         if sample_weights is None or not shuffle:
             sampler = None
@@ -508,6 +509,7 @@ class IData(  # type: ignore
             shuffle=shuffle,
             batch_size=batch_size,
             sampler=sampler,
+            **kwargs,
         )
         loader.data = self
         loader.for_inference = self.config.for_inference
@@ -569,6 +571,7 @@ class IData(  # type: ignore
         shuffle: bool = False,
         batch_size: Optional[int] = None,
         sample_weights: Optional[np.ndarray] = None,
+        **kwargs: Any,
     ) -> DataLoader:
         self._check_ready("build_loader")
         bundle = self.transform(x, y)
@@ -580,6 +583,7 @@ class IData(  # type: ignore
             or self.config.valid_batch_size
             or self.config.batch_size,
             sample_weights=sample_weights,
+            **kwargs,
         )
         return loader
 
