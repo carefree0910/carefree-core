@@ -74,18 +74,6 @@ def get_sorted_checkpoints(checkpoint_folder: str) -> List[str]:
     return list(sort_dict_by_value(scores, reverse=True).keys())
 
 
-def get_input_sample(loader: DataLoader, device: torch.device) -> tensor_dict_type:
-    sample = loader.get_one_batch(device)
-    for k, v in sample.items():
-        if isinstance(v, torch.Tensor):
-            sample[k] = v[:1]
-        elif isinstance(v, list):
-            sample[k] = [vv[:1] if isinstance(vv, torch.Tensor) else vv for vv in v]
-        else:
-            sample[k] = v
-    return sample
-
-
 class Trainer(ITrainer):
     model_log_file = "model.txt"
     metrics_log_file = "metrics.txt"
@@ -276,7 +264,7 @@ class Trainer(ITrainer):
         if show_summary is None:
             show_summary = not self.tqdm_settings.in_distributed
         ## should always summary to sync the statuses in distributed training
-        input_sample = get_input_sample(train_loader, self.device)
+        input_sample = train_loader.get_input_sample(self.device)
         summary_msg = summary(
             self.model.m,
             input_sample,
@@ -602,6 +590,5 @@ class Trainer(ITrainer):
 __all__ = [
     "get_scores",
     "get_sorted_checkpoints",
-    "get_input_sample",
     "Trainer",
 ]

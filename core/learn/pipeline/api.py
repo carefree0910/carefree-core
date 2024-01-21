@@ -49,7 +49,6 @@ from ..toolkit import get_device
 from ..toolkit import is_local_rank_0
 from ..toolkit import get_torch_device
 from ..trainer import get_scores
-from ..trainer import get_input_sample
 from ..trainer import get_sorted_checkpoints
 from ..constants import PREDICTIONS_KEY
 from ...toolkit import console
@@ -410,13 +409,13 @@ class PipelineSerializer:
         verbose: bool = True,
         **kwargs: Any,
     ) -> InferencePipeline:
-        if input_sample is None and loader_sample is None:
-            msg = "either `input_sample` or `loader_sample` should be provided"
-            raise ValueError(msg)
         m = cls.pack_and_load_inference(workspace)
         model = m.build_model.model
         if input_sample is None:
-            input_sample = get_input_sample(loader_sample, get_device(model))  # type: ignore
+            if loader_sample is None:
+                msg = "either `input_sample` or `loader_sample` should be provided"
+                raise ValueError(msg)
+            input_sample = loader_sample.get_input_sample(get_device(model))
         model.to_onnx(
             export_file,
             input_sample,

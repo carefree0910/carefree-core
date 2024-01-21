@@ -229,6 +229,17 @@ class DataLoader(TorchDataLoader):
             concat = to_device(concat, get_torch_device(device))
         return concat
 
+    def get_input_sample(self, device: device_type = None) -> tensor_dict_type:
+        sample = self.get_one_batch(device)
+        for k, v in sample.items():
+            if isinstance(v, Tensor):
+                sample[k] = v[:1]
+            elif isinstance(v, list):
+                sample[k] = [vv[:1] if isinstance(vv, Tensor) else vv for vv in v]
+            else:
+                sample[k] = v
+        return sample
+
 
 @dataclass
 class DataConfig(ISerializableDataClass):
