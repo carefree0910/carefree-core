@@ -359,10 +359,8 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
                 )
             history[injection.dst_hierarchy] = injection
 
-    def fetch_injections(self, all_results: Dict[str, Any]) -> None:
+    def fetch_injections(self, results: Dict[str, Any], verbose: bool = True) -> None:
         def inject_leaf_data(data: Any, hierarchies: List[str], value: Any) -> None:
-            if len(hierarchies) == 0:
-                return data
             h = hierarchies.pop(0)
             is_leaf = len(hierarchies) == 0
             if isinstance(data, list):
@@ -371,12 +369,13 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
                 except:
                     raise ValueError(f"current value is list, but '{h}' is not int")
                 if len(data) <= ih:
-                    replace_msg = "target value" if is_leaf else "an empty `dict`"
-                    console.warn(
-                        "current data is a list but its length is not enough, corresponding "
-                        f"index ({h}) will be set to {replace_msg}, and other elements "
-                        "will be set to `undefined`"
-                    )
+                    if verbose:
+                        replace_msg = "target value" if is_leaf else "an empty `dict`"
+                        console.warn(
+                            "current data is a list but its length is not enough, "
+                            f"corresponding index ({h}) will be set to {replace_msg}, "
+                            "and other elements will be set to `undefined`"
+                        )
                     data.extend([UNDEFINED_PLACEHOLDER] * (ih - len(data) + 1))
                 if is_leaf:
                     data[ih] = value
@@ -388,10 +387,12 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
                     data[h] = value
                 else:
                     if h not in data:
-                        console.warn(
-                            "current data is a dict but it does not have the corresponding "
-                            f"key ('{h}'), it will be set to an empty `dict`"
-                        )
+                        if verbose:
+                            console.warn(
+                                "current data is a dict but it does not have the "
+                                f" corresponding key ('{h}'), it will be set to "
+                                "an empty `dict`"
+                            )
                         data[h] = {}
                     inject_leaf_data(data[h], hierarchies, value)
             else:
@@ -402,7 +403,7 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
 
         for injection in self.injections:
             src_key = injection.src_key
-            src_out = all_results.get(src_key)
+            src_out = results.get(src_key)
             if src_out is None:
                 raise ValueError(f"cannot find cache for '{src_key}'")
             if injection.src_hierarchy is not None:
@@ -642,7 +643,7 @@ class Flow(Bundle[Node]):
         item.data.executing = True
         t0 = time.time()
         node: Node = item.data.copy()
-        node.fetch_injections(all_results)
+        node.fetch_injections(all_results, verbose)
         node.check_undefined()
         node.check_inputs()
         t1 = time.time()
