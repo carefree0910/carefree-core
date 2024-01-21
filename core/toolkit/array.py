@@ -677,11 +677,13 @@ class SharedArray:
         return cls(data.dtype, data.shape, data)
 
 
-def get_label_predictions(logits: np.ndarray, threshold: float) -> np.ndarray:
+def to_labels(logits: np.ndarray, threshold: Optional[float] = None) -> np.ndarray:
     # binary classification
     if logits.shape[-1] == 2:
         logits = logits[..., [1]] - logits[..., [0]]
     if logits.shape[-1] == 1:
+        if threshold is None:
+            threshold = 0.5
         logit_threshold = math.log(threshold / (1.0 - threshold))
         return (logits > logit_threshold).astype(int)
     return logits.argmax(1)[..., None]

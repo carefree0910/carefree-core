@@ -7,7 +7,7 @@ from .schema import DataLoader
 from .constants import LABEL_KEY
 from .constants import PREDICTIONS_KEY
 from ..toolkit.array import corr
-from ..toolkit.array import get_label_predictions
+from ..toolkit.array import to_labels
 from ..toolkit.types import np_dict_type
 
 
@@ -28,7 +28,7 @@ class Accuracy(IMetric):
     ) -> float:
         logits = np_outputs[PREDICTIONS_KEY]
         labels = np_batch[LABEL_KEY]
-        predictions = get_label_predictions(logits, self.threshold)
+        predictions = to_labels(logits, self.threshold)
         return (predictions == labels).mean().item()
 
 
