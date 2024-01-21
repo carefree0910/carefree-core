@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from PIL.Image import Image as TImage
 
 from .array import to_torch
+from .types import TArray
 from .types import arr_type
 from .geometry import Matrix2D
 from .geometry import Matrix2DProperties
@@ -43,9 +44,9 @@ def to_rgb(image: TImage, color: Tuple[int, int, int] = (255, 255, 255)) -> TIma
     return background
 
 
-def to_uint8(normalized_img: arr_type) -> arr_type:
+def to_uint8(normalized_img: TArray) -> TArray:
     if isinstance(normalized_img, ndarray):
-        return (np.clip(normalized_img * 255.0, 0.0, 255.0)).astype(np.uint8)
+        return (np.clip(normalized_img * 255.0, 0.0, 255.0)).astype(np.uint8)  # type: ignore
     return torch.clamp(normalized_img * 255.0, 0.0, 255.0).to(torch.uint8)
 
 
@@ -198,8 +199,8 @@ class ImageBox:
     def copy(self) -> "ImageBox":
         return ImageBox(*self.tuple)
 
-    def crop(self, image: arr_type) -> arr_type:
-        return image[self.t : self.b + 1, self.l : self.r + 1]
+    def crop(self, image: TArray) -> TArray:
+        return image[self.t : self.b + 1, self.l : self.r + 1]  # type: ignore
 
     def pad(
         self,

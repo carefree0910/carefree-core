@@ -51,7 +51,7 @@ from ..toolkit.misc import DownloadProgressBar
 from ..toolkit.array import to_torch
 from ..toolkit.array import is_string
 from ..toolkit.array import to_standard
-from ..toolkit.types import arr_type
+from ..toolkit.types import TArray
 from ..toolkit.types import np_dict_type
 from ..toolkit.types import tensor_dict_type
 
@@ -1110,21 +1110,21 @@ def safe_clip_(net: Tensor) -> None:
     net.clamp_(finfo.min, finfo.max)
 
 
-def insert_intermediate_dims(net: arr_type, ref: arr_type) -> arr_type:
+def insert_intermediate_dims(net: TArray, ref: TArray) -> TArray:
     """
     Insert intermediate dimensions into a tensor or numpy array.
 
     Parameters
     ----------
-    net : arr_type
+    net : TArray
         The tensor or numpy array to insert dimensions into, which should have 2 dimensions.
-    ref : arr_type
+    ref : TArray
         The reference tensor or numpy array. The output will have the
         same number of dimensions as this array.
 
     Returns
     -------
-    arr_type
+    TArray
         The tensor or numpy array with inserted dimensions.
 
     Examples
@@ -1145,7 +1145,7 @@ def insert_intermediate_dims(net: arr_type, ref: arr_type) -> arr_type:
     new_shape = net.shape[0], *((1,) * dim_diff), net.shape[1]
     if isinstance(net, Tensor):
         return net.view(*new_shape)
-    return net.reshape(new_shape)
+    return net.reshape(new_shape)  # type: ignore
 
 
 def fix_denormal_states(

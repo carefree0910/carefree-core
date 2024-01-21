@@ -10,7 +10,6 @@ from typing import Dict
 from typing import List
 from typing import Tuple
 from typing import Union
-from typing import Callable
 from typing import Optional
 from typing import NamedTuple
 from collections import Counter
@@ -18,11 +17,9 @@ from multiprocessing.shared_memory import SharedMemory
 from numpy.lib.stride_tricks import as_strided
 
 from .misc import random_hash
+from .types import TArray
 from .types import arr_type
 from .types import tensor_dict_type
-
-
-TNormalizeResponse = Union[arr_type, Tuple[arr_type, Dict[str, Any]]]
 
 
 def is_int(arr: np.ndarray) -> bool:
@@ -37,13 +34,13 @@ def is_string(arr: np.ndarray) -> bool:
     return np.issubdtype(arr.dtype, str)
 
 
-def sigmoid(arr: arr_type) -> arr_type:
+def sigmoid(arr: TArray) -> TArray:
     if isinstance(arr, np.ndarray):
         return 1.0 / (1.0 + np.exp(-arr))
     return torch.sigmoid(arr)
 
 
-def softmax(arr: arr_type) -> arr_type:
+def softmax(arr: TArray) -> TArray:
     if isinstance(arr, np.ndarray):
         logits = arr - np.max(arr, axis=1, keepdims=True)
         exp = np.exp(logits)
@@ -51,19 +48,19 @@ def softmax(arr: arr_type) -> arr_type:
     return F.softmax(arr, dim=1)
 
 
-def l2_normalize(arr: arr_type) -> arr_type:
+def l2_normalize(arr: TArray) -> TArray:
     if isinstance(arr, np.ndarray):
         return arr / np.linalg.norm(arr, axis=-1, keepdims=True)
-    return arr / arr.norm(dim=-1, keepdim=True)
+    return arr / arr.norm(dim=-1, keepdim=True)  # type: ignore
 
 
 def normalize(
-    arr: arr_type,
+    arr: TArray,
     *,
     global_norm: bool = True,
     return_stats: bool = False,
     eps: float = 1.0e-8,
-) -> TNormalizeResponse:
+) -> Union[TArray, Tuple[TArray, Dict[str, Any]]]:
     if global_norm:
         arr_mean, arr_std = arr.mean().item(), arr.std().item()
         arr_std = max(eps, arr_std)
@@ -75,7 +72,7 @@ def normalize(
         arr_mean, arr_std = arr.mean(axis=0), arr.std(axis=0)
         std = np.maximum(eps, arr_std)
     else:
-        arr_mean, arr_std = arr.mean(dim=0), arr.std(dim=0)
+        arr_mean, arr_std = arr.mean(dim=0), arr.std(dim=0)  # type: ignore
         std = torch.clip(arr_std, min=eps)
     out = (arr - arr_mean) / std
     if not return_stats:
@@ -83,23 +80,23 @@ def normalize(
     return out, dict(mean=arr_mean.tolist(), std=std.tolist())
 
 
-def normalize_from(arr: arr_type, stats: Dict[str, Any]) -> arr_type:
+def normalize_from(arr: TArray, stats: Dict[str, Any]) -> TArray:
     mean, std = stats["mean"], stats["std"]
     return (arr - mean) / std
 
 
-def recover_normalize_from(arr: arr_type, stats: Dict[str, Any]) -> arr_type:
+def recover_normalize_from(arr: TArray, stats: Dict[str, Any]) -> TArray:
     mean, std = stats["mean"], stats["std"]
     return arr * std + mean
 
 
 def min_max_normalize(
-    arr: arr_type,
+    arr: TArray,
     *,
     global_norm: bool = True,
     return_stats: bool = False,
     eps: float = 1.0e-8,
-) -> TNormalizeResponse:
+) -> Union[TArray, Tuple[TArray, Dict[str, Any]]]:
     if global_norm:
         arr_min, arr_max = arr.min().item(), arr.max().item()
         diff = max(eps, arr_max - arr_min)
@@ -111,7 +108,7 @@ def min_max_normalize(
         arr_min, arr_max = arr.min(axis=0), arr.max(axis=0)
         diff = np.maximum(eps, arr_max - arr_min)
     else:
-        arr_min, arr_max = arr.min(dim=0).values, arr.max(dim=0).values
+        arr_min, arr_max = arr.min(dim=0).values, arr.max(dim=0).values  # type: ignore
         diff = torch.clip(arr_max - arr_min, min=eps)
     out = (arr - arr_min) / diff
     if not return_stats:
@@ -119,24 +116,24 @@ def min_max_normalize(
     return out, dict(min=arr_min.tolist(), diff=diff.tolist())
 
 
-def min_max_normalize_from(arr: arr_type, stats: Dict[str, Any]) -> arr_type:
+def min_max_normalize_from(arr: TArray, stats: Dict[str, Any]) -> TArray:
     arr_min, diff = stats["min"], stats["diff"]
     return (arr - arr_min) / diff
 
 
-def recover_min_max_normalize_from(arr: arr_type, stats: Dict[str, Any]) -> arr_type:
+def recover_min_max_normalize_from(arr: TArray, stats: Dict[str, Any]) -> TArray:
     arr_min, diff = stats["min"], stats["diff"]
     return arr * diff + arr_min
 
 
 def quantile_normalize(
-    arr: arr_type,
+    arr: TArray,
     *,
     q: float = 0.01,
     global_norm: bool = True,
     return_stats: bool = False,
     eps: float = 1.0e-8,
-) -> TNormalizeResponse:
+) -> Union[TArray, Tuple[TArray, Dict[str, Any]]]:
     # quantiles
     if isinstance(arr, np.ndarray):
         kw = {"axis": 0}
@@ -171,17 +168,17 @@ def quantile_normalize(
     return out, dict(min=arr_min, diff=diff)
 
 
-def quantile_normalize_from(arr: arr_type, stats: Dict[str, Any]) -> arr_type:
+def quantile_normalize_from(arr: TArray, stats: Dict[str, Any]) -> TArray:
     arr_min, diff = stats["min"], stats["diff"]
     return (arr - arr_min) / diff
 
 
-def recover_quantile_normalize_from(arr: arr_type, stats: Dict[str, Any]) -> arr_type:
+def recover_quantile_normalize_from(arr: TArray, stats: Dict[str, Any]) -> TArray:
     arr_min, diff = stats["min"], stats["diff"]
     return arr * diff + arr_min
 
 
-def clip_normalize(arr: arr_type) -> arr_type:
+def clip_normalize(arr: TArray) -> TArray:
     fn = np if isinstance(arr, np.ndarray) else torch
     if arr.dtype == fn.uint8:
         return arr
@@ -189,11 +186,11 @@ def clip_normalize(arr: arr_type) -> arr_type:
 
 
 # will return at least 2d
-def squeeze(arr: arr_type) -> arr_type:
+def squeeze(arr: TArray) -> TArray:
     n = arr.shape[0]
-    arr = arr.squeeze()
+    arr = arr.squeeze()  # type: ignore
     if n == 1:
-        arr = arr[None, ...]
+        arr = arr[None, ...]  # type: ignore
     return arr
 
 
@@ -230,13 +227,13 @@ def to_device(
     return {k: to(v) for k, v in batch.items()}
 
 
-def iou(logits: arr_type, labels: arr_type) -> arr_type:
+def iou(logits: TArray, labels: TArray) -> TArray:
     is_numpy = isinstance(logits, np.ndarray)
     num_classes = logits.shape[1]
     if num_classes == 1:
         heat_map = sigmoid(logits)
     elif num_classes == 2:
-        heat_map = softmax(logits)[:, [1]]
+        heat_map = softmax(logits)[:, [1]]  # type: ignore
     else:
         raise ValueError("`IOU` only supports binary situations")
     intersect = heat_map * labels
@@ -246,12 +243,12 @@ def iou(logits: arr_type, labels: arr_type) -> arr_type:
 
 
 def corr(
-    predictions: arr_type,
-    target: arr_type,
-    weights: Optional[arr_type] = None,
+    predictions: TArray,
+    target: TArray,
+    weights: Optional[TArray] = None,
     *,
     get_diagonal: bool = False,
-) -> arr_type:
+) -> TArray:
     is_numpy = isinstance(predictions, np.ndarray)
     keepdim_kw: Dict[str, Any] = {"keepdims" if is_numpy else "keepdim": True}
     norm_fn = np.linalg.norm if is_numpy else torch.norm
