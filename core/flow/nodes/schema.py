@@ -200,8 +200,7 @@ class IImageNode(IWithImageNode):
             output_names=["image"],
         )
 
-    @classmethod
-    async def get_api_response(cls, results: Dict[str, Image.Image]) -> Dict[str, str]:
+    async def get_api_response(self, results: Dict[str, Image.Image]) -> Dict[str, str]:
         return {"image": to_base64(results["image"])}
 
 

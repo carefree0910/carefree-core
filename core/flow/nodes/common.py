@@ -150,30 +150,28 @@ class GatherNode(Node):
             "> - If you are programming in Python, you can use `flow.gather` to make things easier.",
         )
 
-    @classmethod
-    async def get_api_response(cls, results: Dict[str, Any]) -> Dict[str, Any]:
-        if cls.flow is None:
+    async def initialize(self, flow: Flow) -> None:
+        await super().initialize(flow)
+        self.flow = flow
+
+    async def get_api_response(self, results: Dict[str, Any]) -> Dict[str, Any]:
+        if self.flow is None:
             console.warn(
                 "`flow` is not provided for `GatherNode`, raw results will be returned "
                 "and `get_api_response` might not work as expected"
             )
             return results
         keys = list(results)
-        nodes = [cls.flow.get(k) for k in keys]
-        if any(n is None for n in nodes):
+        node_items = [self.flow.get(k) for k in keys]
+        if any(item is None for item in node_items):
             raise ValueError(
                 "internal error: some nodes are not found when getting api response: "
-                f"{[k for k, n in zip(keys, nodes) if n is None]}"
+                f"{[k for k, n in zip(keys, node_items) if n is None]}"
             )
-        node_names = [node.data.__identifier__ for node in nodes]  # type: ignore
-        t_nodes = list(map(Node.get, node_names))
-        tasks = [t.get_api_response(results[k]) for k, t in zip(keys, t_nodes)]
+        nodes = [item.data for item in node_items]  # type: ignore
+        tasks = [node.get_api_response(results[k]) for k, node in zip(keys, nodes)]
         converted = await asyncio.gather(*tasks)
         return {k: v for k, v in zip(keys, converted)}
-
-    async def initialize(self, flow: Flow) -> None:
-        await super().initialize(flow)
-        self.flow = flow
 
     async def execute(self) -> Dict[str, Any]:
         return self.data

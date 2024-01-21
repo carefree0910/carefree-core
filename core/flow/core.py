@@ -206,10 +206,6 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
         Optional method that returns the schema of the node.
         Implement this method can help us auto-generate UIs, APIs and documents.
     @classmethod
-    async get_api_response(results: Dict[str, Any]) -> Any
-        Optional method that returns the API response of the node from its 'raw' results.
-        Implement this method to handle complex API responses (e.g. `PIL.Image`).
-    @classmethod
     async warmup() -> None
         Optional method that will be called:
         - only once.
@@ -217,6 +213,9 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
         Implement this method to do heavy initializations (e.g. loading AI models).
     async initialize(flow: Flow) -> None
         Optional method that will be called everytime before the execution.
+    async get_api_response(results: Dict[str, Any]) -> Any
+        Optional method that returns the API response of the node from its 'raw' results.
+        Implement this method to handle complex API responses (e.g. `PIL.Image`).
     async cleanup() -> None
         Optional method that will be called everytime after the execution.
 
@@ -235,10 +234,6 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
     @classmethod
     def get_schema(cls) -> Optional[Schema]:
         return None
-
-    @classmethod
-    async def get_api_response(cls, results: Dict[str, Any]) -> Any:
-        return results
 
     @classmethod
     def get_hooks(cls) -> List[Type[Hook]]:
@@ -261,6 +256,9 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
 
         for hook in self.get_hooks():
             await hook.initialize(_shared_pool)
+
+    async def get_api_response(self, results: Dict[str, Any]) -> Any:
+        return results
 
     async def cleanup(self) -> None:
         """Will be called everytime after the execution."""
