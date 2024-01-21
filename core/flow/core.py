@@ -277,7 +277,7 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
     # internal
 
     @classmethod
-    def register(cls, name: str) -> Callable[[TTNode], TTNode]:  # type: ignore
+    def register(cls, name: str, **kwargs: Any) -> Callable[[TTNode], TTNode]:  # type: ignore
         def before(cls_: TTNode) -> None:
             if name == WORKFLOW_ENDPOINT_NAME:
                 raise RuntimeError(
@@ -285,13 +285,13 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
                     f"when registering node '{cls_.__name__}'"
                 )
             cls_.__identifier__ = name
+            if custom_before is not None:
+                custom_before(cls_)
 
-        return register_core(  # type: ignore
-            name,
-            cls.d,
-            allow_duplicate=False,
-            before_register=before,
-        )
+        custom_before = kwargs.pop("before_register", None)
+        kwargs.setdefault("allow_duplicate", False)
+        kwargs["before_register"] = before
+        return register_core(name, cls.d, **kwargs)  # type: ignore
 
     @property
     def shared_pool(self) -> Dict[str, Any]:
