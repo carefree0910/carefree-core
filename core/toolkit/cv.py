@@ -38,8 +38,6 @@ def to_rgb(image: TImage, color: Tuple[int, int, int] = (255, 255, 255)) -> TIma
     split = image.split()
     if len(split) < 4:
         return image.convert("RGB")
-    if Image is None:
-        raise ValueError("`pillow` is needed for `to_rgb`")
     background = Image.new("RGB", image.size, color)
     background.paste(image, mask=split[3])
     return background
@@ -58,8 +56,6 @@ def to_alpha_channel(image: TImage) -> TImage:
 
 
 def np_to_bytes(img_arr: ndarray) -> bytes:
-    if Image is None:
-        raise ValueError("`pillow` is needed for `np_to_bytes`")
     if img_arr.dtype != np.uint8:
         img_arr = to_uint8(img_arr)
     bytes_io = BytesIO()
@@ -95,8 +91,6 @@ def read_image(
     normalize: bool = True,
     to_torch_fmt: bool = True,
 ) -> ReadImageResponse:
-    if Image is None:
-        raise ValueError("`pillow` is needed for `read_image`")
     if isinstance(image, str):
         image = Image.open(image)
     alpha = None
@@ -162,8 +156,6 @@ def to_base64(image: TImage) -> str:
 
 
 def from_base64(base64_string: str) -> TImage:
-    if Image is None:
-        raise ValueError("`pillow` is needed for `from_base64`")
     base64_string = base64_string.split("base64,")[1]
     return Image.open(BytesIO(base64.b64decode(base64_string)))
 
