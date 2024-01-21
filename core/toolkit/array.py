@@ -218,16 +218,16 @@ def to_device(
     device: torch.device,
     **kwargs: Any,
 ) -> tensor_dict_type:
-    return {
-        k: v.to(device, **kwargs)
-        if isinstance(v, torch.Tensor)
-        else [
-            vv.to(device, **kwargs) if isinstance(vv, torch.Tensor) else vv for vv in v
-        ]
-        if isinstance(v, list)
-        else v
-        for k, v in batch.items()
-    }
+    def to(v: Any) -> Any:
+        if isinstance(v, torch.Tensor):
+            return v.to(device, **kwargs)
+        if isinstance(v, dict):
+            return {vk: to(vv) for vk, vv in v.items()}
+        if isinstance(v, list):
+            return [to(vv) for vv in v]
+        return v
+
+    return {k: to(v) for k, v in batch.items()}
 
 
 def iou(logits: arr_type, labels: arr_type) -> arr_type:
