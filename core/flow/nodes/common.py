@@ -190,6 +190,11 @@ class GatherNode(Node):
                     f"for injections, but `{injection}` is found"
                 )
 
+    def copy(self) -> "GatherNode":
+        copied = super().copy()
+        copied.flow = self.flow
+        return copied
+
 
 # common nodes
 
