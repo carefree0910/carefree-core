@@ -55,8 +55,8 @@ class Inference(IInference):
         use_tqdm: bool = False,
         **kwargs: Any,
     ) -> InferenceOutputs:
-        def stack(arrays: TArrays, return_nones: bool, should_stack: bool) -> Any:
-            if not return_nones:
+        def stack(arrays: TArrays, return_arrays: bool, should_stack: bool) -> Any:
+            if not return_arrays:
                 return {k: None for k in arrays}
             if not should_stack:
                 return arrays
@@ -129,7 +129,7 @@ class Inference(IInference):
                 final_metric_outputs = None
             elif metrics.requires_all:
                 final_metric_outputs = metrics.evaluate(
-                    stack(all_metrics_requires, False, True),
+                    stack(all_metrics_requires, True, True),
                     stacked_np_outputs,
                     loader,
                 )
