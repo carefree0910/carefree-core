@@ -169,6 +169,11 @@ class Matrix2D(BaseModel):
     e: float
     f: float
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Matrix2D):
+            return False
+        return self.tuple == other.tuple
+
     def __matmul__(self, other: TMatMul) -> TMatMul:
         if isinstance(other, Point):
             return other.__rmatmul__(self)  # type: ignore

@@ -167,6 +167,11 @@ class ImageBox:
     r: int
     b: int
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ImageBox):
+            return False
+        return self.tuple == other.tuple
+
     @property
     def w(self) -> int:
         return self.r - self.l
