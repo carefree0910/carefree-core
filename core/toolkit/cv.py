@@ -256,8 +256,8 @@ class ImageBox:
         return ImageBox(l, t, r, b)
 
     @classmethod
-    def from_mask(cls, uint8_mask: ndarray, threshold: Optional[int]) -> "ImageBox":
-        ys, xs = np.where(uint8_mask > (threshold or 0))
+    def from_mask(cls, uint8_mask: ndarray, threshold: int = 0) -> "ImageBox":
+        ys, xs = np.where(uint8_mask > threshold)
         ys, xs = np.where(uint8_mask)
         if len(ys) == 0:
             return cls(0, 0, 0, 0)
