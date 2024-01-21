@@ -23,6 +23,11 @@ class TestData(unittest.TestCase):
             self.assertEqual(x_batch.shape, (batch_size, input_dim))
             self.assertEqual(y_batch.shape, (batch_size, output_dim))
 
+        with self.assertRaises(ValueError):
+            cflearn.ArrayData.init().fit(None).build_loaders()
+        with self.assertRaises(ValueError):
+            cflearn.ArrayData.init().fit(x, y[:-1]).build_loaders()
+
     def test_array_dict_data(self) -> None:
         input_dim = 11
         output_dim = 7
@@ -41,6 +46,13 @@ class TestData(unittest.TestCase):
             y_batch = batch["b"]
             self.assertEqual(x_batch.shape, (batch_size, input_dim))
             self.assertEqual(y_batch.shape, (batch_size, output_dim))
+
+        with self.assertRaises(ValueError):
+            cflearn.ArrayDictData.init().fit(x).build_loaders()
+        with self.assertRaises(ValueError):
+            cflearn.ArrayDictData.init().fit(dict(a=x, b=y[:-1])).build_loaders()
+        with self.assertRaises(ValueError):
+            cflearn.ArrayDictData.init().fit(d, x_valid=x).build_loaders()
 
 
 if __name__ == "__main__":

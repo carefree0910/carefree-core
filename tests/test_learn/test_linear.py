@@ -21,10 +21,11 @@ class TestLinear(unittest.TestCase):
         config = cflearn.Config(
             module_name="linear",
             module_config=dict(input_dim=x.shape[1], output_dim=y.shape[1], bias=False),
+            scheduler_name="warmup",
             loss_name="mse",
             num_steps=10**4,
         )
-        config.to_debug()  # comment this line to disable debug mode
+        config.to_debug().num_steps = 10  # comment this line to disable debug mode
         pipeline = cflearn.TrainingPipeline.init(config).fit(data)
 
         learned_w = pipeline.build_model.model.m.net.weight.view(-1).detach().numpy()
