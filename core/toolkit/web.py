@@ -18,6 +18,7 @@ from aiohttp import ClientSession
 from fastapi import Response
 from fastapi import HTTPException
 from pydantic import BaseModel
+from pydantic import ConfigDict
 
 from .misc import get_err_msg
 from .constants import WEB_ERR_CODE
@@ -29,10 +30,9 @@ TResponse = TypeVar("TResponse")
 class RuntimeError(BaseModel):
     detail: str
 
-    class Config:
-        json_schema_extra = {
-            "example": {"detail": "RuntimeError occurred."},
-        }
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"detail": "RuntimeError occurred."}}
+    )
 
 
 def get_ip() -> str:
