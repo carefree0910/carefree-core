@@ -1797,9 +1797,11 @@ class DLSettings:
 
 @dataclass
 class Config(TrainerConfig, DLSettings, ISerializableDataClass):
-    def to_debug(self) -> None:
+    def to_debug(self) -> "Config":
         self.num_steps = 1
+        self.log_steps = 1
         self.valid_portion = 1.0e-4
+        return self
 
     def sanity_check(self) -> None:
         if not self.module_name:
