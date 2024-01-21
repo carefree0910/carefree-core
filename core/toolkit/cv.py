@@ -114,7 +114,8 @@ def read_image(
         w, h = restrict_wh(original_w, original_h, max_wh)
     if anchor is not None:
         w, h = map(get_suitable_size, (w, h), (anchor, anchor))
-    image = image.resize((w, h), resample=resample)
+    if w != original_w or h != original_h:
+        image = image.resize((w, h), resample=resample)
     anchored = image
     anchored_size = w, h
     image = np.array(image)
