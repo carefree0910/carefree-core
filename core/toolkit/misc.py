@@ -869,18 +869,6 @@ class Incrementer:
                 self.running_square_sum -= previous**2
 
 
-class DownloadProgressBar(tqdm):
-    def update_to(
-        self,
-        b: int = 1,
-        bsize: int = 1,
-        tsize: Optional[int] = None,
-    ) -> None:
-        if tsize is not None:
-            self.total = tsize
-        self.update(b * bsize - self.n)
-
-
 class OPTBase(ABC):
     def __init__(self) -> None:
         self._opt = self.defaults

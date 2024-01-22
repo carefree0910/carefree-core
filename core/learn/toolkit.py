@@ -6,14 +6,12 @@ import torch
 import random
 import hashlib
 import argparse
-import urllib.request
 
 import numpy as np
 import torch.nn as nn
 import matplotlib.pyplot as plt
 
 from PIL import Image
-from enum import Enum
 from torch import device
 from torch import Tensor
 from typing import Any
@@ -29,7 +27,6 @@ from typing import Optional
 from typing import NamedTuple
 from typing import ContextManager
 from pathlib import Path
-from zipfile import ZipFile
 from collections import defaultdict
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -40,14 +37,12 @@ from safetensors.torch import load_file
 
 from .constants import INPUT_KEY
 from .constants import WORKSPACE_ENVIRON_KEY
-from ..parameters import OPT
 from ..toolkit import console
 from ..toolkit.misc import prod
 from ..toolkit.misc import check_requires
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.misc import truncate_string_to_length
 from ..toolkit.misc import DataClassBase
-from ..toolkit.misc import DownloadProgressBar
 from ..toolkit.array import to_torch
 from ..toolkit.array import is_string
 from ..toolkit.array import to_standard
@@ -313,291 +308,6 @@ def check_sha_with(path: Path, tgt_sha: str) -> bool:
     """
 
     return get_file_info(path).sha == tgt_sha
-
-
-class DownloadDtype(str, Enum):
-    CHECKPOINTS = "checkpoints"
-    REFERENCES = "references"
-    DATASETS = "datasets"
-    JSONS = "jsons"
-
-
-download_extensions = {
-    DownloadDtype.CHECKPOINTS: ".pt",
-    DownloadDtype.REFERENCES: ".pt",
-    DownloadDtype.DATASETS: ".zip",
-    DownloadDtype.JSONS: ".json",
-}
-
-
-def get_download_root(dtype: DownloadDtype) -> Path:
-    """
-    Get the root directory for downloads of a specific type.
-
-    Parameters
-    ----------
-    dtype : DownloadDtype
-        The type of download.
-
-    Returns
-    -------
-    Path
-        The root directory for downloads of the specified type.
-
-    Examples
-    --------
-    >>> get_download_root(DownloadDtype.CHECKPOINTS)
-
-    """
-
-    return OPT.learn_opt.cache_dir / dtype.value
-
-
-class DownloadPathInfo(NamedTuple):
-    """
-    Represents the information of a download path.
-
-    Attributes
-    ----------
-    info : FileInfo
-        The FileInfo object containing information about the file.
-    download_root : Path
-        The root directory for downloads.
-    download_path : Path
-        The path of the download.
-
-    """
-
-    info: FileInfo
-    download_root: Path
-    download_path: Path
-
-
-def get_download_path_info(
-    dtype: DownloadDtype,
-    tag: str,
-    download_root: Optional[TPath] = None,
-    *,
-    extension: Optional[str] = None,
-) -> DownloadPathInfo:
-    """
-    Get the download path information for a specific download.
-
-    Parameters
-    ----------
-    dtype : DownloadDtype
-        The type of download.
-    tag : str
-        The tag of the download.
-    download_root : Optional[TPath], optional
-        The root directory for downloads (default is None).
-    extension : Optional[str], optional
-        The file extension for the download (default is None).
-
-    Returns
-    -------
-    DownloadPathInfo
-        The download path information.
-
-    Raises
-    ------
-    ValueError
-        If the download is not available or if the extension is not defined.
-
-    Examples
-    --------
-    >>> get_download_path_info(DownloadDtype.CHECKPOINTS, "ldm.sd")
-    DownloadPathInfo(
-        info=FileInfo(
-            sha="dbb178bf92a5e57be6d82b2627189790577f4b85675e93281828d9fc35a263a2",
-            st_size=2134032457,
-            download_url="https://huggingface.co/carefree0910/carefree-learn/resolve/main/checkpoints_v0.4.x/ldm.sd.pt",
-        ),
-        download_root=Path("~/.cache/carefree-learn/checkpoints"),
-        download_path=Path("~/.cache/carefree-learn/checkpoints/ldm.sd.pt"),
-    )
-
-    """
-
-    info = check_available(dtype, tag)
-    if info is None:
-        raise ValueError(f"'{tag}' is currently not available at '{dtype}'")
-    if download_root is None:
-        download_root = get_download_root(dtype)
-    if isinstance(download_root, str):
-        download_root = Path(download_root)
-    download_root.mkdir(exist_ok=True, parents=True)
-    if extension is None:
-        extension = download_extensions.get(dtype)
-    if extension is None:
-        raise ValueError(f"extension is not defined for '{dtype}'")
-    file = f"{tag}{extension}"
-    download_path = download_root / file
-    return DownloadPathInfo(info, download_root, download_path)
-
-
-def download(
-    dtype: DownloadDtype,
-    tag: str,
-    download_root: Optional[TPath] = None,
-    *,
-    extension: Optional[str] = None,
-    check_sha: bool = False,
-    remove_zip: bool = True,
-) -> Path:
-    """
-    Download a file of a specific type and tag.
-
-    Parameters
-    ----------
-    dtype : DownloadDtype
-        The type of download.
-    tag : str
-        The tag of the file to download.
-    download_root : Optional[TPath]
-        The root directory for downloads. If None, the default root directory for the specified type is used.
-    extension : Optional[str]
-        The extension of the file to download. If None, the default extension for the specified type is used.
-    check_sha : bool
-        Whether to check the SHA256 hash of the downloaded file.
-    remove_zip : bool
-        Whether to remove the downloaded zip file after extraction.
-
-    Returns
-    -------
-    Path
-        The path of the downloaded file.
-
-    Examples
-    --------
-    >>> download(DownloadDtype.CHECKPOINTS, "ldm.sd")
-    Path('~/.cache/carefree-learn/checkpoints/ldm.sd.pt')
-
-    """
-
-    info, download_root, download_path = get_download_path_info(
-        dtype, tag, download_root, extension=extension
-    )
-    is_zip = extension == ".zip"
-    zip_download_folder = download_root / tag
-    if is_zip and zip_download_folder.is_dir():
-        return zip_download_folder
-    fmt = "cache file is detected but {}, it will be re-downloaded"
-    if not is_zip and download_path.is_file():
-        if get_file_size(download_path) != info.st_size:
-            console.warn(fmt.format("st_size is not correct"))
-        else:
-            if not check_sha or check_sha_with(download_path, info.sha):
-                return download_path
-            console.warn(fmt.format("sha is not correct"))
-    with DownloadProgressBar(unit="B", unit_scale=True, miniters=1, desc=tag) as t:
-        if info.download_url is not None:
-            url = info.download_url
-        else:
-            prefix = f"https://github.com/carefree0910/carefeee-learn-assets/releases/download/{dtype}/"
-            url = f"{prefix}{download_path.name}"
-        urllib.request.urlretrieve(
-            url,
-            filename=download_path,
-            reporthook=t.update_to,
-        )
-    if not is_zip:
-        return download_path
-    with ZipFile(download_path, "r") as zip_ref:
-        zip_ref.extractall(zip_download_folder)
-    if remove_zip:
-        os.remove(download_path)
-    return zip_download_folder
-
-
-def download_checkpoint(
-    tag: str,
-    download_root: Optional[TPath] = None,
-    *,
-    extension: Optional[str] = None,
-    check_sha: bool = False,
-    remove_zip: bool = True,
-) -> Path:
-    """
-    Download a checkpoint.
-
-    Parameters
-    ----------
-    tag : str
-        The tag of the checkpoint to download.
-    download_root : Optional[TPath]
-        The root directory for downloads. If None, the default root directory for checkpoints is used.
-    extension : Optional[str]
-        The extension of the checkpoint to download. If None, the default extension for checkpoints is used.
-    check_sha : bool
-        Whether to check the SHA256 hash of the downloaded checkpoint.
-    remove_zip : bool
-        Whether to remove the downloaded zip file after extraction.
-
-    Returns
-    -------
-    Path
-        The path of the downloaded checkpoint.
-
-    Examples
-    --------
-    >>> download_checkpoint("...")
-
-    """
-
-    return download(
-        DownloadDtype.CHECKPOINTS,
-        tag,
-        download_root,
-        extension=extension,
-        check_sha=check_sha,
-        remove_zip=remove_zip,
-    )
-
-
-def download_json(
-    tag: str,
-    download_root: Optional[TPath] = None,
-    *,
-    extension: Optional[str] = None,
-    check_sha: bool = False,
-    remove_zip: bool = True,
-) -> Path:
-    """
-    Download a json.
-
-    Parameters
-    ----------
-    tag : str
-        The tag of the json to download.
-    download_root : Optional[TPath]
-        The root directory for downloads. If None, the default root directory for jsons is used.
-    extension : Optional[str]
-        The extension of the json to download. If None, the default extension for jsons is used.
-    check_sha : bool
-        Whether to check the SHA256 hash of the downloaded json.
-    remove_zip : bool
-        Whether to remove the downloaded zip file after extraction.
-
-    Returns
-    -------
-    Path
-        The path of the downloaded json.
-
-    Examples
-    --------
-    >>> download_json("...")
-
-    """
-
-    return download(
-        DownloadDtype.JSONS,
-        tag,
-        download_root,
-        extension=extension,
-        check_sha=check_sha,
-        remove_zip=remove_zip,
-    )
 
 
 def show_or_save(
