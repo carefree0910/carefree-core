@@ -5,15 +5,15 @@ import torch.nn.functional as F
 
 from torch import Tensor
 from typing import Any
-from typing import Dict
 from typing import Callable
-from typing import Optional
 from functools import partial
 from torch.nn import Module
 
+from .common import merge_config
 from .common import TModule
 from .common import Lambda
 from .common import PrefixModules
+from ...toolkit.types import TConfig
 
 
 activations = PrefixModules("activation")
@@ -23,14 +23,10 @@ def register_activation(name: str, **kwargs: Any) -> Callable[[TModule], TModule
     return activations.register(name, **kwargs)
 
 
-def build_activation(
-    name: Optional[str],
-    config: Optional[Dict[str, Any]] = None,
-) -> Module:
+def build_activation(name: str, *, config: TConfig = None, **kwargs: Any) -> Module:
     if name is None:
         return nn.Identity()
-    if config is None:
-        config = {}
+    config = merge_config(config, **kwargs)
     if name.startswith("leaky_relu"):
         splits = name.split("_")
         if len(splits) == 3:
