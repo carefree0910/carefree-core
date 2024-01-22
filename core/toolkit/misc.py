@@ -91,7 +91,7 @@ def walk(
 def parse_config(config: TConfig) -> Dict[str, Any]:
     if config is None:
         return {}
-    if isinstance(config, str):
+    if isinstance(config, (str, Path)):
         with open(config, "r") as f:
             return json.load(f)
     return shallow_copy_dict(config)
@@ -386,11 +386,11 @@ def grouped_into(iterable: Iterable, n: int) -> List[tuple]:
     results: List[tuple] = []
     split_idx = num_elements + n - n * num_elem_per_group
     start = 0
-    for i in range(split_idx):
+    for _ in range(split_idx):
         end = start + num_elem_per_group
         results.append(tuple(elements[start:end]))
         start = end
-    for i in range(split_idx, n):
+    for _ in range(split_idx, n):
         end = start + num_elem_per_group - 1
         results.append(tuple(elements[start:end]))
         start = end
@@ -836,7 +836,7 @@ class Incrementer:
                 msg = f"window size should be integer, {type(window_size)} found"
                 raise ValueError(msg)
             if window_size < 2:
-                msg = f"window size should be greater than 2, {window_size} found"
+                msg = f"window size should be at least 2, {window_size} found"
                 raise ValueError(msg)
         self.previous: List[float] = []
         self.num_record = 0.0
