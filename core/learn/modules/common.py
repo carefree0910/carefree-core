@@ -35,9 +35,13 @@ def register_module(name: str, **kwargs: Any) -> Callable[[TModule], TModule]:
     return register_core(name, module_dict, **kwargs)  # type: ignore
 
 
-def build_module(name: str, *, config: TConfig = None, **kwargs: Any) -> Module:
+def merge_config(config: TConfig = None, **kwargs: Any) -> Dict[str, Any]:
     config = parse_config(config)
-    kwargs = update_dict(shallow_copy_dict(kwargs), config)
+    return update_dict(shallow_copy_dict(kwargs), config)
+
+
+def build_module(name: str, *, config: TConfig = None, **kwargs: Any) -> Module:
+    kwargs = merge_config(config, **kwargs)
     return safe_instantiate(module_dict[name], kwargs)
 
 
