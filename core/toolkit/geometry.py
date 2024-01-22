@@ -437,7 +437,7 @@ class Matrix2D(BaseModel):
 
     def rotate(self, theta: float, center: Optional[Point] = None) -> "Matrix2D":
         if math.isclose(theta, 0.0):
-            return self.copy()
+            return self.model_copy()
         return Matrix2D.rotation_matrix(theta, center) @ self
 
     def rotate_to(self, theta: float, center: Optional[Point] = None) -> "Matrix2D":
@@ -620,8 +620,10 @@ class HitTest:
 
 __all__ = [
     "PivotType",
+    "ExpandType",
     "Point",
     "Line",
+    "Box",
     "Matrix2D",
     "HitTest",
 ]

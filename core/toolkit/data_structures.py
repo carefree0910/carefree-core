@@ -243,6 +243,7 @@ class Pool(Generic[TPoolItem]):
         This method will create a new item manager and store it in the pool.
         > `kwargs` will be passed to the item manager's constructor.
         """
+
         if key in self.pool:
             if self.allow_duplicate:
                 return
