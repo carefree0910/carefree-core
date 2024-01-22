@@ -55,7 +55,7 @@ class GLU(Module):
         self.linear = nn.Linear(in_dim, 2 * in_dim, bias)
 
     def forward(self, net: Tensor) -> Tensor:
-        projection, gate = self.linear(net).chunk(2, dim=1)
+        projection, gate = self.linear(net).chunk(2, dim=-1)
         return projection * torch.sigmoid(gate)
 
 
