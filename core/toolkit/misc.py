@@ -441,21 +441,6 @@ def get_err_msg(err: Exception) -> str:
     return " | ".join(map(repr, sys.exc_info()[:2] + (str(err),)))
 
 
-def import_modules() -> None:
-    previous = inspect.stack()[1][0]
-    _globals = previous.f_globals
-    package = _globals["__package__"]
-    for path in Path(inspect.getfile(previous)).parent.glob("*.py"):
-        if path.stem == "__init__":
-            continue
-        module = importlib.import_module(f".{path.stem}", package)
-        if "__all__" in module.__dict__:
-            names = module.__dict__["__all__"]
-        else:
-            names = [x for x in module.__dict__ if not x.startswith("_")]
-        _globals.update({k: getattr(module, k) for k in names})
-
-
 async def retry(
     fn: Callable[[], Coroutine[None, None, TRetryResponse]],
     num_retry: Optional[int] = None,
