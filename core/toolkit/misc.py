@@ -671,7 +671,7 @@ class ISerializableArrays(
         pass
 
     @abstractmethod
-    def from_npd(self, npd: np_dict_type) -> None:
+    def from_npd(self, npd: np_dict_type) -> TSArrays:
         pass
 
     def copy(self: TSArrays) -> TSArrays:

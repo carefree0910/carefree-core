@@ -323,7 +323,7 @@ class DataBundle(DataClassBase):
             npd["__tensor_keys__"] = np.array(tensor_keys)
         return npd
 
-    def from_npd(self, npd: np_dict_type) -> None:
+    def from_npd(self, npd: np_dict_type) -> "DataBundle":
         attr_collections: Dict[str, Union[np_dict_type, td_type]] = {}
         tensor_keys = set(npd.pop("__tensor_keys__", np.array([])).tolist())
         for k, v in npd.items():
@@ -338,6 +338,7 @@ class DataBundle(DataClassBase):
                 attr_collections.setdefault(attr, {})[k] = v
         for attr, collection in attr_collections.items():
             setattr(self, attr, collection)
+        return self
 
     @classmethod
     def empty(cls) -> "DataBundle":
@@ -479,11 +480,12 @@ class IData(  # type: ignore
     def to_npd(self) -> np_dict_type:
         return {} if self.bundle is None else self.bundle.to_npd()
 
-    def from_npd(self, npd: np_dict_type) -> None:
+    def from_npd(self, npd: np_dict_type) -> TData:
         if npd:
             if self.bundle is None:
                 self.bundle = DataBundle.empty()
             self.bundle.from_npd(npd)
+        return self  # type: ignore
 
     def after_load(self) -> None:
         self.is_ready = True
