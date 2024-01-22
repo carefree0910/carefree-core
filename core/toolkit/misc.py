@@ -112,8 +112,10 @@ def check_requires(fn: Any, name: str, strict: bool = True) -> bool:
 
 
 def get_requirements(fn: Any) -> List[str]:
+    remove_first = False
     if isinstance(fn, type):
         fn = fn.__init__  # type: ignore
+        remove_first = True  # remove `self`
     requirements = []
     signature = inspect.signature(fn)
     for k, param in signature.parameters.items():
@@ -124,6 +126,8 @@ def get_requirements(fn: Any) -> List[str]:
         if param.default is not inspect.Parameter.empty:
             continue
         requirements.append(k)
+    if remove_first:
+        requirements = requirements[1:]
     return requirements
 
 
