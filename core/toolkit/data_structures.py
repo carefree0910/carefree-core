@@ -47,7 +47,7 @@ class Bundle(Generic[TItemData]):
             * get    : O(n)
             * push   : O(1)
             * remove : O(n)
-        * `queue` (both cases, so use no_mapping = False to save memory)
+        * `queue` (both cases, so use no_mapping = True to save memory)
             * get    : O(1)
             * push   : O(1)
             * remove : O(1)
