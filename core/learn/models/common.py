@@ -87,7 +87,7 @@ class EnsembleModel(CommonModel):
         return [self.m]
 
     def build(self, config: Config) -> None:
-        raise ValueError("`build` should not be called for `EnsembleModel`")
+        raise RuntimeError("`build` should not be called for `EnsembleModel`")
 
     def run(
         self,

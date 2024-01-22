@@ -86,6 +86,8 @@ class Lambda(Module):
 
 
 class EMA(Module):
+    num_updates: Tensor
+
     def __init__(
         self,
         decay: float,
@@ -111,7 +113,7 @@ class EMA(Module):
 
     def forward(self) -> None:
         if not self.training:
-            raise ValueError("should not update `EMA` at inference stage")
+            raise RuntimeError("should not update `EMA` at inference stage")
         if self.num_updates < 0:
             decay = self._decay
         else:
