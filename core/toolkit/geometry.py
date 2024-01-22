@@ -160,10 +160,10 @@ class ExpandType(str, Enum):
 
 @dataclass
 class Box:
-    left: Point
-    top: Point
-    right: Point
-    bottom: Point
+    left: float
+    top: float
+    right: float
+    bottom: float
 
 
 class Matrix2D(BaseModel):
@@ -347,10 +347,8 @@ class Matrix2D(BaseModel):
         corner_points = self.corner_points
         xs = np.array([point.x for point in corner_points])
         ys = np.array([point.y for point in corner_points])
-        left = corner_points[xs.argmin().item()]
-        right = corner_points[xs.argmax().item()]
-        top = corner_points[ys.argmin().item()]
-        bottom = corner_points[ys.argmax().item()]
+        left, right = xs.min().item(), xs.max().item()
+        top, bottom = ys.min().item(), ys.max().item()
         return Box(left, top, right, bottom)
 
     @property
@@ -358,10 +356,10 @@ class Matrix2D(BaseModel):
         box = self.outer_most
         return Matrix2D.from_properties(
             Matrix2DProperties(
-                x=box.left.x,
-                y=box.top.y,
-                w=box.right.x - box.left.x,
-                h=box.bottom.y - box.top.y,
+                x=box.left,
+                y=box.top,
+                w=box.right - box.left,
+                h=box.bottom - box.top,
             )
         )
 
@@ -583,10 +581,10 @@ class Matrix2D(BaseModel):
         if not bboxes:
             return cls.identical()
         boxes = [bbox.outer_most for bbox in bboxes]
-        lx = min(box.left.x for box in boxes)
-        rx = max(box.right.x for box in boxes)
-        ty = min(box.top.y for box in boxes)
-        by = max(box.bottom.y for box in boxes)
+        lx = min(box.left for box in boxes)
+        rx = max(box.right for box in boxes)
+        ty = min(box.top for box in boxes)
+        by = max(box.bottom for box in boxes)
         return Matrix2D.from_properties(
             Matrix2DProperties(x=lx, y=ty, w=rx - lx, h=by - ty)
         )
