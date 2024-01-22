@@ -1,5 +1,9 @@
+import json
+import tempfile
 import unittest
 
+from unittest import mock
+from dataclasses import field
 from core.toolkit.misc import *
 
 
@@ -7,9 +11,246 @@ test_dict = {}
 
 
 class TestMisc(unittest.TestCase):
+    def test_walk(self):
+        def reset():
+            nonlocal paths, hierarchies
+            paths = []
+            hierarchies = []
+
+        def callback(hierarchy, path):
+            paths.append(path)
+            hierarchies.append(hierarchy)
+
+        paths = []
+        hierarchies = []
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_dir = Path(tmp_dir)
+            (tmp_dir / "a.txt").touch()
+            (tmp_dir / "a.png").touch()
+            reset()
+            walk(str(tmp_dir), callback, {".txt"})
+            self.assertListEqual(paths, [str(tmp_dir / "a.txt")])
+            self.assertListEqual(hierarchies[0][-2:], [str(tmp_dir.stem), "a.txt"])
+            reset()
+            walk(str(tmp_dir), callback)
+            self.assertSetEqual(
+                set(paths), {str(tmp_dir / "a.txt"), str(tmp_dir / "a.png")}
+            )
+
+    def test_parse_config(self):
+        d = dict(a=0, b=1, c=2)
+        self.assertDictEqual(parse_config(None), {})
+        self.assertDictEqual(parse_config(d), d)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_dir = Path(tmp_dir)
+            config_path = tmp_dir / "config.json"
+            with open(config_path, "w") as f:
+                json.dump(d, f)
+            self.assertDictEqual(parse_config(config_path), d)
+            self.assertDictEqual(parse_config(str(config_path)), d)
+
+    def test_check_requires(self):
+        # test function
+        def fn_with_param(a, b, c):
+            pass
+
+        self.assertTrue(check_requires(fn_with_param, "a"))
+        self.assertTrue(check_requires(fn_with_param, "b"))
+        self.assertTrue(check_requires(fn_with_param, "c"))
+        self.assertFalse(check_requires(fn_with_param, "d"))
+
+        # test function with variable keyword arguments
+        def fn_with_kwargs(a, b, **kwargs):
+            pass
+
+        self.assertTrue(check_requires(fn_with_kwargs, "c", strict=False))
+        self.assertTrue(check_requires(fn_with_kwargs, "d", strict=False))
+        self.assertFalse(check_requires(fn_with_kwargs, "c"))
+        self.assertFalse(check_requires(fn_with_kwargs, "d"))
+
+        # test function with variable positional arguments
+        def fn_with_varargs(a, b, *args):
+            pass
+
+        self.assertFalse(check_requires(fn_with_varargs, "c"))
+        self.assertFalse(check_requires(fn_with_varargs, "args"))
+
+        # test class
+        class ClassWithParam:
+            def __init__(self, a, b):
+                pass
+
+        self.assertTrue(check_requires(ClassWithParam, "a"))
+        self.assertTrue(check_requires(ClassWithParam, "b"))
+        self.assertFalse(check_requires(ClassWithParam, "c"))
+
+    def test_get_requirements(self):
+        # test function with parameters
+        def fn_with_params(a, b, c):
+            pass
+
+        self.assertListEqual(get_requirements(fn_with_params), ["a", "b", "c"])
+
+        # test function without parameters
+        def fn_without_params():
+            pass
+
+        self.assertListEqual(get_requirements(fn_without_params), [])
+
+        # test function with variable keyword arguments
+        def fn_with_kwargs(a, b, **kwargs):
+            pass
+
+        self.assertListEqual(get_requirements(fn_with_kwargs), ["a", "b"])
+
+        # test function with default parameters
+        def fn_with_defaults(a, b, c=1):
+            pass
+
+        self.assertListEqual(get_requirements(fn_with_defaults), ["a", "b"])
+
+        # test function with variable positional arguments
+        def fn_with_varargs(a, b, *args):
+            pass
+
+        self.assertListEqual(get_requirements(fn_with_varargs), ["a", "b"])
+
+        # test class with parameters in __init__ method
+        class ClassWithParams:
+            def __init__(self, a, b):
+                pass
+
+        self.assertListEqual(get_requirements(ClassWithParams), ["a", "b"])
+
+        # test class without parameters in __init__ method
+        class ClassWithoutParams:
+            def __init__(self):
+                pass
+
+        self.assertListEqual(get_requirements(ClassWithoutParams), [])
+
+    def test_filter_kw(self):
+        def fn(a, b):
+            pass
+
+        self.assertDictEqual(filter_kw(fn, dict(a=1, b=2, c=3)), dict(a=1, b=2))
+
+    def test_safe_execute(self):
+        def fn(a, b):
+            pass
+
+        d = dict(a=1, b=2, c=3)
+        safe_execute(fn, d)
+        with self.assertRaises(TypeError):
+            fn(**d)
+
+    def test_safe_instantiate(self):
+        class Class:
+            def __init__(self, a, b) -> None:
+                pass
+
+        d = dict(a=1, b=2, c=3)
+        safe_instantiate(Class, d)
+        with self.assertRaises(TypeError):
+            Class(**d)
+
+    def test_get_num_positional_args(self):
+        # test function with positional only parameters
+        def fn_pos_only(a, b, /):
+            pass
+
+        self.assertEqual(get_num_positional_args(fn_pos_only), 2)
+
+        # test function with positional or keyword parameters
+        def fn_pos_or_kw(a, b):
+            pass
+
+        self.assertEqual(get_num_positional_args(fn_pos_or_kw), 2)
+
+        # test function with variable positional arguments
+        def fn_var_pos(*args):
+            pass
+
+        self.assertEqual(get_num_positional_args(fn_var_pos), math.inf)
+
+        # test function with both positional only and positional or keyword parameters
+        def fn_mixed(a, /, b):
+            pass
+
+        self.assertEqual(get_num_positional_args(fn_mixed), 2)
+
+        # test function with no parameters
+        def fn_no_params():
+            pass
+
+        self.assertEqual(get_num_positional_args(fn_no_params), 0)
+
+    def test_prepare_workspace_from(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # test when workspace directory exists with old directories
+            old_dir = os.path.join(
+                tmp_dir, (datetime.now() - timedelta(31)).strftime(TIME_FORMAT)
+            )
+            os.makedirs(old_dir)
+            new_workspace = prepare_workspace_from(tmp_dir)
+            self.assertFalse(os.path.exists(old_dir))
+            self.assertTrue(os.path.exists(new_workspace))
+
+            # test when workspace directory doesn't exist
+            non_existent_dir = os.path.join(tmp_dir, "non_existent")
+            new_workspace = prepare_workspace_from(non_existent_dir)
+            self.assertTrue(os.path.exists(new_workspace))
+
+            # test when make parameter is set to False
+            non_existent_dir = os.path.join(tmp_dir, "non_existent_2")
+            new_workspace = prepare_workspace_from(non_existent_dir, make=False)
+            self.assertFalse(os.path.exists(new_workspace))
+
+    def test_get_latest_workspace(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # test when root directory doesn't exist
+            non_existent_dir = os.path.join(tmp_dir, "non_existent")
+            self.assertIsNone(get_latest_workspace(non_existent_dir))
+
+            # test when root directory exists but doesn't contain any directories
+            self.assertIsNone(get_latest_workspace(tmp_dir))
+
+            # test when root directory contains directories with names that can be parsed as dates
+            date_dir_1 = os.path.join(
+                tmp_dir, (datetime.now() - timedelta(1)).strftime(TIME_FORMAT)
+            )
+            date_dir_2 = os.path.join(tmp_dir, datetime.now().strftime(TIME_FORMAT))
+            os.makedirs(date_dir_1)
+            os.makedirs(date_dir_2)
+            self.assertEqual(get_latest_workspace(tmp_dir), date_dir_2)
+
+            # test when root directory contains directories with names that cannot be parsed as dates
+            non_date_dir = os.path.join(tmp_dir, "non_date")
+            os.makedirs(non_date_dir)
+            self.assertEqual(get_latest_workspace(tmp_dir), date_dir_2)
+
+    def test_sort_dict_by_value(self) -> None:
+        d = {"a": 2.0, "b": 1.0, "c": 3.0}
+        self.assertSequenceEqual(list(sort_dict_by_value(d)), ["b", "a", "c"])
+
+    def test_parse_args(self):
+        space = Namespace(a=1, b=2, c=3)
+        self.assertEqual(parse_args(space), space)
+
+    def test_get_arguments(self) -> None:
+        def _1(a: int = 1, b: int = 2, c: int = 3) -> Dict[str, Any]:
+            return get_arguments()
+
+        class _2:
+            def __init__(self, a: int = 1, b: int = 2, c: int = 3):
+                self.kw = get_arguments()
+
+        self.assertDictEqual(_1(), dict(a=1, b=2, c=3))
+        self.assertDictEqual(_2().kw, dict(a=1, b=2, c=3))
+
     def test_timestamp(self):
         t1 = timestamp(simplify=True)
-        time.sleep(1)
+        time.sleep(0.1)
         t2 = timestamp(simplify=True)
         self.assertEqual(t1, t2)
         t1 = timestamp()
@@ -25,13 +266,20 @@ class TestMisc(unittest.TestCase):
         numbers = range(1, 6)
         self.assertEqual(prod(numbers), 120)
 
-    def test_hashcode(self):
+    def test_hash_code(self):
         random_str1, random_str2 = str(random.random()), str(random.random())
         hash11, hash21 = map(hash_code, [random_str1, random_str2])
         hash12, hash22 = map(hash_code, [random_str1, random_str2])
         self.assertEqual(hash11, hash12)
         self.assertEqual(hash21, hash22)
         self.assertNotEqual(hash11, hash22)
+
+    def test_hash_dict(self):
+        d0 = dict(a=1, b=2, c=3)
+        d1 = dict(c=3, b=2, a=1)
+        d2 = dict(a=1, b=2, c=4)
+        self.assertEqual(hash_dict(d0), hash_dict(d1))
+        self.assertNotEqual(hash_dict(d0), hash_dict(d2))
 
     def test_prefix_dict(self):
         prefix = "^_^"
@@ -105,6 +353,10 @@ class TestMisc(unittest.TestCase):
         self.assertEqual(grouped(lst, unit, keep_tail=True), gt)
         self.assertEqual(grouped(lst, unit), gt[:-1])
 
+    def test_grouped_into(self):
+        lst = [1, 2, 3, 4, 5, 6, 7, 8]
+        self.assertEqual(grouped_into(lst, 3), [(1, 2, 3), (4, 5, 6), (7, 8)])
+
     def test_is_numeric(self):
         self.assertEqual(is_numeric(0x1), True)
         self.assertEqual(is_numeric(1e0), True)
@@ -150,8 +402,100 @@ class TestMisc(unittest.TestCase):
         with self.assertRaises(AttributeError):
             _ = Foo2.after
 
+    def test_get_err_msg(self):
+        try:
+            raise RuntimeError("test")
+        except RuntimeError as err:
+            get_err_msg(err)
+
+    def test_offload(self):
+        async def sleep():
+            time.sleep(unit)
+
+        async def main():
+            t0 = time.time()
+            await asyncio.gather(*[sleep() for _ in range(num_tasks)])
+            t1 = time.time()
+            await asyncio.gather(*[offload(sleep()) for _ in range(num_tasks)])
+            t2 = time.time()
+            self.assertGreater(t1 - t0, unit * (num_tasks - 1))
+            self.assertLess(t2 - t1, unit * 0.5 * num_tasks)
+
+        unit = 0.01
+        num_tasks = 50
+        asyncio.run(main())
+
+    def test_data_class_base(self):
+        @dataclass
+        class Foo(DataClassBase):
+            bar: int = 0
+
+        foo = Foo()
+        foo2 = Foo(1)
+        self.assertListEqual(["bar"], [f.name for f in foo.fields])
+        self.assertListEqual(["bar"], foo.field_names)
+        self.assertListEqual([0], foo.attributes)
+        self.assertEqual(foo, foo.copy())
+        self.assertEqual(foo2, foo.update_with(foo2))
+
+        @dataclass
+        class FooPure:
+            bar: int = 0
+
+        @dataclass
+        class Bar(DataClassBase):
+            a: int = 0
+            b: dict = field(default_factory=lambda: {"c": 0})
+            d: list = field(default_factory=lambda: [0])
+            e: Foo = field(default_factory=Foo)
+            f: FooPure = field(default_factory=FooPure)
+
+            def copy(self) -> "Bar":
+                copied = super().copy()
+                copied.e = Foo(**copied.e)
+                copied.f = FooPure(**copied.f)
+                return copied
+
+        bar = Bar()
+        self.assertEqual(bar, bar.copy())
+
+    def test_with_register(self):
+        class Foo(WithRegister):
+            d = {}
+
+        @Foo.register("a")
+        class A(Foo):
+            pass
+
+        @Foo.register("b")
+        class B(Foo):
+            pass
+
+        self.assertIs(Foo.get("a"), A)
+        self.assertTrue(Foo.has("a"))
+        self.assertFalse(Foo.has("c"))
+        self.assertIsInstance(Foo.make("a", {}), A)
+        self.assertIsInstance(Foo.make("a", {}, ensure_safe=True), A)
+        self.assertIsInstance(Foo.make_multiple("a"), A)
+        made = Foo.make_multiple(["a", "b"])
+        self.assertIsInstance(made[0], A)
+        self.assertIsInstance(made[1], B)
+
+        @Foo.register("c")
+        class C:
+            pass
+
+        self.assertTrue(Foo.check_subclass("a"))
+        self.assertTrue(Foo.check_subclass("b"))
+        self.assertFalse(Foo.check_subclass("c"))
+
     def test_incrementer(self):
-        sequence = np.random.random(1000)
+        with self.assertRaises(ValueError):
+            Incrementer("3")
+        with self.assertRaises(ValueError):
+            Incrementer(1)
+        Incrementer(2)
+        sequence = np.random.random(100)
         incrementer = Incrementer()
         for i, n in enumerate(sequence):
             incrementer.update(n)
@@ -163,7 +507,7 @@ class TestMisc(unittest.TestCase):
                     [sub_sequence.mean(), sub_sequence.std()],
                 )
             )
-        window_sizes = [3, 10, 30, 100]
+        window_sizes = [3, 10, 30, 70]
         for window_size in window_sizes:
             incrementer = Incrementer(window_size)
             for i, n in enumerate(sequence):
@@ -180,20 +524,246 @@ class TestMisc(unittest.TestCase):
                     )
                 )
 
-    def test_sort_dict_by_value(self) -> None:
-        d = {"a": 2.0, "b": 1.0, "c": 3.0}
-        self.assertSequenceEqual(list(sort_dict_by_value(d)), ["b", "a", "c"])
 
-    def test_get_arguments(self) -> None:
-        def _1(a: int = 1, b: int = 2, c: int = 3) -> Dict[str, Any]:
-            return get_arguments()
+class TestRetry(unittest.TestCase):
+    def setUp(self):
+        self.counter = 0
 
-        class _2:
-            def __init__(self, a: int = 1, b: int = 2, c: int = 3):
-                self.kw = get_arguments()
+    async def async_fn(self):
+        self.counter += 1
+        if self.counter > 2:
+            return "success"
+        return "failure"
 
-        self.assertDictEqual(_1(), dict(a=1, b=2, c=3))
-        self.assertDictEqual(_2().kw, dict(a=1, b=2, c=3))
+    def health_check(self, response):
+        return response == "success"
+
+    def test_retry_success_after_retries(self):
+        self.counter = 0
+        result = asyncio.run(retry(self.async_fn, 3, health_check=self.health_check))
+        self.assertEqual(result, "success")
+        self.assertEqual(self.counter, 3)
+
+    def test_retry_never_succeeds(self):
+        self.counter = 0
+        with self.assertRaises(ValueError):
+            asyncio.run(retry(self.async_fn, 2, health_check=self.health_check))
+        self.assertEqual(self.counter, 2)
+
+    def test_retry_raises_exception(self):
+        async def async_fn_raises_exception():
+            raise Exception("test exception")
+
+        with self.assertRaises(Exception):
+            asyncio.run(retry(async_fn_raises_exception, num_retry=1))
+
+
+class TestCompress(unittest.TestCase):
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir)
+
+    def test_compress_remove_original(self):
+        test_dir = os.path.join(self.test_dir, "test_dir0")
+        os.makedirs(test_dir)
+
+        # create a file in the test directory
+        with open(os.path.join(test_dir, "test_file.txt"), "w") as f:
+            f.write("test")
+
+        # compress the test directory and remove the original
+        compress(test_dir, remove_original=True)
+
+        # check that the original directory has been removed
+        self.assertFalse(os.path.exists(test_dir))
+
+        # check that the zip file exists
+        self.assertTrue(os.path.exists(f"{test_dir}.zip"))
+
+    def test_compress_keep_original(self):
+        test_dir = os.path.join(self.test_dir, "test_dir1")
+        os.makedirs(test_dir)
+
+        # create a file in the test directory
+        with open(os.path.join(test_dir, "test_file.txt"), "w") as f:
+            f.write("test")
+
+        # compress the test directory and keep the original
+        compress(test_dir, remove_original=False)
+
+        # check that the original directory still exists
+        self.assertTrue(os.path.exists(test_dir))
+
+        # check that the zip file exists
+        self.assertTrue(os.path.exists(f"{test_dir}.zip"))
+
+
+class TestSerializations(unittest.TestCase):
+    def setUp(self):
+        @dataclass
+        class Foo(ISerializableDataClass["Foo"]):
+            key: str = ""
+
+        Foo.d = {}
+        Foo.register("foo")(Foo)
+        self.Foo = Foo
+
+        class FooArrays(PureFromInfoMixin, ISerializableArrays["FooArrays"]):
+            d = {}
+
+            def __init__(self, key: str = "") -> None:
+                self.key = key
+                self.array = np.random.randn(3, 5, 7)
+
+            def __eq__(self, other: "FooArrays") -> bool:
+                return self.key == other.key and np.allclose(self.array, other.array)
+
+            def to_info(self) -> Dict[str, Any]:
+                return dict(key=self.key)
+
+            def to_npd(self) -> np_dict_type:
+                return dict(array=self.array)
+
+            def from_npd(self, npd: np_dict_type) -> "FooArrays":
+                self.array = npd["array"]
+                return self
+
+        FooArrays.register("foo")(FooArrays)
+        self.FooArrays = FooArrays
+
+    def test_serializable(self):
+        f = self.Foo("test")
+        self.assertEqual(f.to_pack(), JsonPack("foo", dict(key="test")))
+        self.assertEqual(f, f.copy())
+        self.assertEqual(f, self.Foo.from_pack(f.to_pack().asdict()))
+        self.assertEqual(f, self.Foo.from_json(f.to_json()))
+
+        f = self.FooArrays("test")
+        self.assertEqual(f.to_pack(), JsonPack("foo", dict(key="test")))
+        self.assertEqual(f, f.copy())
+        self.assertEqual(
+            f, self.FooArrays.from_pack(f.to_pack().asdict()).from_npd(f.to_npd())
+        )
+        self.assertEqual(f, self.FooArrays.from_json(f.to_json()).from_npd(f.to_npd()))
+
+    def test_serializer(self):
+        f = self.Foo("test")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            Serializer.save_info(tmp_dir, serializable=f)
+            self.assertDictEqual(f.to_info(), Serializer.load_info(tmp_dir))
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            self.assertIsNone(Serializer.try_load_info(tmp_dir))
+            with self.assertRaises(ValueError):
+                Serializer.try_load_info(tmp_dir, strict=True)
+
+        f = self.FooArrays("test")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            Serializer.save_npd(tmp_dir, serializable=f)
+            np.testing.assert_allclose(f.array, Serializer.load_npd(tmp_dir)["array"])
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            Serializer.save(tmp_dir, f)
+            self.assertEqual(f, Serializer.load(tmp_dir, self.FooArrays))
+
+
+class TestOPTBase(unittest.TestCase):
+    class OPTBaseSubclass(OPTBase):
+        @property
+        def env_key(self) -> str:
+            return "TEST_ENV_KEY"
+
+        @property
+        def defaults(self) -> Dict[str, Any]:
+            return {"default_key": "default_value"}
+
+    def setUp(self):
+        self.opt_base = self.OPTBaseSubclass()
+
+    def test_init(self):
+        self.assertEqual(self.opt_base._opt, {"default_key": "default_value"})
+
+    def test_getattr(self):
+        self.assertEqual(self.opt_base.default_key, "default_value")
+
+    def test_update_from_env(self):
+        os.environ["TEST_ENV_KEY"] = json.dumps({"default_key": "updated_value"})
+        self.opt_base.update_from_env()
+        self.assertEqual(self.opt_base.default_key, "updated_value")
+        del os.environ["TEST_ENV_KEY"]
+
+    def test_opt_context(self):
+        with self.opt_base.opt_context({"default_key": "context_value"}):
+            self.assertEqual(self.opt_base.default_key, "context_value")
+        self.assertEqual(self.opt_base.default_key, "default_value")
+
+    def test_opt_env_context(self):
+        with self.opt_base.opt_env_context({"default_key": "env_context_value"}):
+            self.assertEqual(
+                json.loads(os.environ["TEST_ENV_KEY"])["default_key"],
+                "env_context_value",
+            )
+        self.assertNotIn("TEST_ENV_KEY", os.environ)
+
+
+class TestTimeit(unittest.TestCase):
+    def setUp(self):
+        self.message = "test"
+        self.precision = 6
+        self.timeit = timeit(self.message, precision=self.precision)
+
+    def test_init(self):
+        self.assertEqual(self.timeit.message, self.message)
+        self.assertEqual(self.timeit.p, self.precision)
+
+    def test_enter(self):
+        with mock.patch("time.time", return_value=1234567890.123456):
+            self.timeit.__enter__()
+            self.assertEqual(self.timeit.t, 1234567890.123456)
+
+    def test_exit(self):
+        with mock.patch("time.time", return_value=1234567890.123456):
+            self.timeit.__enter__()
+        with mock.patch("time.time", return_value=1234567891.123456):
+            with mock.patch("core.toolkit.misc.console.log") as mock_log:
+                self.timeit.__exit__(None, None, None)
+        mock_log.assert_called_once_with(
+            f"timing for {self.message:^16s} : {1.000000:6.4f}"
+        )
+
+
+class TestBatchManager(unittest.TestCase):
+    def setUp(self):
+        self.inputs = (np.arange(5), np.arange(5) + 1)
+        self.batch_manager = batch_manager(*self.inputs, batch_size=2)
+
+    def test_init(self):
+        self.assertEqual(self.batch_manager.num_samples, 5)
+        self.assertEqual(self.batch_manager.batch_size, 2)
+        self.assertEqual(self.batch_manager.num_epoch, 3)
+
+    def test_enter(self):
+        with self.batch_manager as manager:
+            self.assertIs(manager, self.batch_manager)
+
+    def test_iter(self):
+        iterator = iter(self.batch_manager)
+        self.assertEqual(iterator, self.batch_manager)
+        self.assertEqual(self.batch_manager.start, 0)
+        self.assertEqual(self.batch_manager.end, 2)
+
+    def test_next(self):
+        batches = list(self.batch_manager)
+        self.assertEqual(len(batches), 3)
+        np.testing.assert_allclose(batches[0][0], np.arange(2))
+        np.testing.assert_allclose(batches[0][1], np.arange(2) + 1)
+        np.testing.assert_allclose(batches[1][0], np.arange(2, 4))
+        np.testing.assert_allclose(batches[1][1], np.arange(2, 4) + 1)
+        np.testing.assert_allclose(batches[2][0], np.arange(4, 5))
+        np.testing.assert_allclose(batches[2][1], np.arange(4, 5) + 1)
+
+    def test_len(self):
+        self.assertEqual(len(self.batch_manager), 3)
 
 
 if __name__ == "__main__":
