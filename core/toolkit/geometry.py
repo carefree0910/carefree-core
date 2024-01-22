@@ -66,13 +66,10 @@ class Point:
     x: float
     y: float
 
-    @property
-    def tuple(self) -> Tuple[float, float]:
-        return self.x, self.y
-
-    @property
-    def theta(self) -> float:
-        return math.atan2(self.y, self.x)
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Point):
+            return False
+        return all(map(is_close, self.tuple, other.tuple))
 
     def __add__(self, other: "Point") -> "Point":
         return Point(self.x + other.x, self.y + other.y)
@@ -84,6 +81,14 @@ class Point:
         x, y = self.x, self.y
         a, b, c, d, e, f = other.tuple
         return Point(x=a * x + c * y + e, y=b * x + d * y + f)
+
+    @property
+    def tuple(self) -> Tuple[float, float]:
+        return self.x, self.y
+
+    @property
+    def theta(self) -> float:
+        return math.atan2(self.y, self.x)
 
     def rotate(self, theta: float) -> "Point":
         l = math.sqrt(self.x**2 + self.y**2)
@@ -172,7 +177,7 @@ class Matrix2D(BaseModel):
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Matrix2D):
             return False
-        return self.tuple == other.tuple
+        return all(map(is_close, self.tuple, other.tuple))
 
     def __matmul__(self, other: TMatMul) -> TMatMul:
         if isinstance(other, Point):

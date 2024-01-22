@@ -19,6 +19,7 @@ from PIL.Image import Image as TImage
 from .array import to_torch
 from .types import TArray
 from .types import arr_type
+from .geometry import is_close
 from .geometry import Matrix2D
 from .geometry import Matrix2DProperties
 
@@ -172,7 +173,7 @@ class ImageBox:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ImageBox):
             return False
-        return self.tuple == other.tuple
+        return all(map(is_close, self.tuple, other.tuple))
 
     @property
     def w(self) -> int:
