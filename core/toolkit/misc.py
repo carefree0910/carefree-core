@@ -234,22 +234,6 @@ def get_arguments(
     return arguments
 
 
-def _rmtree(folder: str, patience: float = 10.0) -> None:
-    if not os.path.isdir(folder):
-        return None
-    t = time.time()
-    while True:
-        try:
-            if time.time() - t >= patience:
-                console.warn(f"failed to rmtree: {folder}")
-                break
-            shutil.rmtree(folder)
-            break
-        except:
-            print("", end=".", flush=True)
-            time.sleep(1)
-
-
 def timestamp(simplify: bool = False, ensure_different: bool = False) -> str:
     """
     Return current timestamp.
