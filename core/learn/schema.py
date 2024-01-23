@@ -1310,18 +1310,6 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             model.load_state_dict(original_states)
             if not simplify:
                 return self.to(device)
-            if onnx is None:
-                console.warn(
-                    "`onnx` is not installed, "
-                    "so the exported onnx model will not be simplified"
-                )
-                return self.to(device)
-            if onnx_simplify is None or get_input_names is None:
-                console.warn(
-                    "`onnx-simplifier` is not installed, "
-                    "so the exported onnx model will not be simplified"
-                )
-                return self.to(device)
             try:
                 onnx_model = onnx.load(export_file)
                 final_input_names = get_input_names(onnx_model)
@@ -1441,14 +1429,6 @@ class TrainerState:
         if not self.enable_logging:
             return False
         denominator = min(self.num_step_per_epoch, 10)
-        return self.step % denominator == 0
-
-    @property
-    def should_log_losses(self) -> bool:
-        if not self.enable_logging:
-            return False
-        patience = max(4, int(round(self.num_step_per_epoch / 50.0)))
-        denominator = min(self.num_step_per_epoch, patience)
         return self.step % denominator == 0
 
     @property
