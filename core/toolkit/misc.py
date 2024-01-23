@@ -11,7 +11,6 @@ import decimal
 import inspect
 import hashlib
 import operator
-import importlib
 import unicodedata
 
 import numpy as np
@@ -257,7 +256,7 @@ def timestamp(simplify: bool = False, ensure_different: bool = False) -> str:
     if simplify:
         return now.strftime("%Y-%m-%d")
     if ensure_different:
-        return now.strftime("%Y-%m-%d_%H-%M-%S-%f")
+        return now.strftime(TIME_FORMAT)
     return now.strftime("%Y-%m-%d_%H-%M-%S")
 
 
