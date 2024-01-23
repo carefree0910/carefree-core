@@ -588,7 +588,7 @@ class SharedArray:
         shape: Union[List[int], Tuple[int, ...]],
         data: Optional[np.ndarray] = None,
     ):
-        name = random_hash()
+        name = random_hash()[:16]
         d_size = np.dtype(dtype).itemsize * np.prod(shape)
         self._shm = SharedMemory(create=True, size=int(round(d_size)), name=name)
         self.value = np.ndarray(shape=shape, dtype=dtype, buffer=self._shm.buf)
