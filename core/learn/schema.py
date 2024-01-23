@@ -288,9 +288,10 @@ class DataBundle(DataClassBase):
                 info[k] = v
         return info
 
-    def from_info(self, info: Dict[str, Any]) -> None:
+    def from_info(self, info: Dict[str, Any]) -> "DataBundle":
         for k, v in info.items():
             setattr(self, k, v)
+        return self
 
     def to_npd(self) -> np_dict_type:
         def _to_np(key: str, data: Union[np.ndarray, Tensor]) -> np.ndarray:
