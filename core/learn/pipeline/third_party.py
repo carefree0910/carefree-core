@@ -2,7 +2,6 @@ import numpy as np
 
 from abc import abstractmethod
 from abc import ABC
-from typing import Any
 
 from .schema import IEvaluationPipeline
 from .blocks import BuildMetricsBlock
@@ -18,14 +17,6 @@ class IPredictor(ABC):
     @abstractmethod
     def predict(self, x: np.ndarray) -> np.ndarray:
         pass
-
-
-class SKLearnClassifier(IPredictor):
-    def __init__(self, m: Any) -> None:
-        self.m = m
-
-    def predict(self, x: np.ndarray) -> np.ndarray:
-        return self.m.predict_log_proba(x)
 
 
 class GeneralEvaluationPipeline(IEvaluationPipeline):
@@ -48,6 +39,5 @@ class GeneralEvaluationPipeline(IEvaluationPipeline):
 
 __all__ = [
     "IPredictor",
-    "SKLearnClassifier",
     "GeneralEvaluationPipeline",
 ]
