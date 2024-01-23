@@ -435,7 +435,7 @@ class PipelineSerializer:
         export_file: str = "model.pt",
     ) -> InferencePipeline:
         m = cls.pack_and_load_inference(workspace)
-        model = torch.jit.script(m.build_model.model)
+        model = torch.jit.script(m.build_model.model.m)
         torch.jit.save(model, export_file)
         return m
 
