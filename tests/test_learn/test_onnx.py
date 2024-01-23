@@ -34,7 +34,7 @@ class TestONNX(unittest.TestCase):
         for k in model_outputs:
             mk_out = model_outputs[k]
             ok_out = onnx_outputs[k]
-            np.testing.assert_allclose(mk_out, ok_out, atol=1.0e-6, rtol=1.0e-5)
+            np.testing.assert_array_almost_equal(mk_out, ok_out)
 
 
 if __name__ == "__main__":
