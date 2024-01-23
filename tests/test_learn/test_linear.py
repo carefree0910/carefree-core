@@ -35,7 +35,7 @@ class TestLinear(unittest.TestCase):
         console.log(f"> loaded weights {loaded_w}")
 
     def test_linear_custom(self) -> None:
-        @cflearn.register_module("custom_linear")
+        @cflearn.register_module("custom_linear", allow_duplicate=True)
         class CustomLinear(nn.Module):
             def __init__(self):
                 super().__init__()
