@@ -392,7 +392,7 @@ class PipelineSerializer:
                 pack_type=PackType.INFERENCE,
                 compress=False,
             )
-            return cls.load_inference(tmp_folder)
+            return cls._load_inference(tmp_folder)
 
     @classmethod
     def pack_onnx(
@@ -442,12 +442,13 @@ class PipelineSerializer:
     @classmethod
     def fuse_inference(
         cls,
-        src_folders: List[str],
+        workspaces: List[str],
         *,
         device: device_type = None,
         num_picked: Optional[Union[int, float]] = None,
         states_callback: states_callback_type = None,
     ) -> InferencePipeline:
+        src_folders = [os.path.join(w, cls.pipeline_folder) for w in workspaces]
         return cls._fuse_multiple(
             src_folders,
             PackType.INFERENCE,
@@ -459,12 +460,13 @@ class PipelineSerializer:
     @classmethod
     def fuse_evaluation(
         cls,
-        src_folders: List[str],
+        workspaces: List[str],
         *,
         device: device_type = None,
         num_picked: Optional[Union[int, float]] = None,
         states_callback: states_callback_type = None,
     ) -> EvaluationPipeline:
+        src_folders = [os.path.join(w, cls.pipeline_folder) for w in workspaces]
         return cls._fuse_multiple(  # type: ignore
             src_folders,
             PackType.EVALUATION,
@@ -474,15 +476,18 @@ class PipelineSerializer:
         )
 
     @classmethod
-    def load_training(cls, folder: str) -> TrainingPipeline:
+    def load_training(cls, workspace: str) -> TrainingPipeline:
+        folder = os.path.join(workspace, cls.pipeline_folder)
         return cls._load(folder, swap_id=TrainingPipeline.__identifier__)  # type: ignore
 
     @classmethod
-    def load_inference(cls, folder: str) -> InferencePipeline:
+    def load_inference(cls, workspace: str) -> InferencePipeline:
+        folder = os.path.join(workspace, cls.pipeline_folder)
         return cls._load_inference(folder)
 
     @classmethod
-    def load_evaluation(cls, folder: str) -> EvaluationPipeline:
+    def load_evaluation(cls, workspace: str) -> EvaluationPipeline:
+        folder = os.path.join(workspace, cls.pipeline_folder)
         return cls._load_evaluation(folder)
 
     # internal

@@ -29,11 +29,7 @@ class TestLinear(unittest.TestCase):
         console.log(f"> learned weights {learned_w}")
         console.log(f"> ground truth weights {w.ravel()}")
 
-        pipeline_dir = os.path.join(
-            pipeline.config.workspace,
-            cflearn.PipelineSerializer.pipeline_folder,
-        )
-        loaded = cflearn.PipelineSerializer.load_evaluation(pipeline_dir)
+        loaded = cflearn.PipelineSerializer.load_evaluation(pipeline.config.workspace)
         loaded_w = loaded.build_model.model.m.net.weight.view(-1).detach().numpy()
         console.log(f"> loaded evaluation {loaded.evaluate(data.build_loaders()[0])}")
         console.log(f"> loaded weights {loaded_w}")
@@ -60,11 +56,7 @@ class TestLinear(unittest.TestCase):
         console.log(f"> learned weights {learned_w}")
         console.log(f"> ground truth weights {w.ravel()}")
 
-        pipeline_dir = os.path.join(
-            pipeline.config.workspace,
-            cflearn.PipelineSerializer.pipeline_folder,
-        )
-        loaded = cflearn.PipelineSerializer.load_evaluation(pipeline_dir)
+        loaded = cflearn.PipelineSerializer.load_evaluation(pipeline.config.workspace)
         loaded_w = loaded.build_model.model.m.net.weight.view(-1).detach().numpy()
         console.log(f"> loaded evaluation {loaded.evaluate(data.build_loaders()[0])}")
         console.log(f"> loaded weights {loaded_w}")

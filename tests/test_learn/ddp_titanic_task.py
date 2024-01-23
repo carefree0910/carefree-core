@@ -122,9 +122,7 @@ def main() -> None:
     test_loader = pipeline.data.build_loader(test_path)
     predictions = pipeline.predict(test_loader)[cflearn.PREDICTIONS_KEY]
 
-    workspace = pipeline.config.workspace
-    pipeline_dir = os.path.join(workspace, cflearn.PipelineSerializer.pipeline_folder)
-    loaded = cflearn.PipelineSerializer.load_inference(pipeline_dir)
+    loaded = cflearn.PipelineSerializer.load_inference(pipeline.config.workspace)
     loaded_loader = loaded.data.build_loader(test_path)
     loaded_predictions = loaded.predict(loaded_loader)[cflearn.PREDICTIONS_KEY]
     assert np.allclose(predictions, loaded_predictions)
