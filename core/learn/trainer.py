@@ -451,7 +451,10 @@ class Trainer(ITrainer):
         freeze_except = finetune_config.get("freeze_except", "")
         if not freeze and not freeze_except:
             return None
-        msg_fmt = f"-> {'{}'} parameters will be {'{}'} under '{'{}'}'"
+        if freeze and freeze_except:
+            msg = "`freeze` & `freeze_except` should not be provided simultaneously"
+            raise ValueError(msg)
+        msg_fmt = f"-> {'{}'} parameter(s) will be {'{}'} under '{'{}'}'"
         param_names = []
         if freeze:
             num_frozen = 0
@@ -470,9 +473,6 @@ class Trainer(ITrainer):
                     num_trainable += 1
                     param_names.append(name)
             msg = msg_fmt.format(num_trainable, "trainable", freeze_except)
-        else:
-            msg = "`freeze` & `freeze_except` should not be provided simultaneously"
-            raise ValueError(msg)
         console.log("\n".join(["=" * 100, msg, "-" * 100] + param_names + ["-" * 100]))
 
     def _get_metrics(self, loader: DataLoader, portion: float = 1.0) -> MetricsOutputs:

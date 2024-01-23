@@ -12,7 +12,7 @@ def linear_data(
     *,
     out_dim: int = 1,
     batch_size: int = 100,
-    use_validation: bool = True,
+    use_validation: bool = False,
     x_noise_scale: Optional[float] = None,
     y_noise_scale: Optional[float] = None,
 ) -> Tuple[ArrayData, int, int, np.ndarray]:

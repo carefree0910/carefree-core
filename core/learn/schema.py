@@ -1355,7 +1355,7 @@ class TrainerState:
         enable_logging: bool = True,
         min_num_sample: int = 3000,
         snapshot_start_step: Optional[int] = None,
-        max_snapshot_file: int = 5,
+        max_snapshot_file: int = 25,
         num_snapshot_per_epoch: int = 2,
         num_step_per_log: int = 350,
         num_step_per_snapshot: Optional[int] = None,
