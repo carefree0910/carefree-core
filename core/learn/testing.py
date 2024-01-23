@@ -12,6 +12,7 @@ def linear_data(
     *,
     out_dim: int = 1,
     batch_size: int = 100,
+    use_validation: bool = True,
     x_noise_scale: Optional[float] = None,
     y_noise_scale: Optional[float] = None,
 ) -> Tuple[ArrayData, int, int, np.ndarray]:
@@ -22,6 +23,9 @@ def linear_data(
         x += np.random.random(x.shape) * x_noise_scale
     if y_noise_scale is not None:
         y += np.random.random(y.shape) * y_noise_scale
-    data = ArrayData.init().fit(x, y)
+    if not use_validation:
+        data = ArrayData.init().fit(x, y)
+    else:
+        data = ArrayData.init().fit(x, y, x, y)
     data.config.batch_size = batch_size
     return data, dim, out_dim, w
