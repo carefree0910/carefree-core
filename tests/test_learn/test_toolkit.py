@@ -32,12 +32,6 @@ class TestToolkit(unittest.TestCase):
         with self.assertRaises(AssertionError):
             torch.testing.assert_close(a3, a4)
 
-    def test_check_is_ci(self) -> None:
-        is_ci_path = str(Path(__file__).parent / "is_ci_task.py")
-        subprocess.run(["python", str(is_ci_path), "--ci", "1"], check=True)
-        with self.assertRaises(subprocess.CalledProcessError):
-            subprocess.run(["python", str(is_ci_path)], check=True)
-
     def test_get_torch_device(self) -> None:
         cpu = torch.device("cpu")
         cuda1 = torch.device("cuda:1")
@@ -331,6 +325,20 @@ class TestToolkit(unittest.TestCase):
         self.assertFalse(m.training)
         self.assertFalse(m.weight.requires_grad)
         self.assertFalse(m.bias.requires_grad)
+
+
+class TestCheckIsCI(unittest.TestCase):
+    def test_check_is_ci_default(self) -> None:
+        with patch("sys.argv", ["test_check_is_ci_default"]):
+            self.assertFalse(check_is_ci())
+
+    def test_check_is_ci_zero(self) -> None:
+        with patch("sys.argv", ["test_check_is_ci_zero", "--ci", "0"]):
+            self.assertFalse(check_is_ci())
+
+    def test_check_is_ci_one(self) -> None:
+        with patch("sys.argv", ["test_check_is_ci_one", "--ci", "1"]):
+            self.assertTrue(check_is_ci())
 
 
 class TestInitializations(unittest.TestCase):
