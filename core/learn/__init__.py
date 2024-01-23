@@ -14,3 +14,5 @@ from .models import *
 from .monitors import *
 from .callbacks import *
 from .pipeline import *
+
+from . import testing

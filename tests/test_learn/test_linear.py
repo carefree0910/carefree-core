@@ -13,14 +13,10 @@ from core.toolkit import console
 
 class TestLinear(unittest.TestCase):
     def test_linear(self) -> None:
-        x = np.random.random([10000, 10])
-        w = np.random.random([10, 1])
-        y = x @ w
-        data = cflearn.ArrayData.init().fit(x, y)
-        data.config.batch_size = 100
+        data, in_dim, out_dim, w = cflearn.testing.linear_data()
         config = cflearn.Config(
             module_name="linear",
-            module_config=dict(input_dim=x.shape[1], output_dim=y.shape[1], bias=False),
+            module_config=dict(input_dim=in_dim, output_dim=out_dim, bias=False),
             scheduler_name="warmup",
             loss_name="mse",
             num_steps=10**4,
@@ -33,9 +29,9 @@ class TestLinear(unittest.TestCase):
         console.log(f"> learned weights {learned_w}")
         console.log(f"> ground truth weights {w.ravel()}")
 
-        workspace = pipeline.config.workspace
         pipeline_dir = os.path.join(
-            workspace, cflearn.PipelineSerializer.pipeline_folder
+            pipeline.config.workspace,
+            cflearn.PipelineSerializer.pipeline_folder,
         )
         loaded = cflearn.PipelineSerializer.load_evaluation(pipeline_dir)
         loaded_w = loaded.build_model.model.m.net.weight.view(-1).detach().numpy()
@@ -47,20 +43,14 @@ class TestLinear(unittest.TestCase):
         class CustomLinear(nn.Module):
             def __init__(self):
                 super().__init__()
-                self.net = nn.Linear(x.shape[1], y.shape[1], bias=False)
+                self.net = nn.Linear(in_dim, out_dim, bias=False)
                 self.net.weight.data = torch.from_numpy(w.T.astype(np.float32))
 
             def forward(self, net: torch.Tensor) -> torch.Tensor:
                 return self.net(net)
 
-        x = np.random.random([10000, 10])
-        w = np.random.random([10, 1])
-        y = x @ w
-        data = cflearn.ArrayData.init().fit(x, y)
-        data.config.batch_size = 100
-        config = cflearn.Config(
-            module_name="custom_linear", loss_name="mse", num_steps=10**4
-        )
+        data, in_dim, out_dim, w = cflearn.testing.linear_data()
+        config = cflearn.Config(module_name="custom_linear", loss_name="mse")
         config.lr = 0.0
         config.to_debug()
         pipeline = cflearn.TrainingPipeline.init(config).fit(data)
@@ -70,9 +60,9 @@ class TestLinear(unittest.TestCase):
         console.log(f"> learned weights {learned_w}")
         console.log(f"> ground truth weights {w.ravel()}")
 
-        workspace = pipeline.config.workspace
         pipeline_dir = os.path.join(
-            workspace, cflearn.PipelineSerializer.pipeline_folder
+            pipeline.config.workspace,
+            cflearn.PipelineSerializer.pipeline_folder,
         )
         loaded = cflearn.PipelineSerializer.load_evaluation(pipeline_dir)
         loaded_w = loaded.build_model.model.m.net.weight.view(-1).detach().numpy()

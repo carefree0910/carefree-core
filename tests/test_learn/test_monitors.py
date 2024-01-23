@@ -6,14 +6,10 @@ import core.learn as cflearn
 
 class TestMonitors(unittest.TestCase):
     def test_monitors(self):
-        x = np.random.random([6, 10])
-        w = np.random.random([10, 1])
-        y = x @ w
-        data = cflearn.ArrayData.init().fit(x, y)
-        data.config.batch_size = 4
+        data, in_dim, out_dim, _ = cflearn.testing.linear_data(6, batch_size=4)
         config = cflearn.Config(
             module_name="linear",
-            module_config=dict(input_dim=x.shape[1], output_dim=y.shape[1]),
+            module_config=dict(input_dim=in_dim, output_dim=out_dim),
             monitor_names=["basic", "mean_std", "plateau", "conservative", "lazy"],
             monitor_configs=dict(plateau=dict(window_size=2)),
             scheduler_name="warmup",

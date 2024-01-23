@@ -86,16 +86,12 @@ class TestModules(unittest.TestCase):
         top_k = 3
         num_experts = 7
         cflearn.register_module("moe")(cflearn.MoE)
-        x = np.random.random([10000, dim])
-        w = np.random.random([dim, 1])
-        y = x @ w
-        data = cflearn.ArrayData.init().fit(x, y)
-        data.config.batch_size = 100
+        data, _, out_dim, _ = cflearn.testing.linear_data(dim=dim)
         config = cflearn.Config(
             module_name="moe",
             module_config=dict(
                 expert_name="linear",
-                expert_config=dict(input_dim=dim, output_dim=y.shape[1], bias=False),
+                expert_config=dict(input_dim=dim, output_dim=out_dim, bias=False),
                 dim=dim,
                 top_k=top_k,
                 num_experts=num_experts,

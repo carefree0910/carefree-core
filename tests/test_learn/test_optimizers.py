@@ -6,15 +6,11 @@ import core.learn as cflearn
 
 class TestOptimizers(unittest.TestCase):
     def test_optimizers(self):
-        x = np.random.random([6, 10])
-        w = np.random.random([10, 1])
-        y = x @ w
-        data = cflearn.ArrayData.init().fit(x, y)
-        data.config.batch_size = 4
+        data, in_dim, out_dim, _ = cflearn.testing.linear_data(6, batch_size=4)
         for optimizer in ["sgd", "adam", "adamw", "rmsprop", "adamp"]:
             config = cflearn.Config(
                 module_name="linear",
-                module_config=dict(input_dim=x.shape[1], output_dim=y.shape[1]),
+                module_config=dict(input_dim=in_dim, output_dim=out_dim),
                 optimizer_name=optimizer,
                 loss_name="mse",
             )

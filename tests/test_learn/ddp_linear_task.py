@@ -1,17 +1,12 @@
-import numpy as np
 import core.learn as cflearn
 
 
 def main() -> None:
-    x = np.random.random([10000, 10])
-    w = np.random.random([10, 1])
-    y = x @ w
-    data = cflearn.ArrayData.init().fit(x, y)
-    data.config.batch_size = 100
+    data, in_dim, out_dim, _ = cflearn.testing.linear_data()
     config = cflearn.Config(
         workspace="_ddp",
         module_name="linear",
-        module_config=dict(input_dim=x.shape[1], output_dim=y.shape[1], bias=False),
+        module_config=dict(input_dim=in_dim, output_dim=out_dim, bias=False),
         loss_name="mse",
         num_steps=10**4,
     )
