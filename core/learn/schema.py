@@ -155,18 +155,6 @@ to be transformed.
 """
 
 
-def copy_data(data: data_type) -> data_type:
-    if data is None:
-        return None
-    if isinstance(data, dict):
-        return {k: copy_data(v) for k, v in data.items()}
-    if isinstance(data, np.ndarray):
-        return data.copy()
-    if isinstance(data, Tensor):
-        return data.clone()
-    return data
-
-
 def norm_sw(sample_weights: Optional[np.ndarray]) -> Optional[np.ndarray]:
     if sample_weights is None:
         return None
