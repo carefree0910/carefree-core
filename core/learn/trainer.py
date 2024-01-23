@@ -303,7 +303,8 @@ class Trainer(ITrainer):
                     step_tqdm = step_iterator = tqdm(
                         distributed_train_loader,
                         total=len(distributed_train_loader),
-                        position=self.tqdm_settings.position + 1,
+                        position=self.tqdm_settings.position
+                        + int(self.tqdm_settings.use_tqdm),
                         leave=False,
                     )
                 for i, batch in enumerate(step_iterator):
@@ -475,6 +476,15 @@ class Trainer(ITrainer):
         console.log("\n".join(["=" * 100, msg, "-" * 100] + param_names + ["-" * 100]))
 
     def _get_metrics(self, loader: DataLoader, portion: float = 1.0) -> MetricsOutputs:
+        if self.use_tqdm_in_validation:
+            loader = tqdm(
+                loader,
+                total=len(loader),
+                position=self.tqdm_settings.position
+                + int(self.tqdm_settings.use_tqdm)
+                + int(self.tqdm_settings.use_step_tqdm),
+                leave=False,
+            )
         return self.model.evaluate(
             self.config,
             self.metrics,

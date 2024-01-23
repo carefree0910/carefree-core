@@ -274,7 +274,10 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
             self._defaults["additional_callbacks"] = [default_callback]
             callback_names.insert(0, default_callback)
             verbose = False
-            if tqdm_settings is None or not tqdm_settings.get("use_tqdm", False):
+            if tqdm_settings is None or (
+                not tqdm_settings.get("use_tqdm", False)
+                and not tqdm_settings.get("use_step_tqdm", False)
+            ):
                 verbose = True
             log_metrics_msg_config = callback_configs.setdefault(default_callback, {})
             if "verbose" not in log_metrics_msg_config:
