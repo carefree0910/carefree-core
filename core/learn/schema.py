@@ -294,39 +294,35 @@ class DataBundle(DataClassBase):
         return self
 
     def to_npd(self) -> np_dict_type:
-        def _to_np(key: str, data: Union[np.ndarray, Tensor]) -> np.ndarray:
-            if isinstance(data, np.ndarray):
-                return data
-            tensor_keys.append(key)
-            return to_numpy(data)
+        def _to_npd(d: Dict[str, Any]) -> np_dict_type:
+            npd: np_dict_type = {}
+            tensor_keys: List[str] = []
+            for k, v in d.items():
+                if isinstance(v, dict):
+                    npd[k] = _to_npd(v)
+                elif isinstance(v, np.ndarray):
+                    npd[k] = v
+                elif isinstance(v, Tensor):
+                    tensor_keys.append(k)
+                    npd[k] = to_numpy(v)
+            if tensor_keys:
+                npd["__tensor_keys__"] = np.array(tensor_keys)
+            return npd
 
-        npd: np_dict_type = {}
-        tensor_keys: List[str] = []
-        for k, v in self.asdict().items():
-            if isinstance(v, dict):
-                v = {f"{k}.{vk}": vv for vk, vv in v.items()}
-                npd.update({vk: _to_np(vk, vv) for vk, vv in v.items()})
-            elif isinstance(v, (np.ndarray, Tensor)):
-                npd[k] = _to_np(k, v)
-        if tensor_keys:
-            npd["__tensor_keys__"] = np.array(tensor_keys)
-        return npd
+        return _to_npd(self.asdict())
 
     def from_npd(self, npd: np_dict_type) -> "DataBundle":
-        attr_collections: Dict[str, Union[np_dict_type, td_type]] = {}
-        tensor_keys = set(npd.pop("__tensor_keys__", np.array([])).tolist())
+        def _convert(d: np_dict_type) -> None:
+            tensor_keys = set(d.pop("__tensor_keys__", np.array([])).tolist())
+            for k, v in d.items():
+                if isinstance(v, dict):
+                    _convert(v)
+                elif k in tensor_keys:
+                    d[k] = to_torch(v)
+
+        _convert(npd)
         for k, v in npd.items():
-            attr = None
-            if "." in k:
-                attr, k = k.split(".", 1)
-            if k in tensor_keys:
-                v = to_torch(v)
-            if attr is None:
-                setattr(self, k, v)
-            else:
-                attr_collections.setdefault(attr, {})[k] = v
-        for attr, collection in attr_collections.items():
-            setattr(self, attr, collection)
+            setattr(self, k, v)
         return self
 
     @classmethod
