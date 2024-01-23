@@ -1798,7 +1798,7 @@ class DLSettings:
 
 
 @dataclass
-class Config(TrainerConfig, DLSettings, ISerializableDataClass):
+class Config(TrainerConfig, DLSettings, ISerializableDataClass["Config"]):
     def to_debug(self) -> "Config":
         self.num_steps = 1
         self.log_steps = 1
