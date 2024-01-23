@@ -32,8 +32,8 @@ class TestModules(unittest.TestCase):
             return torch.cat(moe_outputs)
 
         dim = 7
-        top_k = 11
-        num_experts = 17
+        top_k = 29
+        num_experts = 47
         output_dim = 23
         batch_size = 29
 
