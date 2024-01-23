@@ -258,7 +258,6 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
         if config.monitor_names is None:
             config.monitor_names = "basic"
             self._defaults["monitor_names"] = "basic"
-        module_name = config.module_name
         tqdm_settings = config.tqdm_settings
         callback_names = config.callback_names
         callback_configs = config.callback_configs
@@ -269,11 +268,6 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
         if isinstance(callback_names, str):
             callback_names = [callback_names]
         auto_callback = config.auto_callback
-        if "mlflow" in callback_names and auto_callback:
-            mlflow_config = callback_configs.setdefault("mlflow", {})
-            if "experiment_name" not in mlflow_config:
-                mlflow_config["experiment_name"] = module_name
-                self._defaults["mlflow_experiment_name"] = module_name
         default_callback = LogMetricsMsgCallback.__identifier__
         if default_callback not in callback_names and auto_callback:
             self._defaults["additional_callbacks"] = [default_callback]
