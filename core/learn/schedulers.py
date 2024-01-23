@@ -7,10 +7,11 @@ from typing import Any
 from typing import Dict
 from typing import List
 from typing import Type
+from typing import TypeVar
 from typing import Callable
 from typing import Optional
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import _LRScheduler
+from torch.optim.lr_scheduler import LRScheduler
 from torch.optim.lr_scheduler import StepLR
 from torch.optim.lr_scheduler import CyclicLR
 from torch.optim.lr_scheduler import LambdaLR
@@ -22,6 +23,9 @@ from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from .toolkit import scheduler_requires_metric
 
 
+TTScheduler = TypeVar("TTScheduler", bound=Type[LRScheduler])
+
+
 class ISchedulerOp:
     @abstractmethod
     def schedule(self, step: int, **kwargs: Any) -> float:
@@ -29,11 +33,11 @@ class ISchedulerOp:
 
 
 scheduler_ops: Dict[str, Type[ISchedulerOp]] = {}
-scheduler_dict: Dict[str, Type[_LRScheduler]] = {}
+scheduler_dict: Dict[str, Type[LRScheduler]] = {}
 
 
-def register_scheduler(name: str) -> Callable:
-    def _register(cls_: Type) -> Type:
+def register_scheduler(name: str) -> Callable[[TTScheduler], TTScheduler]:
+    def _register(cls_: TTScheduler) -> TTScheduler:
         global scheduler_dict
         scheduler_dict[name] = cls_
         return cls_
@@ -57,7 +61,7 @@ class LinearScheduler(LambdaLR):
 
 
 @register_scheduler("linear_inverse")
-class LinearInverseScheduler(_LRScheduler):
+class LinearInverseScheduler(LRScheduler):
     def __init__(self, optimizer: Optimizer, decay: float = 2.0e-5):
         self.decay = decay
         super().__init__(optimizer)
@@ -123,13 +127,13 @@ class ReduceLROnPlateauWithGet(ReduceLROnPlateau):
 
 
 @register_scheduler("warmup")
-class WarmupScheduler(_LRScheduler):
+class WarmupScheduler(LRScheduler):
     def __init__(
         self,
         optimizer: Optimizer,
         multiplier: float,
         warmup_step: int,
-        scheduler_afterwards_base: Type[_LRScheduler],
+        scheduler_afterwards_base: Type[LRScheduler],
         scheduler_afterwards_config: Optional[Dict[str, Any]] = None,
     ):
         self.multiplier = multiplier

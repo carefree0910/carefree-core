@@ -52,6 +52,7 @@ from ...optimizers import optimizer_dict
 from ...schedulers import scheduler_dict
 from ...schedulers import WarmupScheduler
 from ....toolkit import console
+from ....toolkit.misc import filter_kw
 from ....toolkit.misc import update_dict
 from ....toolkit.misc import shallow_copy_dict
 from ....toolkit.misc import sort_dict_by_value
@@ -186,7 +187,7 @@ class ExtractStateInfoBlock(TryLoadBlock):
 
 
 @Block.register("build_model")
-class BuildModelBlock(InjectDefaultsMixin, Block):
+class BuildModelBlock(Block):
     model: IModel
 
     def build(self, config: Config) -> None:
@@ -544,6 +545,7 @@ class BuildOptimizersBlock(InjectDefaultsMixin, Block):
                 scheduler_config["scheduler_afterwards_base"] = sab
                 scheduler_config["scheduler_afterwards_config"] = sac
             scheduler_base = scheduler_dict[scheduler]
+            scheduler_config = filter_kw(scheduler_base, scheduler_config)
             self.schedulers[pack.scope] = scheduler_base(optimizer, **scheduler_config)
 
 
@@ -743,7 +745,7 @@ class TrainingBlock(Block):
             profile_config.setdefault("with_stack", True)
             profile_config.setdefault("with_flops", True)
             profile_config.setdefault("with_modules", True)
-            with profile(use_cuda=True):
+            with profile():
                 console.debug("running dummy profiler warmup for CUPTI")
             with profile(**profile_config) as p:
                 fit(p)

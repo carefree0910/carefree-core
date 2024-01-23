@@ -243,7 +243,7 @@ class DataConfig(ISerializableDataClass):
     def inference_with(cls, batch_size: int) -> "DataConfig":
         return cls(for_inference=True, shuffle_train=False, batch_size=batch_size)
 
-    def add_blocks(self, *blocks: "IDataBlock") -> None:
+    def add_blocks(self, *blocks: Type["IDataBlock"]) -> None:
         if self.block_names is None:
             self.block_names = []
         for b in blocks:
@@ -253,7 +253,7 @@ class DataConfig(ISerializableDataClass):
                 continue
             self.block_names.append(b_id)
 
-    def set_blocks(self, *blocks: "IDataBlock") -> None:
+    def set_blocks(self, *blocks: Type["IDataBlock"]) -> None:
         self.block_names = []
         self.block_configs = {}
         self.add_blocks(*blocks)
@@ -1228,7 +1228,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         state: Optional["TrainerState"] = None,
         **kwargs: Any,
     ) -> tensor_dict_type:
-        forward_results = self.forward(batch_idx, batch, state, **kwargs)
+        forward_results = self(batch_idx, batch, state, **kwargs)
         outputs = self.postprocess(batch_idx, batch, forward_results, state, **kwargs)
         return outputs
 

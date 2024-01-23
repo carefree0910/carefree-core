@@ -149,7 +149,7 @@ class _InferenceMixin:
         **kwargs: Any,
     ) -> np_dict_type:
         if not self.is_built:
-            raise ValueError(
+            raise RuntimeError(
                 f"`{self.__class__.__name__}` should be built beforehand, please use "
                 "`DLPipelineSerializer.load_inference/evaluation` or `build_with` "
                 "to get a built one!"
@@ -187,7 +187,7 @@ class _InferenceMixin:
         if recover_labels:
             if self.data is None:
                 msg = "`recover_labels` is set to `True` but `data` is not provided"
-                raise ValueError(msg)
+                raise RuntimeError(msg)
             y = results[PREDICTIONS_KEY]
             results[PREDICTIONS_KEY] = self.data.recover_labels(y)
         # optional callback
@@ -248,6 +248,10 @@ class TrainingPipeline(Pipeline["TrainingPipeline"], _DeviceMixin, _EvaluationMi
             SerializeScriptBlock(),
             TrainingBlock(),
         ]
+
+    @property
+    def training(self) -> TrainingBlock:
+        return self.get_block(TrainingBlock)
 
     def after_load(self) -> None:
         self.is_built = True
