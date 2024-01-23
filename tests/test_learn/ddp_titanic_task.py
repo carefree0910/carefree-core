@@ -121,8 +121,6 @@ def main() -> None:
 
     test_loader = pipeline.data.build_loader(test_path)
     predictions = pipeline.predict(test_loader)[cflearn.PREDICTIONS_KEY]
-    class_predictions = pipeline.predict(test_loader, return_classes=True)
-    classes = class_predictions[cflearn.PREDICTIONS_KEY]
 
     workspace = pipeline.config.workspace
     pipeline_dir = os.path.join(workspace, cflearn.PipelineSerializer.pipeline_folder)
@@ -130,14 +128,6 @@ def main() -> None:
     loaded_loader = loaded.data.build_loader(test_path)
     loaded_predictions = loaded.predict(loaded_loader)[cflearn.PREDICTIONS_KEY]
     assert np.allclose(predictions, loaded_predictions)
-
-    with open(test_path, "r") as f:
-        f.readline()
-        id_list = [line.strip().split(",")[0] for line in f]
-    with open("submission.csv", "w") as f:
-        f.write("PassengerId,Survived\n")
-        for test_id, c in zip(id_list, classes.ravel().tolist()):
-            f.write(f"{test_id},{c}\n")
 
 
 if __name__ == "__main__":
