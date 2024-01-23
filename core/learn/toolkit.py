@@ -1,7 +1,6 @@
 import io
 import os
 import copy
-import json
 import torch
 import random
 import hashlib
@@ -202,41 +201,6 @@ class FileInfo(NamedTuple):
     download_url: Optional[str] = None
 
 
-def check_available(dtype: str, tag: str) -> Optional[FileInfo]:
-    """
-    Check if a specific data type and tag are available in the zoo.
-
-    Parameters
-    ----------
-    dtype : str (DownloadDtype)
-        The data type to check for, it should be the key of the dictionary in `available.json`.
-        > Specifically, it should actually be one of the values in `DownloadDtype`.
-    tag : str
-        The tag to check for, it should be the sub-key of the dictionary in `available.json`.
-
-    Returns
-    -------
-    Optional[FileInfo]
-        Returns a FileInfo object if the dtype and tag are available, otherwise returns None.
-
-    Examples
-    --------
-    >>> check_available("checkpoints", "ldm.sd")
-    FileInfo(
-        sha='dbb178bf92a5e57be6d82b2627189790577f4b85675e93281828d9fc35a263a2',
-        st_size=2134032457,
-        download_url='https://huggingface.co/carefree0910/carefree-learn/resolve/main/checkpoints_v0.4.x/ldm.sd.pt'
-    )
-
-    """
-
-    available_path = Path(__file__).parent / "zoo" / "available.json"
-    with available_path.open("r") as f:
-        available = json.load(f)
-    info = available[dtype].get(tag)
-    return None if info is None else FileInfo(**info)
-
-
 def get_file_size(path: Path) -> int:
     """
     Get the size of a file.
@@ -329,8 +293,6 @@ def show_or_save(
 
     """
 
-    if plt is None:
-        raise RuntimeError("`matplotlib` is needed for `show_or_save`")
     if export_path is None:
         fig.show(**kwargs) if fig is not None else plt.show(**kwargs)
     else:
@@ -351,8 +313,6 @@ def show_or_return(return_canvas: bool) -> Union[None, np.ndarray]:
 
     """
 
-    if plt is None:
-        raise RuntimeError("`matplotlib` is needed for `show_or_return`")
     if not return_canvas:
         plt.show()
         return None
@@ -492,8 +452,6 @@ class WeightsStrategy:
 
         """
 
-        if plt is None:
-            raise RuntimeError("`matplotlib` is needed for `visualize`")
         n = 1000
         x = np.linspace(0, 1, n)
         y = self(n)
@@ -2096,118 +2054,3 @@ class ONNX:
             for node in self.ort_session.get_inputs()
         }
         return dict(zip(self.output_names, self.ort_session.run(None, ort_inputs)))
-
-
-def gradient_checkpoint(
-    func: Callable,
-    inputs: Iterable[Tensor],
-    params: Iterable[Union[Tensor, nn.Parameter]],
-    enabled: bool,
-) -> Union[Tensor, Iterable[Tensor]]:
-    """
-    Apply gradient checkpointing to a function.
-
-    Gradient checkpointing is a technique to reduce the memory consumption of
-    backpropagation. Instead of storing all intermediate activations of the entire
-    computation graph for computing backward, the checkpointed part does not save
-    intermediate activations, and instead recomputes them in backward pass. It can be
-    applied on any part of a model.
-
-    Parameters
-    ----------
-    func : Callable
-        The function to apply gradient checkpointing to.
-    inputs : Iterable[Tensor]
-        The inputs to the function.
-    params : Iterable[Union[Tensor, nn.Parameter]]
-        The parameters of the function.
-    enabled : bool
-        Whether to enable gradient checkpointing.
-
-    Returns
-    -------
-    Union[Tensor, Iterable[Tensor]]
-        The result of the function.
-
-    Examples
-    --------
-    >>> def func(x, y):
-    ...     return [x * y]
-    >>> gradient_checkpoint(func, [torch.tensor(2.0), torch.tensor(3.0)], [], True)
-    [tensor(6.)]
-
-    """
-
-    if not enabled:
-        return func(*inputs)
-    inputs = tuple(inputs)
-    args = inputs + tuple(params)
-    return GradientCheckpointFunction.apply(func, len(inputs), *args)
-
-
-class GradientCheckpointFunction(torch.autograd.Function):
-    """
-    A torch.autograd.Function subclass for gradient checkpointing.
-
-    This class is used internally by the `gradient_checkpoint` function
-    and should not be used directly.
-
-    Examples
-    --------
-    >>> # This class is used internally and should not be used directly.
-
-    """
-
-    @staticmethod
-    def forward(ctx: Any, *args: Any, **kwargs: Any) -> Any:
-        run_function, length, *args = args  # type: ignore
-        ctx.run_function = run_function
-        ctx.input_tensors = list(args[:length])
-        ctx.input_params = list(args[length:])
-        ctx.grad_requires = [x.requires_grad for x in ctx.input_tensors]
-
-        with torch.no_grad():
-            output_tensors = ctx.run_function(*ctx.input_tensors)
-        return output_tensors
-
-    @staticmethod
-    def backward(ctx: Any, *grad_outputs: Any) -> Any:
-        input_tensors = [
-            x.detach().requires_grad_(r)
-            for x, r in zip(ctx.input_tensors, ctx.grad_requires)
-        ]
-        input_params = ctx.input_params
-        any_tensors_fp16 = any(x.dtype == torch.float16 for x in input_tensors)
-        any_params_fp16 = any(x.dtype == torch.float16 for x in input_params)
-        enable_autocast = any_tensors_fp16 or any_params_fp16
-        with torch.enable_grad(), torch.cuda.amp.autocast(enabled=enable_autocast):
-            shallow_copies = [x.view_as(x) for x in input_tensors]
-            output_tensors = ctx.run_function(*shallow_copies)
-        tensors_indices = [i for i, x in enumerate(input_tensors) if x.requires_grad]
-        params_indices = [i for i, x in enumerate(input_params) if x.requires_grad]
-        grad_tensors = [input_tensors[i] for i in tensors_indices]
-        grad_params = [input_params[i] for i in params_indices]
-        input_grads = torch.autograd.grad(
-            output_tensors,
-            grad_tensors + grad_params,
-            grad_outputs,
-            allow_unused=True,
-        )
-        n_grad_tensors = len(tensors_indices)
-        n_tensors = len(input_tensors)
-        n_params = len(input_params)
-        del ctx.input_tensors
-        del ctx.input_params
-        del input_tensors
-        del input_params
-        del grad_tensors
-        del grad_params
-        del grad_outputs
-        del shallow_copies
-        del output_tensors
-        output_grads = [None] * (n_tensors + n_params)
-        for i, idx in enumerate(tensors_indices):
-            output_grads[idx] = input_grads[i]
-        for i, idx in enumerate(params_indices):
-            output_grads[n_tensors + idx] = input_grads[n_grad_tensors + i]
-        return (None, None) + tuple(output_grads)
