@@ -598,9 +598,9 @@ class PipelineSerializer:
         # get empty pipeline
         with get_workspace(src_folders[0], force_new=True) as workspace:
             info = Serializer.load_info(workspace)
-            config = Config(**info["config"])
+            config = Config.from_pack(info["config"])
             config.num_repeat = num_repeat
-            info["config"] = config.asdict()
+            info["config"] = config.to_pack().asdict()
             Serializer.save_info(workspace, info=info)
             fn = (
                 cls._load_inference
