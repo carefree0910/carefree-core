@@ -333,7 +333,7 @@ class DataBundle(DataClassBase):
 class IDataBlock(  # type: ignore
     Generic[TDataBlock],
     PureFromInfoMixin,
-    IBlock[TDataBlock, DataConfig],
+    IBlock,
     ISerializable[TDataBlock],
     metaclass=ABCMeta,
 ):

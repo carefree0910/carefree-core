@@ -74,21 +74,21 @@ def check_requirement(block: "IBlock", previous: Mapping[str, "IBlock"]) -> None
             )
 
 
-class IBlock(Generic[TBlock, TConfig], WithRegister["IBlock"], metaclass=ABCMeta):
+class IBlock(WithRegister["IBlock"], metaclass=ABCMeta):
     d = pipeline_blocks
 
     """
     This property should be injected by the `IPipeline`.
     > In runtime (i.e. executing the `run` method), this property will represent ALL `IBlock`s used in the `IPipeline`.
     """
-    previous: Dict[str, TBlock]
+    previous: Dict[str, "IBlock"]
 
     @abstractmethod
-    def build(self, config: TConfig) -> None:
+    def build(self, config: Any) -> None:
         """This method can modify the `config` inplace, which will affect the following blocks"""
 
     @property
-    def requirements(self) -> List[Type[TBlock]]:
+    def requirements(self) -> List[Type["IBlock"]]:
         return []
 
     def try_get_previous(self, block: Union[str, Type[TBlock]]) -> Optional[TBlock]:
