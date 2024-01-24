@@ -206,8 +206,6 @@ class Trainer(ITrainer):
             device = get_torch_device(device)
             if device.type == "cpu":
                 cpu = True
-            else:
-                os.environ["CUDA_VISIBLE_DEVICES"] = str(device.index or 0)
         self.accelerator = Accelerator(
             cpu=cpu,
             split_batches=self.config.split_batches,
