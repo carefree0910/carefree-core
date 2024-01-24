@@ -249,18 +249,16 @@ class TestMisc(unittest.TestCase):
         self.assertDictEqual(_2().kw, dict(a=1, b=2, c=3))
 
     def test_timestamp(self):
-        t1 = timestamp(simplify=True)
+        t0 = timestamp(simplify=True)
+        t1 = timestamp()
         time.sleep(0.1)
         t2 = timestamp(simplify=True)
-        self.assertEqual(t1, t2)
-        t1 = timestamp()
-        time.sleep(1.2)
-        t2 = timestamp()
-        self.assertNotEqual(t1, t2)
+        t3 = timestamp()
+        self.assertEqual(t0, t2)
+        self.assertEqual(t1, t3)
+        t0 = timestamp(ensure_different=True)
         t1 = timestamp(ensure_different=True)
-        time.sleep(1e-6)
-        t2 = timestamp(ensure_different=True)
-        self.assertNotEqual(t1, t2)
+        self.assertNotEqual(t0, t1)
 
     def test_prod(self):
         numbers = range(1, 6)

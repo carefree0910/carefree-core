@@ -237,7 +237,7 @@ def get_arguments(
     return arguments
 
 
-def timestamp(simplify: bool = False, ensure_different: bool = False) -> str:
+def timestamp(*, simplify: bool = False, ensure_different: bool = False) -> str:
     """
     Return current timestamp.
 
@@ -254,10 +254,11 @@ def timestamp(simplify: bool = False, ensure_different: bool = False) -> str:
 
     now = datetime.now()
     if simplify:
-        return now.strftime("%Y-%m-%d")
+        return now.strftime(TIME_FORMAT[:8])
     if ensure_different:
+        time.sleep(1.0e-6)  # ensure different by sleep 1 tick
         return now.strftime(TIME_FORMAT)
-    return now.strftime("%Y-%m-%d_%H-%M-%S")
+    return now.strftime(TIME_FORMAT[:-3])
 
 
 def prod(iterable: Iterable) -> float:
