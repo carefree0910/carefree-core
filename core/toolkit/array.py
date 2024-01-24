@@ -591,6 +591,8 @@ class SharedArray:
     ):
         d_size = np.dtype(dtype).itemsize * np.prod(shape).item()
         self.name = name
+        self.dtype = dtype
+        self.shape = shape
         self._shm = SharedMemory(create=True, size=int(round(d_size)), name=name)
         self.value = np.ndarray(shape=shape, dtype=dtype, buffer=self._shm.buf)
         if data is not None:
