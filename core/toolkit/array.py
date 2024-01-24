@@ -589,7 +589,7 @@ class SharedArray:
         shape: Union[List[int], Tuple[int, ...]],
         data: Optional[np.ndarray] = None,
     ):
-        d_size = np.dtype(dtype).itemsize * np.prod(shape)
+        d_size = np.dtype(dtype).itemsize * np.prod(shape).item()
         self.name = name
         self._shm = SharedMemory(create=True, size=int(round(d_size)), name=name)
         self.value = np.ndarray(shape=shape, dtype=dtype, buffer=self._shm.buf)

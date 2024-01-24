@@ -169,7 +169,7 @@ class _InferenceMixin:
         else:
             predictions = results[PREDICTIONS_KEY]
             if predictions.shape[1] > 2 and return_classes:
-                results[PREDICTIONS_KEY] = predictions.argmax(1, keepdims=True)
+                results[PREDICTIONS_KEY] = predictions.argmax(1, keepdims=True)  # type: ignore
             else:
                 if predictions.shape[1] == 2:
                     probabilities = softmax(predictions)
