@@ -479,7 +479,7 @@ class Trainer(ITrainer):
         if self.use_tqdm_in_validation:
             loader = tqdm(
                 loader,
-                total=len(loader),
+                total=math.ceil(len(loader) * portion),
                 position=self.tqdm_settings.position
                 + int(self.tqdm_settings.use_tqdm)
                 + int(self.tqdm_settings.use_step_tqdm),
