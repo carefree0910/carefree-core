@@ -587,13 +587,20 @@ class SharedArray:
         name: str,
         dtype: Union[type, np.dtype],
         shape: Union[List[int], Tuple[int, ...]],
+        *,
+        create: bool = True,
         data: Optional[np.ndarray] = None,
     ):
-        d_size = np.dtype(dtype).itemsize * np.prod(shape).item()
         self.name = name
         self.dtype = dtype
         self.shape = shape
-        self._shm = SharedMemory(create=True, size=int(round(d_size)), name=name)
+        if create:
+            d_size = np.dtype(dtype).itemsize * np.prod(shape).item()
+            self._shm = SharedMemory(name, create=True, size=int(round(d_size)))
+        else:
+            if data is not None:
+                raise ValueError("`data` should not be provided when `create` is False")
+            self._shm = SharedMemory(name)
         self.value = np.ndarray(shape=shape, dtype=dtype, buffer=self._shm.buf)
         if data is not None:
             self.value[:] = data[:]
@@ -607,7 +614,7 @@ class SharedArray:
 
     @classmethod
     def from_data(cls, data: np.ndarray) -> "SharedArray":
-        return cls(random_hash()[:16], data.dtype, data.shape, data)
+        return cls(random_hash()[:16], data.dtype, data.shape, data=data)
 
 
 def to_labels(logits: np.ndarray, threshold: Optional[float] = None) -> np.ndarray:
