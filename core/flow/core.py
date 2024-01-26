@@ -296,11 +296,6 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
     def shared_pool(self) -> Dict[str, Any]:
         return _shared_pool
 
-    def copy(self: TNode) -> TNode:
-        copied = self.__class__()
-        copied.from_info(shallow_copy_dict(self.to_info()))
-        return copied
-
     def asdict(self) -> Dict[str, Any]:
         return dict(
             key=self.key,

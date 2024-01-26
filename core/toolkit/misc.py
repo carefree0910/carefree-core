@@ -535,11 +535,55 @@ class DataClassBase:
         return {k: _to_item(v) for k, v in zip(self.field_names, self.attributes)}
 
     def copy(self: TDataClass) -> TDataClass:
-        return self.__class__(**self.asdict())
+        return self.__class__.construct(self.asdict())
 
     def update_with(self: TDataClass, other: TDataClass) -> TDataClass:
         d = update_dict(other.asdict(), self.asdict())
-        return self.__class__(**d)
+        updated = self.__class__.construct(d)
+        for field_name in self.field_names:
+            setattr(self, field_name, getattr(updated, field_name))
+        return self
+
+    @classmethod
+    def construct(cls: Type[TDataClass], d: Dict[str, Any]) -> TDataClass:
+        def _construct(t: Type, d: Dict[str, Any]) -> Any:
+            instance = t(**d)
+            if not is_dataclass(instance):
+                return instance
+            for field in fields(instance):
+                if is_dataclass(field.type):
+                    setattr(
+                        instance,
+                        field.name,
+                        _construct(field.type, getattr(instance, field.name)),
+                    )
+                    continue
+                t_origin = getattr(field.type, "__origin__", None)
+                if t_origin is None:
+                    continue
+                if t_origin is list and hasattr(field.type, "__args__"):
+                    setattr(
+                        instance,
+                        field.name,
+                        [
+                            _construct(field.type.__args__[0], item)
+                            for item in getattr(instance, field.name)
+                        ],
+                    )
+                    continue
+                if t_origin is dict and hasattr(field.type, "__args__"):
+                    setattr(
+                        instance,
+                        field.name,
+                        {
+                            k: _construct(field.type.__args__[1], v)
+                            for k, v in getattr(instance, field.name).items()
+                        },
+                    )
+                    continue
+            return instance
+
+        return _construct(cls, d)
 
 
 class WithRegister(Generic[TRegister]):
@@ -687,12 +731,15 @@ class ISerializableArrays(
 
 class ISerializableDataClass(  # type: ignore
     Generic[TSDataClass],
-    PureFromInfoMixin,
-    ISerializable[TSDataClass],
     DataClassBase,
+    ISerializable[TSDataClass],
 ):
     def to_info(self) -> Dict[str, Any]:
         return self.asdict()
+
+    def from_info(self, info: Dict[str, Any]) -> None:
+        new = self.__class__.construct(info)
+        self.update_with(new)
 
 
 class Serializer:

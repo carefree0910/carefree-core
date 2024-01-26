@@ -434,7 +434,8 @@ class TestMisc(unittest.TestCase):
         self.assertListEqual(["bar"], foo.field_names)
         self.assertListEqual([0], foo.attributes)
         self.assertEqual(foo, foo.copy())
-        self.assertEqual(foo2, foo.update_with(foo2))
+        foo.update_with(foo2)
+        self.assertEqual(foo2, foo)
 
         @dataclass
         class FooPure:
@@ -447,12 +448,8 @@ class TestMisc(unittest.TestCase):
             d: list = field(default_factory=lambda: [0])
             e: Foo = field(default_factory=Foo)
             f: FooPure = field(default_factory=FooPure)
-
-            def copy(self) -> "Bar":
-                copied = super().copy()
-                copied.e = Foo(**copied.e)
-                copied.f = FooPure(**copied.f)
-                return copied
+            g: List[FooPure] = field(default_factory=lambda: [FooPure()])
+            h: Dict[str, FooPure] = field(default_factory=lambda: {"i": FooPure()})
 
         bar = Bar()
         self.assertEqual(bar, bar.copy())
