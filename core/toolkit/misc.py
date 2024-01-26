@@ -564,14 +564,16 @@ class DataClassBase:
                 if t_origin is None:
                     continue
                 if t_origin is list and hasattr(field.type, "__args__"):
-                    setattr(
-                        instance,
-                        field.name,
-                        [
-                            _construct(field.type.__args__[0], item)
-                            for item in getattr(instance, field.name)
-                        ],
-                    )
+                    t_value = field.type.__args__[0]
+                    if is_dataclass(t_value):
+                        setattr(
+                            instance,
+                            field.name,
+                            [
+                                _construct(t_value, item)
+                                for item in getattr(instance, field.name)
+                            ],
+                        )
                     continue
                 if t_origin is dict and hasattr(field.type, "__args__"):
                     t_value = field.type.__args__[1]
