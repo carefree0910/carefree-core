@@ -138,9 +138,11 @@ class IPipeline(
     def to_info(self) -> Dict[str, Any]:
         return dict(
             blocks=[
-                b.to_pack().asdict()  # type: ignore
-                if isinstance(b, ISerializable)
-                else b.__identifier__
+                (
+                    b.to_pack().asdict()  # type: ignore
+                    if isinstance(b, ISerializable)
+                    else b.__identifier__
+                )
                 for b in self.blocks
             ],
             config=self.config.to_pack().asdict(),

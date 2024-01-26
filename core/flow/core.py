@@ -556,9 +556,11 @@ class Flow(Bundle[Node]):
                         base_node=node.__identifier__,
                         base_data=shallow_copy_dict(node.data),
                         loop_values=dict(loop_idx=list(range(n))),
-                        loop_back_injections=None
-                        if loop_back_injections is None
-                        else list(map(asdict, loop_back_injections)),
+                        loop_back_injections=(
+                            None
+                            if loop_back_injections is None
+                            else list(map(asdict, loop_back_injections))
+                        ),
                         extract_hierarchy=extract_hierarchy,
                         verbose=verbose,
                     ),

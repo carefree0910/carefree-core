@@ -164,9 +164,11 @@ class Inference(IInference):
                 stacked_np_outputs,
                 stacked_labels,
                 final_metric_outputs,
-                None
-                if not use_losses_as_metrics
-                else {k: sum(v) / len(v) for k, v in loss_items.items()},
+                (
+                    None
+                    if not use_losses_as_metrics
+                    else {k: sum(v) / len(v) for k, v in loss_items.items()}
+                ),
             )
 
         use_grad = kwargs.pop("use_grad", self.use_grad_in_predict)

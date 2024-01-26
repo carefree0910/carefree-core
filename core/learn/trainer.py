@@ -102,9 +102,11 @@ class Trainer(ITrainer):
             "metrics": (
                 None
                 if self.metrics is None
-                else self.metrics.__identifier__
-                if not isinstance(self.metrics, MultipleMetrics)
-                else [metric.__identifier__ for metric in self.metrics.metrics]
+                else (
+                    self.metrics.__identifier__
+                    if not isinstance(self.metrics, MultipleMetrics)
+                    else [metric.__identifier__ for metric in self.metrics.metrics]
+                )
             ),
             "loss_metrics_weights": self.config.loss_metrics_weights,
             "monitors": [monitor.__identifier__ for monitor in self.monitors],
