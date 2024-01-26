@@ -170,6 +170,8 @@ class Inference(IInference):
         use_grad = kwargs.pop("use_grad", self.use_grad_in_predict)
         try:
             return run()
+        except KeyboardInterrupt:
+            raise
         except:
             use_grad = self.use_grad_in_predict = True
             return run()
