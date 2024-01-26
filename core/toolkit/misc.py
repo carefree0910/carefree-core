@@ -498,6 +498,7 @@ TTRegister = TypeVar("TTRegister", bound=Type["WithRegister"])
 T_s = TypeVar("T_s", bound="ISerializable", covariant=True)
 T_sd = TypeVar("T_sd", bound="ISerializableDataClass", covariant=True)
 TSerializable = TypeVar("TSerializable", bound="ISerializable", covariant=True)
+T_sa = TypeVar("T_sa", bound="ISerializableArrays", covariant=True)
 TSArrays = TypeVar("TSArrays", bound="ISerializableArrays", covariant=True)
 TSDataClass = TypeVar("TSDataClass", bound="ISerializableDataClass", covariant=True)
 TDataClass = TypeVar("TDataClass", bound="DataClassBase")
@@ -715,11 +716,11 @@ class ISerializableArrays(
         pass
 
     @abstractmethod
-    def from_npd(self, npd: np_dict_type) -> TSArrays:
+    def from_npd(self: T_sa, npd: np_dict_type) -> T_sa:
         pass
 
-    def copy(self: TSArrays) -> TSArrays:
-        copied: TSArrays = super().copy()
+    def copy(self: T_sa) -> T_sa:
+        copied = super().copy()
         copied.from_npd(shallow_copy_dict(self.to_npd()))
         return copied
 

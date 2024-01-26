@@ -472,12 +472,12 @@ class IData(  # type: ignore
     def to_npd(self) -> np_dict_type:
         return {} if self.bundle is None else self.bundle.to_npd()
 
-    def from_npd(self, npd: np_dict_type) -> TData:
+    def from_npd(self: T_d, npd: np_dict_type) -> T_d:
         if npd:
             if self.bundle is None:
                 self.bundle = DataBundle.empty()
             self.bundle.from_npd(npd)
-        return self  # type: ignore
+        return self
 
     def after_load(self) -> None:
         self.is_ready = True
