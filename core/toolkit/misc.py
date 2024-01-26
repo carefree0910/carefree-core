@@ -705,12 +705,6 @@ class ISerializable(
         return copied
 
 
-class PureFromInfoMixin:
-    def from_info(self, info: Dict[str, Any]) -> None:
-        for k, v in info.items():
-            setattr(self, k, v)
-
-
 class ISerializableArrays(
     Generic[TSArrays],
     ISerializable[TSArrays],

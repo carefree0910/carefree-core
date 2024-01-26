@@ -56,7 +56,6 @@ from .constants import PREDICTIONS_KEY
 from ..toolkit import console
 from ..toolkit.misc import safe_execute
 from ..toolkit.misc import shallow_copy_dict
-from ..toolkit.misc import PureFromInfoMixin
 from ..toolkit.misc import WithRegister
 from ..toolkit.misc import DataClassBase
 from ..toolkit.misc import ISerializable
@@ -88,6 +87,7 @@ TDataset = TypeVar("TDataset", bound="IDataset", covariant=True)
 TSplitSW = Tuple[Optional[np.ndarray], Optional[np.ndarray]]
 TDatasets = Tuple["IDataset", Optional["IDataset"]]
 TDataLoaders = Tuple["DataLoader", Optional["DataLoader"]]
+T_db = TypeVar("T_db", bound="IDataBlock", covariant=True)
 TDataBlock = TypeVar("TDataBlock", bound="IDataBlock", covariant=True)
 
 
@@ -334,7 +334,6 @@ class DataBundle(DataClassBase):
 
 class IDataBlock(  # type: ignore
     Generic[TDataBlock],
-    PureFromInfoMixin,
     IBlock,
     ISerializable[TDataBlock],
     metaclass=ABCMeta,
@@ -356,6 +355,11 @@ class IDataBlock(  # type: ignore
 
     def build(self, config: DataConfig) -> None:
         self.config = config
+
+    def from_info(self: T_db, info: Dict[str, Any]) -> T_db:
+        for k, v in info.items():
+            setattr(self, k, v)
+        return self
 
     # abstract
 

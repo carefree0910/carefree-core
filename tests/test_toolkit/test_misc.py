@@ -2,6 +2,8 @@ import json
 import tempfile
 import unittest
 
+from typing import Any
+from typing import Dict
 from unittest import mock
 from dataclasses import field
 from core.toolkit.misc import *
@@ -605,7 +607,7 @@ class TestSerializations(unittest.TestCase):
         Foo.register("foo")(Foo)
         self.Foo = Foo
 
-        class FooArrays(PureFromInfoMixin, ISerializableArrays["FooArrays"]):
+        class FooArrays(ISerializableArrays["FooArrays"]):
             d = {}
 
             def __init__(self, key: str = "") -> None:
@@ -617,6 +619,10 @@ class TestSerializations(unittest.TestCase):
 
             def to_info(self) -> Dict[str, Any]:
                 return dict(key=self.key)
+
+            def from_info(self: "FooArrays", info: Dict[str, Any]) -> "FooArrays":
+                self.key = info["key"]
+                return self
 
             def to_npd(self) -> np_dict_type:
                 return dict(array=self.array)
