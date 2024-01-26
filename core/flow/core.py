@@ -315,7 +315,6 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
 
     def from_info(self, info: Dict[str, Any]) -> "Node":
         super().from_info(info)
-        self.injections = [Injection(**d) for d in self.injections]  # type: ignore
         if self.key is None:
             raise ValueError("node key cannot be None")
         if "." in self.key:
