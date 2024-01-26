@@ -24,6 +24,7 @@ class Block(IBlock):
     * training_workspace: only available in `TrainingPipeline`, identical to `config.workspace`.
     * serialize_folder: only available in `load` process.
     * previous: previous building blocks in `build` process. Will be ALL building blocks in `run` process.
+    * pipeline: the `Pipeline` that this block belongs to.
 
     """
 
@@ -31,6 +32,7 @@ class Block(IBlock):
     training_workspace: Optional[str]
     serialize_folder: Optional[str]
     previous: Dict[str, "Block"]
+    pipeline: "Pipeline"
 
     # optional callbacks
 
@@ -101,6 +103,7 @@ class Pipeline(Generic[TPipeline], IPipeline[Block, Config, TPipeline]):
 
     def before_block_build(self, block: Block) -> None:
         block.data = self.data
+        block.pipeline = self
         block.training_workspace = self.training_workspace
         if self.serialize_folder is None:
             block.serialize_folder = None
