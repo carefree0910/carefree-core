@@ -495,6 +495,7 @@ def compress(absolute_folder: str, remove_original: bool = True) -> None:
 
 TRegister = TypeVar("TRegister", bound="WithRegister", covariant=True)
 TTRegister = TypeVar("TTRegister", bound=Type["WithRegister"])
+T_s = TypeVar("T_s", bound="ISerializable", covariant=True)
 TSerializable = TypeVar("TSerializable", bound="ISerializable", covariant=True)
 TSArrays = TypeVar("TSArrays", bound="ISerializableArrays", covariant=True)
 TSDataClass = TypeVar("TSDataClass", bound="ISerializableDataClass", covariant=True)
@@ -653,7 +654,7 @@ class ISerializable(
     def from_json(cls: Type[TSerializable], json_string: str) -> TSerializable:
         return cls.from_pack(json.loads(json_string))
 
-    def copy(self: TSerializable) -> TSerializable:
+    def copy(self: T_s) -> T_s:
         copied = self.__class__()
         copied.from_info(shallow_copy_dict(self.to_info()))
         return copied
@@ -684,7 +685,7 @@ class ISerializableArrays(
         return copied
 
 
-class ISerializableDataClass(
+class ISerializableDataClass(  # type: ignore
     Generic[TSDataClass],
     PureFromInfoMixin,
     ISerializable[TSDataClass],

@@ -230,7 +230,7 @@ class DataLoader(TorchDataLoader):
 
 
 @dataclass
-class DataConfig(ISerializableDataClass):
+class DataConfig(ISerializableDataClass["DataConfig"]):
     batch_size: int = 1
     valid_batch_size: Optional[int] = None
     shuffle_train: bool = True
@@ -1770,7 +1770,7 @@ class DLSettings:
 
 
 @dataclass
-class Config(TrainerConfig, DLSettings, ISerializableDataClass["Config"]):
+class Config(TrainerConfig, DLSettings, ISerializableDataClass["Config"]):  # type: ignore
     def to_debug(self) -> "Config":
         self.num_steps = 1
         self.log_steps = 1
