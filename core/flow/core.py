@@ -313,13 +313,14 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
     def to_pack(self) -> JsonPack:
         return JsonPack(type=self.__identifier__, info=self.to_info())
 
-    def from_info(self, info: Dict[str, Any]) -> None:
+    def from_info(self, info: Dict[str, Any]) -> "Node":
         super().from_info(info)
         self.injections = [Injection(**d) for d in self.injections]  # type: ignore
         if self.key is None:
             raise ValueError("node key cannot be None")
         if "." in self.key:
             raise ValueError("node key cannot contain '.'")
+        return self
 
     def check_inputs(self) -> None:
         if not isinstance(self.data, dict):

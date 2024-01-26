@@ -1,6 +1,7 @@
 from typing import Any
 from typing import Dict
 from typing import Type
+from typing import TypeVar
 from typing import Generic
 from typing import Optional
 from typing import ContextManager
@@ -15,6 +16,9 @@ from ...toolkit.misc import shallow_copy_dict
 from ...toolkit.pipeline import IBlock
 from ...toolkit.pipeline import IPipeline
 from ...toolkit.pipeline import TPipeline
+
+
+T_p = TypeVar("T_p", bound="Pipeline", covariant=True)
 
 
 class Block(IBlock):
@@ -125,11 +129,11 @@ class Pipeline(Generic[TPipeline], IPipeline[Block, Config, TPipeline]):
         info["_defaults"] = [[k, v] for k, v in self._defaults.items()]
         return info
 
-    def from_info(self, info: Dict[str, Any]) -> None:
+    def from_info(self: T_p, info: Dict[str, Any]) -> T_p:
         self._defaults = OrderedDict()
         for k, v in info["_defaults"]:
             self._defaults[k] = v
-        super().from_info(info)
+        return super().from_info(info)
 
     def before_block_build(self, block: Block) -> None:
         block.data = self.data

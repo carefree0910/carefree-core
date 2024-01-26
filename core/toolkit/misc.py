@@ -496,6 +496,7 @@ def compress(absolute_folder: str, remove_original: bool = True) -> None:
 TRegister = TypeVar("TRegister", bound="WithRegister", covariant=True)
 TTRegister = TypeVar("TTRegister", bound=Type["WithRegister"])
 T_s = TypeVar("T_s", bound="ISerializable", covariant=True)
+T_sd = TypeVar("T_sd", bound="ISerializableDataClass", covariant=True)
 TSerializable = TypeVar("TSerializable", bound="ISerializable", covariant=True)
 TSArrays = TypeVar("TSArrays", bound="ISerializableArrays", covariant=True)
 TSDataClass = TypeVar("TSDataClass", bound="ISerializableDataClass", covariant=True)
@@ -671,7 +672,7 @@ class ISerializable(
         pass
 
     @abstractmethod
-    def from_info(self, info: Dict[str, Any]) -> None:
+    def from_info(self: T_s, info: Dict[str, Any]) -> T_s:
         pass
 
     # optional callbacks
@@ -737,9 +738,10 @@ class ISerializableDataClass(  # type: ignore
     def to_info(self) -> Dict[str, Any]:
         return self.asdict()
 
-    def from_info(self, info: Dict[str, Any]) -> None:
+    def from_info(self: T_sd, info: Dict[str, Any]) -> T_sd:
         new = self.__class__.construct(info)
         self.update_with(new)
+        return self
 
 
 class Serializer:

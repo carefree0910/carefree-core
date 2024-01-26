@@ -82,6 +82,7 @@ raw_forward_results_type = Union[Tensor, td_type]
 train_forward_results_type = Union[tensor_dict_type, List[tensor_dict_type]]
 losses_type = Union[Tensor, td_type]
 
+T_d = TypeVar("T_d", bound="IData", covariant=True)
 TData = TypeVar("TData", bound="IData", covariant=True)
 TDataset = TypeVar("TDataset", bound="IDataset", covariant=True)
 TSplitSW = Tuple[Optional[np.ndarray], Optional[np.ndarray]]
@@ -454,7 +455,7 @@ class IData(  # type: ignore
         info["bundle"] = None if self.bundle is None else self.bundle.to_info()
         return info
 
-    def from_info(self, info: Dict[str, Any]) -> None:
+    def from_info(self: T_d, info: Dict[str, Any]) -> T_d:
         super().from_info(info)
         bundle_info = info["bundle"]
         if not bundle_info:
@@ -462,6 +463,7 @@ class IData(  # type: ignore
         else:
             self.bundle = DataBundle.empty()
             self.bundle.from_info(bundle_info)
+        return self
 
     def to_npd(self) -> np_dict_type:
         return {} if self.bundle is None else self.bundle.to_npd()

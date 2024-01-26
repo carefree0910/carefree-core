@@ -25,6 +25,7 @@ from .misc import ISerializableDataClass
 TB = TypeVar("TB", bound="IBlock")
 TBlock = TypeVar("TBlock", bound="IBlock")
 TConfig = TypeVar("TConfig", bound="ISerializableDataClass")
+T_p = TypeVar("T_p", bound="IPipeline", covariant=True)
 TPipeline = TypeVar("TPipeline", bound="IPipeline")
 
 pipelines: Dict[str, Type["IPipeline"]] = {}
@@ -148,7 +149,7 @@ class IPipeline(
             config=self.config.to_pack().asdict(),
         )
 
-    def from_info(self, info: Dict[str, Any]) -> None:
+    def from_info(self: T_p, info: Dict[str, Any]) -> T_p:
         self.config = self.config_base.from_pack(info["config"])
         block_base = self.block_base
         blocks: List[TBlock] = []
@@ -159,6 +160,7 @@ class IPipeline(
                 else block_base.make(block, {})
             )
         self.build(*blocks)
+        return self
 
     # optional callbacks
 

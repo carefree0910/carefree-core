@@ -176,7 +176,7 @@ class GatherNode(Node):
     async def execute(self) -> Dict[str, Any]:
         return self.data
 
-    def from_info(self, info: Dict[str, Any]) -> None:
+    def from_info(self, info: Dict[str, Any]) -> "GatherNode":
         super().from_info(info)
         for injection in self.injections:
             if injection.src_hierarchy is not None:
@@ -189,6 +189,7 @@ class GatherNode(Node):
                     "`GatherNode` should always use `src_key=dst_hierarchy` "
                     f"for injections, but `{injection}` is found"
                 )
+        return self
 
     def copy(self) -> "GatherNode":
         copied = super().copy()
