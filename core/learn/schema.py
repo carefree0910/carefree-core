@@ -1023,8 +1023,9 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         use_grad: bool = False,
         get_losses: bool = False,
         loss_kwargs: Optional[Dict[str, Any]] = None,
+        use_inference_mode: Optional[bool] = None,
     ) -> StepOutputs:
-        with self.eval_context(use_grad=use_grad):
+        with self.eval_context(use_grad=use_grad, use_inference=use_inference_mode):
             loss_dict = {}
             loss_kwargs = loss_kwargs or {}
             forward_kwargs = forward_kwargs or {}

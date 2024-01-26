@@ -53,6 +53,7 @@ class Inference(IInference):
         return_labels: bool = False,
         stack_outputs: bool = True,
         use_tqdm: bool = False,
+        use_inference_mode: Optional[bool] = None,
         **kwargs: Any,
     ) -> InferenceOutputs:
         def stack(arrays: TArrays, return_arrays: bool, should_stack: bool) -> Any:
@@ -91,6 +92,7 @@ class Inference(IInference):
                         shallow_copy_dict(kwargs),
                         use_grad=use_grad,
                         get_losses=use_losses_as_metrics,
+                        use_inference_mode=use_inference_mode,
                     )
                     np_outputs = tensor_batch_to_np(step_outputs.forward_results)
                     if use_losses_as_metrics:
