@@ -125,9 +125,7 @@ class Pipeline(Generic[TPipeline], IPipeline[Block, Config, TPipeline]):
         kw = shallow_copy_dict(kwargs)
         kw["data"] = data
         kw["_defaults"] = self._defaults
-        all_blocks = self.block_mappings
         for block in self.blocks:
-            block.previous = all_blocks
             safe_execute(block.run, kw)
 
 
