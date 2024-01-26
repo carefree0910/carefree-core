@@ -41,6 +41,7 @@ from torch.utils.data import DataLoader as TorchDataLoader
 from .toolkit import TPath
 from .toolkit import device_type
 from .toolkit import get_device
+from .toolkit import get_ddp_info
 from .toolkit import get_world_size
 from .toolkit import is_local_rank_0
 from .toolkit import get_torch_device
@@ -1211,7 +1212,10 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         return self
 
     def state_dict(self, **kwargs: Any) -> tensor_dict_type:
-        return self.m.state_dict(**kwargs)
+        d = self.m.state_dict(**kwargs)
+        if get_ddp_info() is not None:
+            d = {k.lstrip("module."): v for k, v in d.items()}
+        return d
 
     def parameters(self) -> Iterator[nn.Parameter]:
         return self.m.parameters()
@@ -1220,6 +1224,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         return self.m.named_parameters()
 
     def load_state_dict(self, d: tensor_dict_type, strict: bool = True) -> None:
+        if get_ddp_info() is not None:
+            d = {f"module.{k}": v for k, v in d.items()}
         self.m.load_state_dict(d, strict)
 
     def run(
