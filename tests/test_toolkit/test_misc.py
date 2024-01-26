@@ -456,6 +456,15 @@ class TestMisc(unittest.TestCase):
         bar = Bar()
         self.assertEqual(bar, bar.copy())
 
+        @dataclass
+        class FooExtended(DataClassBase):
+            bar: int = 0
+            baz: int = 1
+
+        self.assertEqual(Foo().to_hash(), Foo(0).to_hash())
+        self.assertEqual(Foo().to_hash(), FooExtended().to_hash())
+        self.assertEqual(Foo().to_hash(), FooExtended(baz=1).to_hash())
+
     def test_with_register(self):
         class Foo(WithRegister):
             d = {}

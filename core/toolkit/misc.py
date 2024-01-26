@@ -546,6 +546,19 @@ class DataClassBase:
             setattr(self, field_name, getattr(updated, field_name))
         return self
 
+    def to_hash(self) -> str:
+        cls = self.__class__
+        requirements = set(get_requirements(cls))
+        d = {k: getattr(self, k) for k in requirements}
+        defaults = cls(**d)
+        return hash_dict(
+            {
+                k: getattr(self, k)
+                for k in self.field_names
+                if k in requirements or getattr(self, k) != getattr(defaults, k)
+            }
+        )
+
     @classmethod
     def construct(cls: Type[TDataClass], d: Dict[str, Any]) -> TDataClass:
         def _construct(t: Type, d: Dict[str, Any]) -> Any:
