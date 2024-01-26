@@ -953,18 +953,21 @@ class timeit:
 
     t: float
 
-    def __init__(self, message: str, *, precision: int = 6):
+    def __init__(self, message: str, *, precision: int = 6, enabled: bool = True):
         self.p = precision
         self.message = message
+        self.enabled = enabled
 
     def __enter__(self) -> None:
-        self.t = time.time()
+        if self.enabled:
+            self.t = time.time()
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        console.log(
-            f"timing for {self.message:^16s} : "
-            f"{time.time() - self.t:{self.p}.{self.p-2}f}"
-        )
+        if self.enabled:
+            console.log(
+                f"timing for {self.message:^16s} : "
+                f"{time.time() - self.t:{self.p}.{self.p-2}f}"
+            )
 
 
 class batch_manager:
