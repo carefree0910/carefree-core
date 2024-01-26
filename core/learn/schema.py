@@ -1220,7 +1220,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
     def state_dict(self, **kwargs: Any) -> tensor_dict_type:
         d = self.m.state_dict(**kwargs)
         if get_ddp_info() is not None:
-            d = {k.lstrip("module."): v for k, v in d.items()}
+            # remove the `module.` prefix
+            d = {k[7:]: v for k, v in d.items()}
         return d
 
     def parameters(self) -> Iterator[nn.Parameter]:
