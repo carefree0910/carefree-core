@@ -574,14 +574,16 @@ class DataClassBase:
                     )
                     continue
                 if t_origin is dict and hasattr(field.type, "__args__"):
-                    setattr(
-                        instance,
-                        field.name,
-                        {
-                            k: _construct(field.type.__args__[1], v)
-                            for k, v in getattr(instance, field.name).items()
-                        },
-                    )
+                    t_value = field.type.__args__[1]
+                    if is_dataclass(t_value):
+                        setattr(
+                            instance,
+                            field.name,
+                            {
+                                k: _construct(t_value, v)
+                                for k, v in getattr(instance, field.name).items()
+                            },
+                        )
                     continue
             return instance
 
