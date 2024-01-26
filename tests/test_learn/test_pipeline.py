@@ -66,9 +66,8 @@ class TestPipeline(unittest.TestCase):
         test_loader = data.build_loader(x, y)
         r0 = p0.predict(test_loader)[cflearn.PREDICTIONS_KEY]
         with tempfile.TemporaryDirectory() as tempdir:
-            sub_folder = os.path.join(tempdir, "pipeline")
-            cflearn.PipelineSerializer.save(p0, sub_folder, compress=True)
-            p1 = cflearn.PipelineSerializer._load_inference(sub_folder)
+            cflearn.PipelineSerializer.save(p0, tempdir, compress=True)
+            p1 = cflearn.PipelineSerializer.load_inference(tempdir)
             r1 = p1.predict(test_loader)[cflearn.PREDICTIONS_KEY]
             np.testing.assert_allclose(r0, r1)
         workspace = p0.config.workspace
@@ -96,9 +95,8 @@ class TestPipeline(unittest.TestCase):
         r1 = p1.predict(test_loader)[cflearn.PREDICTIONS_KEY]
         np.testing.assert_allclose(r0, r1)
         with tempfile.TemporaryDirectory() as tempdir:
-            sub_folder = os.path.join(tempdir, "pipeline")
-            cflearn.PipelineSerializer.save(p1, sub_folder, compress=True)
-            p2 = cflearn.PipelineSerializer._load_inference(sub_folder)
+            cflearn.PipelineSerializer.save(p1, tempdir, compress=True)
+            p2 = cflearn.PipelineSerializer.load_inference(tempdir)
             r2 = p2.predict(test_loader)[cflearn.PREDICTIONS_KEY]
             np.testing.assert_allclose(r1, r2)
 

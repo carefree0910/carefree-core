@@ -290,8 +290,7 @@ class TrainingPipeline(Pipeline["TrainingPipeline"], _DeviceMixin, _EvaluationMi
         self.run(data, device=device)
         # save pipeline
         if workspace is not None:
-            pipeline_folder = PipelineSerializer.pipeline_folder
-            PipelineSerializer.save(self, os.path.join(workspace, pipeline_folder))
+            PipelineSerializer.save(self, workspace)
         # return
         return self
 
@@ -340,19 +339,9 @@ class PipelineSerializer:
     # api
 
     @classmethod
-    def save(cls, pipeline: Pipeline, folder: str, *, compress: bool = False) -> None:
-        original_folder = None
-        if compress:
-            original_folder = folder
-            folder = mkdtemp()
-        Serializer.save(folder, pipeline)
-        for block in pipeline.blocks:
-            block.save_extra(os.path.join(folder, block.__identifier__))
-        if compress and original_folder is not None:
-            absolute_folder = os.path.abspath(folder)
-            absolute_original = os.path.abspath(original_folder)
-            compress_folder(absolute_folder)
-            shutil.move(f"{absolute_folder}.zip", f"{absolute_original}.zip")
+    def save(cls, p: Pipeline, workspace: str, *, compress: bool = False) -> None:
+        folder = os.path.join(workspace, cls.pipeline_folder)
+        cls._save(p, folder, compress=compress)
 
     @classmethod
     def pack(
@@ -385,7 +374,7 @@ class PipelineSerializer:
             focuses=focuses,
             excludes=excludes,
         )
-        cls.save(pipeline, export_folder, compress=compress)
+        cls._save(pipeline, export_folder, compress=compress)
 
     @classmethod
     def pack_and_load_inference(cls, workspace: str) -> InferencePipeline:
@@ -495,6 +484,21 @@ class PipelineSerializer:
         return cls._load_evaluation(folder)
 
     # internal
+
+    @classmethod
+    def _save(cls, p: Pipeline, folder: str, *, compress: bool = False) -> None:
+        original_folder = None
+        if compress:
+            original_folder = folder
+            folder = mkdtemp()
+        Serializer.save(folder, p)
+        for block in p.blocks:
+            block.save_extra(os.path.join(folder, block.__identifier__))
+        if compress and original_folder is not None:
+            absolute_folder = os.path.abspath(folder)
+            absolute_original = os.path.abspath(original_folder)
+            compress_folder(absolute_folder)
+            shutil.move(f"{absolute_folder}.zip", f"{absolute_original}.zip")
 
     @classmethod
     def _load(
