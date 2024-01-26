@@ -224,6 +224,7 @@ class TestBlocks(unittest.TestCase):
             loss_name="mse",
             profile=True,
             profile_schedule_config=dict(skip_first=0, wait=0, warmup=1),
+            save_pipeline_in_realtime=True,
         )
         config.to_debug().num_steps = 2
         p = cflearn.TrainingPipeline.init(config).fit(data, sample_weights=np.arange(6))

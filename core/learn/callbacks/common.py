@@ -2,11 +2,22 @@ import time
 
 from typing import Optional
 
+from ..schema import ITrainer
 from ..schema import TrainerState
 from ..schema import MetricsOutputs
 from ..schema import TrainerCallback
 from ...toolkit import console
 from ...toolkit.misc import fix_float_to_length
+
+
+@TrainerCallback.register("update_artifacts")
+class UpdateArtifactsCallback(TrainerCallback):
+    def log_artifacts(self, trainer: ITrainer) -> None:
+        if trainer.config.save_pipeline_in_realtime:
+            from ..pipeline import PipelineSerializer
+
+            with trainer.pipeline.verbose_context(False):
+                PipelineSerializer.update(trainer.pipeline, trainer.workspace)  # type: ignore
 
 
 @TrainerCallback.register("log_metrics_msg")
@@ -70,4 +81,5 @@ class LogMetricsMsgCallback(TrainerCallback):
 
 __all__ = [
     "LogMetricsMsgCallback",
+    "UpdateArtifactsCallback",
 ]

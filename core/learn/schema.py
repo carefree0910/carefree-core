@@ -1627,6 +1627,10 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
         pass
 
 
+class ITrainerPipeline(IPipeline):
+    verbose_context: Callable[[bool], ContextManager]
+
+
 class ITrainer(ABC):
     config: "TrainerConfig"
 
@@ -1637,6 +1641,7 @@ class ITrainer(ABC):
     optimizers: Dict[str, Optimizer]
     schedulers: Dict[str, Optional[_LRScheduler]]
     accelerator: Accelerator
+    pipeline: ITrainerPipeline
 
     state: TrainerState
     inference: IInference
@@ -1739,6 +1744,7 @@ class TrainerConfig:
     use_zero: bool = False
     finetune_config: Optional[Dict[str, Any]] = None
     tqdm_settings: Optional[Dict[str, Any]] = None
+    save_pipeline_in_realtime: bool = False
     # profile settings
     profile: bool = False
     profile_config: Optional[Dict[str, Any]] = None

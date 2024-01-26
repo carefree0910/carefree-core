@@ -286,11 +286,17 @@ class TrainingPipeline(Pipeline["TrainingPipeline"], _DeviceMixin, _EvaluationMi
                 data,
                 save_npd=False,
             )
+        # in case we want to save 'realtime' pipeline
+        if self.config.save_pipeline_in_realtime and workspace is not None:
+            PipelineSerializer.save(self, workspace, verbose=False)
         # run pipeline
         self.run(data, device=device)
-        # save pipeline
+        # save / update pipeline serialization
         if workspace is not None:
-            PipelineSerializer.save(self, workspace)
+            if not self.config.save_pipeline_in_realtime:
+                PipelineSerializer.save(self, workspace)
+            else:
+                PipelineSerializer.update(self, workspace)
         # return
         return self
 
@@ -339,9 +345,21 @@ class PipelineSerializer:
     # api
 
     @classmethod
-    def save(cls, p: Pipeline, workspace: str, *, compress: bool = False) -> None:
+    def save(
+        cls,
+        pipeline: Pipeline,
+        workspace: str,
+        *,
+        compress: bool = False,
+        verbose: bool = True,
+    ) -> None:
         folder = os.path.join(workspace, cls.pipeline_folder)
-        cls._save(p, folder, compress=compress)
+        cls._save(pipeline, folder, compress=compress, verbose=verbose)
+
+    @classmethod
+    def update(cls, p: Pipeline, workspace: str) -> None:
+        folder = os.path.join(workspace, cls.pipeline_folder)
+        cls._update(p, folder)
 
     @classmethod
     def pack(
@@ -486,19 +504,39 @@ class PipelineSerializer:
     # internal
 
     @classmethod
-    def _save(cls, p: Pipeline, folder: str, *, compress: bool = False) -> None:
+    def _save(
+        cls,
+        pipeline: Pipeline,
+        folder: str,
+        *,
+        compress: bool = False,
+        verbose: bool = True,
+    ) -> None:
         original_folder = None
         if compress:
             original_folder = folder
             folder = mkdtemp()
-        Serializer.save(folder, p)
-        for block in p.blocks:
-            block.save_extra(os.path.join(folder, block.__identifier__))
+        Serializer.save(folder, pipeline)
+        with pipeline.verbose_context(verbose):
+            for block in pipeline.blocks:
+                block.save_extra(os.path.join(folder, block.__identifier__))
         if compress and original_folder is not None:
             absolute_folder = os.path.abspath(folder)
             absolute_original = os.path.abspath(original_folder)
             compress_folder(absolute_folder)
             shutil.move(f"{absolute_folder}.zip", f"{absolute_original}.zip")
+
+    @classmethod
+    def _update(cls, p: Pipeline, folder: str) -> None:
+        if os.path.isdir(folder):
+            compress = False
+            shutil.rmtree(folder)
+        elif os.path.isfile(f"{folder}.zip"):
+            compress = True
+            os.remove(f"{folder}.zip")
+        else:
+            raise ValueError(f"neither `{folder}` nor `{folder}.zip` exists")
+        cls._save(p, folder, compress=compress)
 
     @classmethod
     def _load(

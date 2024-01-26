@@ -44,6 +44,7 @@ from ...trainer import get_sorted_checkpoints
 from ...trainer import Trainer
 from ...monitors import BasicMonitor
 from ...callbacks import LogMetricsMsgCallback
+from ...callbacks import UpdateArtifactsCallback
 from ...constants import PT_PREFIX
 from ...constants import SCORES_FILE
 from ...constants import CHECKPOINTS_FOLDER
@@ -269,19 +270,26 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
         if isinstance(callback_names, str):
             callback_names = [callback_names]
         auto_callback = config.auto_callback
-        default_callback = LogMetricsMsgCallback.__identifier__
-        if default_callback not in callback_names and auto_callback:
-            self._defaults["additional_callbacks"] = [default_callback]
-            callback_names.insert(0, default_callback)
+        default_callbacks = [
+            LogMetricsMsgCallback.__identifier__,
+            UpdateArtifactsCallback.__identifier__,
+        ]
+        if any(c not in callback_names for c in default_callbacks) and auto_callback:
+            additional_callbacks = []
+            for c in default_callbacks:
+                if c not in callback_names:
+                    additional_callbacks.append(c)
+                    callback_names.insert(0, c)
+            self._defaults["additional_callbacks"] = additional_callbacks
             verbose = False
             if tqdm_settings is None or (
                 not tqdm_settings.get("use_tqdm", False)
                 and not tqdm_settings.get("use_step_tqdm", False)
             ):
                 verbose = True
-            log_metrics_msg_config = callback_configs.setdefault(default_callback, {})
-            if "verbose" not in log_metrics_msg_config:
-                log_metrics_msg_config["verbose"] = verbose
+            log_metrics_msg_cfg = callback_configs.setdefault(default_callbacks[0], {})
+            if "verbose" not in log_metrics_msg_cfg:
+                log_metrics_msg_cfg["verbose"] = verbose
                 self._defaults["log_metrics_msg_verbose"] = verbose
         config.tqdm_settings = tqdm_settings
         config.callback_names = callback_names
@@ -311,10 +319,13 @@ class BuildCallbacksBlock(Block):
         cb_names = config.callback_names
         cb_configs = config.callback_configs
         use_tqdm = (config.tqdm_settings or {}).get("use_tqdm", False)
-        if cb_names is None:
-            self.callbacks = [LogMetricsMsgCallback(not use_tqdm)]
-        else:
+        if cb_names is not None:
             self.callbacks = TrainerCallback.make_multiple(cb_names, cb_configs)
+        else:
+            self.callbacks = [
+                LogMetricsMsgCallback(not use_tqdm),
+                UpdateArtifactsCallback(),
+            ]
         for callback in self.callbacks:
             callback.initialize()
 
@@ -558,6 +569,7 @@ class BuildTrainerBlock(Block):
 
     def build(self, config: Config) -> None:
         self.trainer = Trainer(config)
+        self.trainer.pipeline = self.pipeline  # type: ignore
 
 
 # runtime blocks
