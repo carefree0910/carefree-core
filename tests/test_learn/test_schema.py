@@ -32,11 +32,7 @@ class TestSchema(unittest.TestCase):
         data.build_loaders()[0].get_input_sample()
 
     def test_data_config(self):
-        batch_size = 13
-        config = cflearn.DataConfig.inference_with(batch_size)
-        self.assertTrue(config.for_inference)
-        self.assertFalse(config.shuffle_train)
-        self.assertEqual(config.batch_size, batch_size)
+        config = cflearn.DataConfig()
 
         @cflearn.IDataBlock.register("foo", allow_duplicate=True)
         class FooDataBlock(cflearn.IDataBlock):

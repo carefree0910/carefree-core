@@ -250,11 +250,6 @@ class DataConfig(ISerializableDataClass["DataConfig"]):
     shuffle_valid: bool = False
     block_names: Optional[List[str]] = None
     block_configs: Optional[Dict[str, Dict[str, Any]]] = None
-    for_inference: bool = False
-
-    @classmethod
-    def inference_with(cls, batch_size: int) -> "DataConfig":
-        return cls(for_inference=True, shuffle_train=False, batch_size=batch_size)
 
     def add_blocks(self, *blocks: Type["IDataBlock"]) -> None:
         if self.block_names is None:
@@ -501,6 +496,7 @@ class IData(  # type: ignore
         *,
         shuffle: bool,
         batch_size: int,
+        for_inference: bool,
         sample_weights: Optional[np.ndarray] = None,
         **kwargs: Any,
     ) -> DataLoader:
@@ -517,7 +513,7 @@ class IData(  # type: ignore
             **kwargs,
         )
         loader.data = self
-        loader.for_inference = self.config.for_inference
+        loader.for_inference = for_inference
         loader.collate_fn = loader.get_collate_fn()
         return loader
 
@@ -587,12 +583,13 @@ class IData(  # type: ignore
             batch_size=batch_size
             or self.config.valid_batch_size
             or self.config.batch_size,
+            for_inference=True,
             sample_weights=sample_weights,
             **kwargs,
         )
         return loader
 
-    def build_loaders(self) -> TDataLoaders:
+    def build_loaders(self, *, for_inference: bool = False) -> TDataLoaders:
         self._check_ready("build_loaders")
         if self.bundle is None:
             raise ValueError(
@@ -604,6 +601,7 @@ class IData(  # type: ignore
             self.train_dataset,
             shuffle=self.config.shuffle_train,
             batch_size=self.config.batch_size,
+            for_inference=for_inference,
             sample_weights=self.train_weights,
         )
         if self.valid_dataset is None:
@@ -613,6 +611,7 @@ class IData(  # type: ignore
                 self.valid_dataset,
                 shuffle=self.config.shuffle_valid,
                 batch_size=self.config.valid_batch_size or self.config.batch_size,
+                for_inference=for_inference,
                 sample_weights=self.valid_weights,
             )
         return train_loader, valid_loader
