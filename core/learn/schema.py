@@ -571,6 +571,7 @@ class IData(  # type: ignore
         *,
         shuffle: bool = False,
         batch_size: Optional[int] = None,
+        for_inference: bool = True,
         sample_weights: Optional[np.ndarray] = None,
         **kwargs: Any,
     ) -> DataLoader:
@@ -583,7 +584,7 @@ class IData(  # type: ignore
             batch_size=batch_size
             or self.config.valid_batch_size
             or self.config.batch_size,
-            for_inference=True,
+            for_inference=for_inference,
             sample_weights=sample_weights,
             **kwargs,
         )
