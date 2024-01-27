@@ -73,7 +73,7 @@ class Inference(IInference):
             metric_outputs_list: List[MetricsOutputs] = []
             loss_items: Dict[str, List[float]] = {}
 
-            device = get_device(self.model)
+            device = None if self.model is None else get_device(self.model)
             iterator = enumerate(loader)
             if use_tqdm:
                 iterator = tqdm(iterator, "inference", len(loader))
