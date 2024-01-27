@@ -73,6 +73,7 @@ class Inference(IInference):
             metric_outputs_list: List[MetricsOutputs] = []
             loss_items: Dict[str, List[float]] = {}
 
+            device = get_device(self.model)
             iterator = enumerate(loader)
             if use_tqdm:
                 iterator = tqdm(iterator, "inference", len(loader))
@@ -85,7 +86,7 @@ class Inference(IInference):
                     np_batch = tensor_batch_to_np(tensor_batch)
                     np_outputs = self.onnx.predict(np_batch)
                 elif self.model is not None:
-                    tensor_batch = to_device(tensor_batch, get_device(self.model))
+                    tensor_batch = to_device(tensor_batch, device)
                     step_outputs = self.model.step(
                         i,
                         tensor_batch,
