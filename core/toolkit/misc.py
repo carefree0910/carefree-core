@@ -562,7 +562,7 @@ class DataClassBase:
     @classmethod
     def construct(cls: Type[TDataClass], d: Dict[str, Any]) -> TDataClass:
         def _construct(t: Type, d: Dict[str, Any]) -> Any:
-            instance = t(**d)
+            instance = safe_instantiate(t, d)
             if not is_dataclass(instance):
                 return instance
             for field in fields(instance):
