@@ -189,7 +189,7 @@ class IDataset(Dataset):
 
     # optional callbacks
 
-    def reset(self) -> None:
+    def reset(self, *, for_inference: bool) -> None:
         """this will be called everytime the `DataLoader` enters `__iter__`"""
 
 
@@ -205,7 +205,7 @@ class DataLoader(TorchDataLoader):
     for_inference: bool
 
     def __iter__(self) -> _BaseDataLoaderIter:
-        self.dataset.reset()
+        self.dataset.reset(for_inference=self.for_inference)
         return super().__iter__()
 
     def get_collate_fn(self) -> Callable[[tensor_dict_type], tensor_dict_type]:
