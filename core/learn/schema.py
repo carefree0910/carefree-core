@@ -37,6 +37,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import Dataset
 from torch.utils.data import WeightedRandomSampler
 from torch.utils.data import DataLoader as TorchDataLoader
+from torch.utils.data.dataloader import _BaseDataLoaderIter
 
 from .toolkit import TPath
 from .toolkit import device_type
@@ -186,6 +187,11 @@ class IDataset(Dataset):
     def __getitems__(self, indices: List[int]) -> tensor_dict_type:
         pass
 
+    # optional callbacks
+
+    def reset(self) -> None:
+        """this will be called everytime the `DataLoader` enters `__iter__`"""
+
 
 class DataLoader(TorchDataLoader):
     """
@@ -195,7 +201,12 @@ class DataLoader(TorchDataLoader):
     """
 
     data: "IData"
+    dataset: IDataset
     for_inference: bool
+
+    def __iter__(self) -> _BaseDataLoaderIter:
+        self.dataset.reset()
+        return super().__iter__()
 
     def get_collate_fn(self) -> Callable[[tensor_dict_type], tensor_dict_type]:
         # here, the `collate_fn` only needs to process on batches, as we have already
