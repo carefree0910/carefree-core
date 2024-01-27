@@ -590,7 +590,7 @@ class IData(  # type: ignore
         )
         return loader
 
-    def build_loaders(self, *, for_inference: bool = False) -> TDataLoaders:
+    def build_loaders(self, *, for_inference: Optional[bool] = None) -> TDataLoaders:
         self._check_ready("build_loaders")
         if self.bundle is None:
             raise ValueError(
@@ -602,7 +602,7 @@ class IData(  # type: ignore
             self.train_dataset,
             shuffle=self.config.shuffle_train,
             batch_size=self.config.batch_size,
-            for_inference=for_inference,
+            for_inference=False if for_inference is None else for_inference,
             sample_weights=self.train_weights,
         )
         if self.valid_dataset is None:
@@ -612,7 +612,7 @@ class IData(  # type: ignore
                 self.valid_dataset,
                 shuffle=self.config.shuffle_valid,
                 batch_size=self.config.valid_batch_size or self.config.batch_size,
-                for_inference=for_inference,
+                for_inference=True if for_inference is None else for_inference,
                 sample_weights=self.valid_weights,
             )
         return train_loader, valid_loader
