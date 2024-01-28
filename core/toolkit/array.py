@@ -497,7 +497,7 @@ class StrideArray:
     def _get_output_dim(in_dim: int, window: int, stride: int) -> int:
         return (in_dim - window) // stride + 1
 
-    def roll(self, window: int, *, stride: int = 1, axis: int = -1) -> np.ndarray:
+    def roll(self, window: int, *, axis: int, stride: int = 1) -> np.ndarray:
         while axis < 0:
             axis += self.num_dim
         target_dim = self.shape[axis]

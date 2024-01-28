@@ -196,14 +196,14 @@ class TestArray(unittest.TestCase):
         arr = StrideArray(np.arange(9).reshape([3, 3]))
         self.assertTrue(
             np.allclose(
-                arr.roll(2),
-                np.array([[[0, 1], [1, 2]], [[3, 4], [4, 5]], [[6, 7], [7, 8]]]),
+                arr.roll(2, axis=0),
+                np.array([[[0, 1, 2], [3, 4, 5]], [[3, 4, 5], [6, 7, 8]]]),
             )
         )
         self.assertTrue(
             np.allclose(
-                arr.roll(2, axis=0),
-                np.array([[[0, 1, 2], [3, 4, 5]], [[3, 4, 5], [6, 7, 8]]]),
+                arr.roll(2, axis=1),
+                np.array([[[0, 1], [1, 2]], [[3, 4], [4, 5]], [[6, 7], [7, 8]]]),
             )
         )
         self.assertTrue(
@@ -220,7 +220,15 @@ class TestArray(unittest.TestCase):
         arr = StrideArray(np.arange(16).reshape([4, 4]))
         self.assertTrue(
             np.allclose(
-                arr.roll(2, stride=2),
+                arr.roll(2, axis=0, stride=2),
+                np.array(
+                    [[[0, 1, 2, 3], [4, 5, 6, 7]], [[8, 9, 10, 11], [12, 13, 14, 15]]]
+                ),
+            )
+        )
+        self.assertTrue(
+            np.allclose(
+                arr.roll(2, axis=1, stride=2),
                 np.array(
                     [
                         [[0, 1], [2, 3]],
@@ -228,14 +236,6 @@ class TestArray(unittest.TestCase):
                         [[8, 9], [10, 11]],
                         [[12, 13], [14, 15]],
                     ]
-                ),
-            )
-        )
-        self.assertTrue(
-            np.allclose(
-                arr.roll(2, stride=2, axis=0),
-                np.array(
-                    [[[0, 1, 2, 3], [4, 5, 6, 7]], [[8, 9, 10, 11], [12, 13, 14, 15]]]
                 ),
             )
         )
