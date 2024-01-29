@@ -1643,7 +1643,12 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     def log_artifacts(self, trainer: "ITrainer") -> None:
         pass
 
-    def after_train_step(self, stepped: TrainStepOutputs, state: TrainerState) -> None:
+    def after_train_step(
+        self,
+        batch: tensor_dict_type,
+        stepped: TrainStepOutputs,
+        trainer: "ITrainer",
+    ) -> None:
         pass
 
     def after_monitor(self, monitored: MonitorResults, state: TrainerState) -> None:

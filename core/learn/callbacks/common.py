@@ -15,6 +15,7 @@ from ...toolkit import console
 from ...toolkit.misc import prefix_dict
 from ...toolkit.misc import shallow_copy_dict
 from ...toolkit.misc import fix_float_to_length
+from ...toolkit.types import tensor_dict_type
 
 
 @TrainerCallback.register("update_artifacts")
@@ -152,7 +153,15 @@ class WandBCallback(TrainerCallback):
         if self._log_artifacts:
             wandb.log_artifact(trainer.workspace)
 
-    def after_train_step(self, stepped: TrainStepOutputs, state: TrainerState) -> None:
+    def after_train_step(
+        self,
+        batch: tensor_dict_type,
+        stepped: TrainStepOutputs,
+        trainer: ITrainer,
+    ) -> None:
+        state = trainer.state
+        if state is None:
+            return
         if state.should_log_losses:
             wandb.log(prefix_dict(stepped.loss_dict, "tr"), step=state.step)
 
