@@ -23,6 +23,8 @@ def linear_data(
         x += np.random.random(x.shape) * x_noise_scale
     if y_noise_scale is not None:
         y += np.random.random(y.shape) * y_noise_scale
+    x = x.astype(np.float32)
+    y = y.astype(np.float32)
     if not use_validation:
         data = ArrayData.init().fit(x, y)
     else:

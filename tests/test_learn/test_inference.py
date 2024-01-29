@@ -20,8 +20,8 @@ class TestInference(unittest.TestCase):
         num_samples = 123
         batch_size = 17
 
-        x = np.random.randn(num_samples, input_dim)
-        y = np.random.randn(num_samples, output_dim)
+        x = np.random.randn(num_samples, input_dim).astype(np.float32)
+        y = np.random.randn(num_samples, output_dim).astype(np.float32)
         data = cflearn.ArrayData.init().fit(x, y)
         data.config.batch_size = batch_size
         loader = data.build_loader(x, y)
