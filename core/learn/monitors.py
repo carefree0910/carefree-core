@@ -1,5 +1,9 @@
 import math
 
+import numpy as np
+
+from typing import List
+from typing import Union
 from typing import Optional
 
 from .schema import TrainerState
@@ -9,26 +13,28 @@ from ..toolkit.misc import Incrementer
 
 @TrainerMonitor.register("basic")
 class BasicMonitor(TrainerMonitor):
-    def __init__(self, patience: int = 25):
+    def __init__(self, *, num_keep: int = 25):
         super().__init__()
-        self.patience = patience
-        self.num_snapshot = 0
-        self.best_score = -math.inf
+        self.history: List[float] = []
+        self.num_keep = num_keep
         self.worst_score: Optional[float] = None
 
     def should_snapshot(self, new_score: float) -> bool:
-        self.num_snapshot += 1
+        self.history.append(new_score)
         if self.worst_score is None:
             self.worst_score = new_score
         else:
             self.worst_score = min(new_score, self.worst_score)
-        if new_score > self.best_score:
-            self.best_score = new_score
+        if len(self.history) <= self.num_keep:
+            return True
+        min_idx = np.argmin(self.history).item()
+        if new_score >= self.history[min_idx]:
+            self.history[min_idx] = new_score
             return True
         return False
 
     def should_terminate(self, new_score: float) -> bool:
-        if self.num_snapshot <= self.patience:
+        if len(self.history) <= self.num_keep:
             return False
         if self.worst_score is None:
             return False
@@ -40,11 +46,12 @@ class MeanStdMonitor(BasicMonitor):
     def __init__(
         self,
         *,
-        patience: int = 5,
+        num_keep: int = 25,
+        patience: float = 5.0,
         window_size: int = 25,
         overfit_tolerance: float = 25.0,
     ):
-        super().__init__()
+        super().__init__(num_keep=num_keep)
         self.patience = patience
         self.overfit_tolerance = overfit_tolerance
         self.best_score = -math.inf
@@ -65,8 +72,8 @@ class MeanStdMonitor(BasicMonitor):
         return super().should_snapshot(new_score)
 
     def should_terminate(self, new_score: float) -> bool:
-        if self.num_snapshot <= 10:
-            return False
+        if super().should_terminate(new_score):
+            return True
         if self.overfit_level >= self.overfit_tolerance:
             return True
         return False
@@ -77,19 +84,19 @@ class PlateauMonitor(BasicMonitor):
     def __init__(
         self,
         *,
+        num_keep: int = 25,
         patience: float = 5.0,
         extension: int = 5,
         window_size: int = 25,
         plateau_tolerance: float = 25.0,
         plateau_threshold: float = 0.2,
     ):
-        super().__init__()
-        self.patience = patience  # type: ignore
+        super().__init__(num_keep=num_keep)
+        self.patience = patience
         self.extension = extension
         self.window_size = window_size
         self.plateau_tolerance = plateau_tolerance
         self.plateau_threshold = plateau_threshold
-        self.num_snapshot = 0
         self.plateau_level = 0.0
         self._incrementer = Incrementer(window_size)
 
@@ -98,9 +105,10 @@ class PlateauMonitor(BasicMonitor):
         return self.plateau_tolerance / self.patience
 
     def should_terminate(self, new_score: float) -> bool:
-        self.num_snapshot += 1
+        if super().should_terminate(new_score):
+            return True
         self._incrementer.update(new_score)
-        if self.num_snapshot > self.window_size:
+        if self._incrementer.num_record > self.window_size:
             mean, std = self._incrementer.mean, self._incrementer.std
             ratio = max(abs(new_score - mean) / max(std, 1.0e-8), 1.0e-8)
             if ratio < self.plateau_threshold:
