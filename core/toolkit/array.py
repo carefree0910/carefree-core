@@ -248,6 +248,7 @@ def corr(
     weights: Optional[TArray] = None,
     *,
     get_diagonal: bool = False,
+    eps: float = 1.0e-8,
 ) -> TArray:
     is_numpy = isinstance(predictions, np.ndarray)
     keepdim_kw: Dict[str, Any] = {"keepdims" if is_numpy else "keepdim": True}
@@ -287,9 +288,9 @@ def corr(
         else:
             vt_norm = sqrt_fn((transpose_fn(weights) * (vt**2)).sum(1, **keepdim_kw))
         if weights is None:
-            mat = matmul_fn(vt, vp) / (vp_norm * vt_norm)
+            mat = matmul_fn(vt, vp) / (vp_norm * vt_norm + eps)
         else:
-            mat = matmul_fn(vt, weights * vp) / (vp_norm * vt_norm)
+            mat = matmul_fn(vt, weights * vp) / (vp_norm * vt_norm + eps)
     if not get_diagonal:
         return mat
     if mat.shape[0] != mat.shape[1]:
