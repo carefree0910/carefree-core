@@ -1637,7 +1637,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     def log_artifacts(self, trainer: "ITrainer") -> None:
         pass
 
-    def after_train_step(self, steped: TrainStepOutputs, state: TrainerState) -> None:
+    def after_train_step(self, stepped: TrainStepOutputs, state: TrainerState) -> None:
         pass
 
     def after_monitor(self, monitored: MonitorResults, state: TrainerState) -> None:

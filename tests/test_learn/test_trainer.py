@@ -44,7 +44,7 @@ class TestTrainer(unittest.TestCase):
     def test_keyboard_interrupt(self):
         @cflearn.TrainerCallback.register("test", allow_duplicate=True)
         class _(cflearn.TrainerCallback):
-            def after_train_step(self, steped, state):
+            def after_train_step(self, stepped, state):
                 raise KeyboardInterrupt
 
         config = self.config.copy()
