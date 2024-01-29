@@ -171,12 +171,13 @@ class Trainer(ITrainer):
                 should_log_lr, kwargs = self._get_scheduler_settings(key, scheduler)
                 if should_log_lr or self.config.update_scheduler_per_epoch:
                     lr_metric_logged = True
-                    for callback in self.callbacks:
-                        callback.log_lr(
-                            f"lr-{key}",
-                            scheduler.get_last_lr()[0],
-                            self.state,
-                        )
+                    if self.is_local_rank_0:
+                        for callback in self.callbacks:
+                            callback.log_lr(
+                                f"lr-{key}",
+                                scheduler.get_last_lr()[0],
+                                self.state,
+                            )
                 scheduler.step(**shallow_copy_dict(kwargs))
         if lr_metric_logged:
             self.lr_metrics_updated = False
