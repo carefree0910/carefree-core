@@ -291,6 +291,18 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
             if "verbose" not in log_metrics_msg_cfg:
                 log_metrics_msg_cfg["verbose"] = verbose
                 self._defaults["log_metrics_msg_verbose"] = verbose
+        if "wandb" in callback_names and auto_callback:
+            module_name = config.module_name
+            wandb_config = callback_configs.setdefault("wandb", {})
+            if "tags" not in wandb_config:
+                tags_str = json.dumps([module_name])
+                wandb_config["tags"] = [module_name]
+                self._defaults["callback_configs.wandb.tags"] = tags_str
+            if "config" not in wandb_config:
+                module_configs = shallow_copy_dict(config.module_config or {})
+                config_str = json.dumps(module_configs)
+                wandb_config["config"] = module_configs
+                self._defaults["callback_configs.wandb.config"] = config_str
         config.tqdm_settings = tqdm_settings
         config.callback_names = callback_names
         config.callback_configs = callback_configs

@@ -16,6 +16,7 @@ setup(
         "rich",
         "onnx",
         "tqdm",
+        "wandb",
         "future",
         "pathos",
         "pillow",

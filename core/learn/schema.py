@@ -1457,6 +1457,14 @@ class TrainerState:
         return self.step % denominator == 0
 
     @property
+    def should_log_losses(self) -> bool:
+        if not self.enable_logging:
+            return False
+        patience = max(4, int(round(self.num_step_per_epoch / 50.0)))
+        denominator = min(self.num_step_per_epoch, patience)
+        return self.step % denominator == 0
+
+    @property
     def should_log_artifacts(self) -> bool:
         return self.should_log_metrics_msg
 
