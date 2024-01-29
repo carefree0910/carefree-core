@@ -103,10 +103,11 @@ class NaNDetectorCallback(TrainerCallback):
         if is_nan:
             np_batch = tensor_batch_to_np(batch)
             nan_ratios = {k: np.isnan(v).mean().item() for k, v in np_batch.items()}
-            workspace = Path(trainer.workspace)
+            debug_folder = Path(trainer.workspace) / "debugging"
+            debug_folder.mkdir(parents=True, exist_ok=True)
             ddp_info = get_ddp_info()
             appendix = "" if ddp_info is None else f"_{ddp_info.rank}"
-            batch_paths = {k: workspace / f"{k}{appendix}.npy" for k in np_batch}
+            batch_paths = {k: debug_folder / f"{k}{appendix}.npy" for k in np_batch}
             for k, v in np_batch.items():
                 if isinstance(v, np.ndarray):
                     np.save(batch_paths[k], v)
@@ -115,6 +116,9 @@ class NaNDetectorCallback(TrainerCallback):
                 f"are {nan_ratios}. Current batch will be saved to {batch_paths} "
                 f"for further investigation"
             )
+            # sleep for 1 second in case other processes in ddp also encounter NaN,
+            # so they can save the batch & log the error while this process is sleeping
+            time.sleep(1)
             raise RuntimeError("NaN detected")
 
 
