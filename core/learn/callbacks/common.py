@@ -128,6 +128,10 @@ class WandBCallback(TrainerCallback):
     def _wandb_step(self, step: Optional[int]) -> Optional[int]:
         return None if step == -1 else step
 
+    def before_loop(self, trainer: ITrainer) -> None:
+        if self.is_local_rank_0:
+            self.log_artifacts(trainer)
+
     def log_lr(self, key: str, lr: float, state: TrainerState) -> None:
         wandb.log({key: lr}, step=self._wandb_step(state.step))
 
