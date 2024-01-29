@@ -97,7 +97,7 @@ class PlateauMonitor(BasicMonitor):
     def max_plateau_increase(self) -> float:
         return self.plateau_tolerance / self.patience
 
-    def should_snapshot(self, new_score: float) -> bool:
+    def should_terminate(self, new_score: float) -> bool:
         self.num_snapshot += 1
         self._incrementer.update(new_score)
         if self.num_snapshot > self.window_size:
@@ -109,9 +109,6 @@ class PlateauMonitor(BasicMonitor):
                     1.0 / ratio - 1.0 / self.plateau_threshold,
                 )
                 self.plateau_level += plateau
-        return super().should_snapshot(new_score)
-
-    def should_terminate(self, new_score: float) -> bool:
         return self.plateau_level >= self.plateau_tolerance
 
     def punish_extension(self) -> None:
