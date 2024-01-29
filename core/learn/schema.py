@@ -1608,10 +1608,6 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     def __init__(self, *args: Any, **kwargs: Any):
         pass
 
-    @property
-    def is_local_rank_0(self) -> bool:
-        return is_local_rank_0()
-
     def initialize(self) -> None:
         pass
 

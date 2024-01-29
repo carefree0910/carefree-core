@@ -53,8 +53,6 @@ class LogMetricsMsgCallback(TrainerCallback):
         metrics_log_path: str,
         state: TrainerState,
     ) -> None:
-        if not self.is_local_rank_0:
-            return None
         final_score = metrics_outputs.final_score
         metric_values = metrics_outputs.metric_values
         core = " | ".join(

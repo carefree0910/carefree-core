@@ -340,7 +340,7 @@ class Trainer(ITrainer):
                 step_tqdm.close()
             self.epoch_tqdm.close()
         # restore
-        if self.is_local_rank_0 and self.has_checkpoint_folder:
+        if self.has_checkpoint_folder:
             if not self.tqdm_settings.in_distributed:
                 console.debug("rolling back to the best checkpoint")
             has_ckpt = self.restore_checkpoint()
@@ -407,9 +407,6 @@ class Trainer(ITrainer):
         strict: bool = True,
         state_dict_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> bool:
-        if not self.is_local_rank_0:
-            msg = "`restore_checkpoint` should not be called when not `is_local_rank_0`"
-            raise ValueError(msg)
         if folder is None:
             if self.checkpoint_folder is None:
                 msg = "either `folder` or `checkpoint_folder` should be provided"
