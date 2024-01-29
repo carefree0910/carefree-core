@@ -1457,8 +1457,8 @@ class TrainerState:
     def should_log_losses(self) -> bool:
         if not self.enable_logging:
             return False
-        patience = max(4, int(round(self.num_step_per_epoch / 50.0)))
-        denominator = min(self.num_step_per_epoch, patience)
+        patience = max(4, int(round(self.num_step_per_snapshot / 50.0)))
+        denominator = min(self.num_step_per_snapshot, patience)
         return self.step % denominator == 0
 
     @property
