@@ -169,6 +169,10 @@ class WandBCallback(TrainerCallback):
     def log_lr(self, key: str, lr: float, state: TrainerState) -> None:
         wandb.log({key: lr}, step=self._wandb_step(state.step))
 
+    def log_train_step(self, stepped: TrainStepOutputs, state: TrainerState) -> None:
+        if state.should_log_losses:
+            wandb.log(prefix_dict(stepped.loss_dict, "tr"), step=state.step)
+
     def log_metrics(self, metric_outputs: MetricsOutputs, state: TrainerState) -> None:
         metrics = shallow_copy_dict(metric_outputs.metric_values)
         metrics["score"] = metric_outputs.final_score
@@ -185,18 +189,6 @@ class WandBCallback(TrainerCallback):
             wandb.log(hists, step=self._wandb_step(step))
         if self._log_artifacts:
             wandb.log_artifact(trainer.workspace)
-
-    def after_train_step(
-        self,
-        batch: tensor_dict_type,
-        stepped: TrainStepOutputs,
-        trainer: ITrainer,
-    ) -> None:
-        state = trainer.state
-        if state is None:
-            return
-        if state.should_log_losses:
-            wandb.log(prefix_dict(stepped.loss_dict, "tr"), step=state.step)
 
     def finalize(self, trainer: ITrainer) -> None:
         if self.is_local_rank_0:

@@ -1565,8 +1565,6 @@ class OptimizerPack(DataClassBase):
 class TrainerCallback(WithRegister["TrainerCallback"]):
     """
     This is the base class for various callbacks used in the training process, here are some brief introductions:
-    > If corresponding callbacks are only triggered when `is_local_rank_0` is `True`, we will put a `[rank 0]` tag
-    in front of the description.
 
     - `initialize` is called before the trainer is constructed.
     - `before_loop` is called right before the training loop starts.
@@ -1574,9 +1572,10 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     > `forward_kwargs` will be used in `IModel.run` method, which will affect both `m.forward` & `self.postprocess`.
     - `mutate_loss_kwargs` is used to mutate the `loss_kwargs` of the model.
     > `loss_kwargs` will be used in each `train_step.loss_fn` method.
-    - [rank 0] `log_*` methods will be triggered when the `log` event is triggered, so you can use them to do custom logging.
-    - [rank 0] `after_train_step` is called after each training step.
-    - [rank 0] `after_monitor` is called after each monitor step.
+    - `log_*` methods will be triggered when the `log` event is triggered, so you can use them to do custom logging.
+    > these methods will only be triggered when `is_local_rank_0` is `True`.
+    - `after_train_step` is called after each training step.
+    - `after_monitor` is called after each monitor step.
     - `finalize` is called at the end of the `fit` method of the trainer.
 
     And here's the lifecycle of the callbacks:
@@ -1587,7 +1586,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
 
     * training loop:
 
-        train step -> `after_train_step` -> monitor step -> `after_monitor`
+        train step -> `log_train_step` -> `after_train_step` -> monitor step -> `after_monitor`
 
     * train step:
 
@@ -1627,6 +1626,9 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
         pass
 
     def log_lr(self, key: str, lr: float, state: TrainerState) -> None:
+        pass
+
+    def log_train_step(self, stepped: TrainStepOutputs, state: TrainerState) -> None:
         pass
 
     def log_metrics(self, metric_outputs: MetricsOutputs, state: TrainerState) -> None:

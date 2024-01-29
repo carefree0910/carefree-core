@@ -313,7 +313,9 @@ class Trainer(ITrainer):
                     train_stepped = self._step(i, batch)
                     if self.is_local_rank_0:
                         for callback in self.callbacks:
-                            callback.after_train_step(batch, train_stepped, self)
+                            callback.log_train_step(train_stepped, self.state)
+                    for callback in self.callbacks:
+                        callback.after_train_step(batch, train_stepped, self)
                     monitored = self._monitor(train_loader, valid_loader, train_stepped)
                     if self.state.should_monitor:
                         for callback in self.callbacks:
