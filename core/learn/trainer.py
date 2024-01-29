@@ -580,8 +580,10 @@ class Trainer(ITrainer):
                     if self.state.can_snapshot:
                         self.state.update_snapshot_epoch()
                         save_checkpoint = True
-                if any(monitor.should_terminate(score) for monitor in self.monitors):
-                    terminate = True
+                # should not terminate if DDP is enabled, otherwise the processes may hang
+                if get_ddp_info() is None:
+                    if any(m.should_terminate(score) for m in self.monitors):
+                        terminate = True
         return MonitorResults(terminate, save_checkpoint, self.intermediate)
 
     def _step(self, batch_idx: int, batch: tensor_dict_type) -> TrainStepOutputs:
