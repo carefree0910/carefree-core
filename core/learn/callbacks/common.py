@@ -16,6 +16,7 @@ from ..schema import TrainerState
 from ..schema import MetricsOutputs
 from ..schema import TrainerCallback
 from ..schema import TrainStepOutputs
+from ..toolkit import tensor_batch_to_np
 from ...toolkit import console
 from ...toolkit.misc import prefix_dict
 from ...toolkit.misc import shallow_copy_dict
@@ -98,16 +99,17 @@ class NaNDetectorCallback(TrainerCallback):
         stepped: TrainStepOutputs,
         trainer: ITrainer,
     ) -> None:
-        is_nan = {k: math.isnan(v) for k, v in stepped.loss_dict.items()}
+        is_nan = [k for k, v in stepped.loss_dict.items() if math.isnan(v)]
         if is_nan:
-            batch_is_nan = {k: torch.isnan(v).mean().item() for k, v in batch.items()}
+            np_batch = tensor_batch_to_np(batch)
+            batch_is_nan = {k: np.isnan(v).mean().item() for k, v in np_batch.items()}
             batch_is_nan = {k: v for k, v in batch_is_nan.items() if v > 0}
             workspace = Path(trainer.workspace)
-            batch_paths = {k: workspace / f"{k}.npy" for k in batch}
+            batch_paths = {k: workspace / f"{k}.npy" for k in np_batch}
             if self.is_local_rank_0:
-                for k, v in batch.items():
-                    if isinstance(v, torch.Tensor):
-                        np.save(batch_paths[k], v.detach().cpu().numpy())
+                for k, v in np_batch.items():
+                    if isinstance(v, np.ndarray):
+                        np.save(batch_paths[k], v)
                 console.error(
                     f"following losses are NaN: {sorted(is_nan)}, they are caused by "
                     f"{batch_is_nan}, current batch will be saved to {batch_paths} "
