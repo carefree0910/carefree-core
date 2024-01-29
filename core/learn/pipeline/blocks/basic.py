@@ -152,7 +152,6 @@ class ExtractStateInfoBlock(TryLoadBlock):
         state_config = config.state_config or {}
         # check log_steps
         if log_steps is not None:
-            state_config.setdefault("num_step_per_log", log_steps)
             state_config.setdefault("snapshot_start_step", log_steps)
             state_config.setdefault("num_step_per_snapshot", log_steps)
         # check snapshot_start_step

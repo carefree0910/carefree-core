@@ -1382,7 +1382,6 @@ class TrainerState:
         snapshot_start_step: Optional[int] = None,
         max_snapshot_file: int = 25,
         num_snapshot_per_epoch: int = 2,
-        num_step_per_log: int = 350,
         num_step_per_snapshot: Optional[int] = None,
         max_step_per_snapshot: int = 1000,
         min_snapshot_epoch_gap: int = 0,
@@ -1399,7 +1398,6 @@ class TrainerState:
         self.snapshot_start_step = snapshot_start_step
         self.max_snapshot_file = max_snapshot_file
         self.num_snapshot_per_epoch = num_snapshot_per_epoch
-        self.num_step_per_log = num_step_per_log
         if num_step_per_snapshot is None:
             num_step_per_snapshot = max(1, int(loader_length / num_snapshot_per_epoch))
             num_step_per_snapshot = min(max_step_per_snapshot, num_step_per_snapshot)
@@ -1424,7 +1422,6 @@ class TrainerState:
             "snapshot_start_step": self.snapshot_start_step,
             "max_snapshot_file": self.max_snapshot_file,
             "num_snapshot_per_epoch": self.num_snapshot_per_epoch,
-            "num_step_per_log": self.num_step_per_log,
             "num_step_per_snapshot": self.num_step_per_snapshot,
             "max_step_per_snapshot": self.max_step_per_snapshot,
         }
@@ -1474,9 +1471,7 @@ class TrainerState:
             return False
         if self.is_terminate:
             return True
-        min_period = math.ceil(self.num_step_per_log / self.num_step_per_snapshot)
-        period = max(1, int(min_period)) * self.num_step_per_snapshot
-        return self.step % period == 0
+        return self.step % self.num_step_per_snapshot == 0
 
     @property
     def can_snapshot(self) -> bool:
