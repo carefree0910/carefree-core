@@ -1801,6 +1801,17 @@ class Config(TrainerConfig, DLSettings, ISerializableDataClass["Config"]):  # ty
         if not self.module_name:
             raise ValueError("`module_name` should be provided")
 
+    def get_external_configs(self, excluded: Set[str]) -> Dict[str, Any]:
+        original = self.__class__().asdict()
+        external_configs: Dict[str, Any] = {}
+        for k, v in self.asdict().items():
+            if k in excluded:
+                continue
+            ov = original[k]
+            if v != ov:
+                external_configs[k] = v
+        return external_configs
+
     @property
     def is_debug(self) -> bool:
         return self.num_steps == 1

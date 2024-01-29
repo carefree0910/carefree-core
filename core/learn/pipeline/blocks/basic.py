@@ -606,17 +606,9 @@ class ReportBlock(Block):
             _defaults,
             self.training_workspace,
         )
-        original = self.config.__class__().asdict()
-        external_configs: Dict[str, Any] = {}
-        for k, v in self.config.asdict().items():
-            if k in _defaults:
-                continue
-            ov = original[k]
-            if v != ov:
-                external_configs[k] = v
         self._report_messages(
             "External Configurations",
-            external_configs,
+            self.config.get_external_configs(set(_defaults)),
             self.training_workspace,
         )
 
