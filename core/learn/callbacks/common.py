@@ -1,10 +1,15 @@
+import math
 import time
+import torch
 import wandb
+
+import numpy as np
 
 from typing import Any
 from typing import Dict
 from typing import List
 from typing import Optional
+from pathlib import Path
 
 from ..schema import ITrainer
 from ..schema import TrainerState
@@ -83,6 +88,32 @@ class LogMetricsMsgCallback(TrainerCallback):
             f.write(msg)
         self.timer = time.time()
         self.metrics_log_path = metrics_log_path
+
+
+@TrainerCallback.register("nan_detector")
+class NaNDetectorCallback(TrainerCallback):
+    def after_train_step(
+        self,
+        batch: tensor_dict_type,
+        stepped: TrainStepOutputs,
+        trainer: ITrainer,
+    ) -> None:
+        is_nan = {k: math.isnan(v) for k, v in stepped.loss_dict.items()}
+        if is_nan:
+            batch_is_nan = {k: torch.isnan(v).mean().item() for k, v in batch.items()}
+            batch_is_nan = {k: v for k, v in batch_is_nan.items() if v > 0}
+            workspace = Path(trainer.workspace)
+            batch_paths = {k: workspace / f"{k}.npy" for k in batch}
+            if self.is_local_rank_0:
+                for k, v in batch.items():
+                    if isinstance(v, torch.Tensor):
+                        np.save(batch_paths[k], v.detach().cpu().numpy())
+                console.error(
+                    f"following losses are NaN: {sorted(is_nan)}, they are caused by "
+                    f"{batch_is_nan}, current batch will be saved to {batch_paths} "
+                    f"for further investigation"
+                )
+            raise RuntimeError("NaN detected")
 
 
 @TrainerCallback.register("wandb")
@@ -174,5 +205,6 @@ class WandBCallback(TrainerCallback):
 __all__ = [
     "LogMetricsMsgCallback",
     "UpdateArtifactsCallback",
+    "NaNDetectorCallback",
     "WandBCallback",
 ]

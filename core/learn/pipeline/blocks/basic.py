@@ -43,6 +43,7 @@ from ...trainer import get_scores
 from ...trainer import get_sorted_checkpoints
 from ...trainer import Trainer
 from ...monitors import BasicMonitor
+from ...callbacks import NaNDetectorCallback
 from ...callbacks import LogMetricsMsgCallback
 from ...callbacks import UpdateArtifactsCallback
 from ...constants import PT_PREFIX
@@ -270,6 +271,7 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
             callback_names = [callback_names]
         auto_callback = config.auto_callback
         default_callbacks = [
+            NaNDetectorCallback.__identifier__,
             LogMetricsMsgCallback.__identifier__,
             UpdateArtifactsCallback.__identifier__,
         ]
