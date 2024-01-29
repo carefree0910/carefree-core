@@ -1,6 +1,5 @@
 import math
 import time
-import torch
 import wandb
 
 import numpy as np
@@ -16,6 +15,7 @@ from ..schema import TrainerState
 from ..schema import MetricsOutputs
 from ..schema import TrainerCallback
 from ..schema import TrainStepOutputs
+from ..toolkit import get_ddp_info
 from ..toolkit import tensor_batch_to_np
 from ...toolkit import console
 from ...toolkit.misc import prefix_dict
@@ -102,19 +102,19 @@ class NaNDetectorCallback(TrainerCallback):
         is_nan = [k for k, v in stepped.loss_dict.items() if math.isnan(v)]
         if is_nan:
             np_batch = tensor_batch_to_np(batch)
-            batch_is_nan = {k: np.isnan(v).mean().item() for k, v in np_batch.items()}
-            batch_is_nan = {k: v for k, v in batch_is_nan.items() if v > 0}
+            nan_ratios = {k: np.isnan(v).mean().item() for k, v in np_batch.items()}
             workspace = Path(trainer.workspace)
-            batch_paths = {k: workspace / f"{k}.npy" for k in np_batch}
-            if self.is_local_rank_0:
-                for k, v in np_batch.items():
-                    if isinstance(v, np.ndarray):
-                        np.save(batch_paths[k], v)
-                console.error(
-                    f"following losses are NaN: {sorted(is_nan)}, they are caused by "
-                    f"{batch_is_nan}, current batch will be saved to {batch_paths} "
-                    f"for further investigation"
-                )
+            ddp_info = get_ddp_info()
+            appendix = "" if ddp_info is None else f"_{ddp_info.rank}"
+            batch_paths = {k: workspace / f"{k}{appendix}.npy" for k in np_batch}
+            for k, v in np_batch.items():
+                if isinstance(v, np.ndarray):
+                    np.save(batch_paths[k], v)
+            console.error(
+                f"following losses are NaN: {sorted(is_nan)}, nan ratios of the batch "
+                f"are {nan_ratios}. Current batch will be saved to {batch_paths} "
+                f"for further investigation"
+            )
             raise RuntimeError("NaN detected")
 
 
