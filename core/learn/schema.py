@@ -1448,10 +1448,7 @@ class TrainerState:
 
     @property
     def should_log_lr(self) -> bool:
-        if not self.enable_logging:
-            return False
-        denominator = min(self.num_step_per_epoch, 10)
-        return self.step % denominator == 0
+        return self.should_log_losses
 
     @property
     def should_log_losses(self) -> bool:
