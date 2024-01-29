@@ -121,8 +121,9 @@ class WandBCallback(TrainerCallback):
         self._log_artifacts = log_artifacts
 
     def initialize(self) -> None:
-        wandb.login(anonymous=self._anonymous, relogin=self._relogin)
-        wandb.init(**self.init_kwargs)
+        if self.is_local_rank_0:
+            wandb.login(anonymous=self._anonymous, relogin=self._relogin)
+            wandb.init(**self.init_kwargs)
 
     def _wandb_step(self, step: Optional[int]) -> Optional[int]:
         return None if step == -1 else step
@@ -152,8 +153,9 @@ class WandBCallback(TrainerCallback):
             wandb.log(prefix_dict(stepped.loss_dict, "tr"), step=state.step)
 
     def finalize(self, trainer: ITrainer) -> None:
-        self.log_artifacts(trainer)
-        wandb.finish()
+        if self.is_local_rank_0:
+            self.log_artifacts(trainer)
+            wandb.finish()
 
 
 __all__ = [

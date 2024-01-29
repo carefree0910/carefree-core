@@ -1573,6 +1573,8 @@ class OptimizerPack(DataClassBase):
 class TrainerCallback(WithRegister["TrainerCallback"]):
     """
     This is the base class for various callbacks used in the training process, here are some brief introductions:
+    > If corresponding callbacks are only triggered when `is_local_rank_0` is `True`, we will put a `[rank 0]` tag
+    in front of the description.
 
     - `initialize` is called before the trainer is constructed.
     - `before_loop` is called right before the training loop starts.
@@ -1580,9 +1582,9 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     > `forward_kwargs` will be used in `IModel.run` method, which will affect both `m.forward` & `self.postprocess`.
     - `mutate_loss_kwargs` is used to mutate the `loss_kwargs` of the model.
     > `loss_kwargs` will be used in each `train_step.loss_fn` method.
-    - `log_*` methods will be triggered when the `log` event is triggered, so you can use them to do custom logging.
-    - `after_train_step` is called after each training step.
-    - `after_monitor` is called after each monitor step.
+    - [rank 0] `log_*` methods will be triggered when the `log` event is triggered, so you can use them to do custom logging.
+    - [rank 0] `after_train_step` is called after each training step.
+    - [rank 0] `after_monitor` is called after each monitor step.
     - `finalize` is called at the end of the `fit` method of the trainer.
 
     And here's the lifecycle of the callbacks:
@@ -1615,6 +1617,10 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
 
     def __init__(self, *args: Any, **kwargs: Any):
         pass
+
+    @property
+    def is_local_rank_0(self) -> bool:
+        return is_local_rank_0()
 
     def initialize(self) -> None:
         pass
