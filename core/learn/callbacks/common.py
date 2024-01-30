@@ -26,7 +26,7 @@ from ...toolkit.types import tensor_dict_type
 
 @TrainerCallback.register("update_artifacts")
 class UpdateArtifactsCallback(TrainerCallback):
-    def log_artifacts(self, trainer: ITrainer) -> None:
+    def after_save_checkpoint(self, trainer: ITrainer) -> None:
         if trainer.config.save_pipeline_in_realtime:
             from ..pipeline import PipelineSerializer
 
