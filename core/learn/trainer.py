@@ -319,7 +319,7 @@ class Trainer(ITrainer):
                     monitored = self._monitor(train_loader, valid_loader, train_stepped)
                     if self.state.should_monitor:
                         for callback in self.callbacks:
-                            callback.after_monitor(monitored, self.state)
+                            callback.after_monitor(monitored, self)
                     if self.is_local_rank_0 and monitored.save_checkpoint:
                         metric_outputs = monitored.metric_outputs
                         assert metric_outputs is not None

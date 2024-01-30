@@ -1653,7 +1653,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     ) -> None:
         pass
 
-    def after_monitor(self, monitored: MonitorResults, state: TrainerState) -> None:
+    def after_monitor(self, monitored: MonitorResults, trainer: "ITrainer") -> None:
         pass
 
     def finalize(self, trainer: "ITrainer") -> None:
