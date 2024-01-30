@@ -1576,6 +1576,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     > these methods will only be triggered when `is_local_rank_0` is `True`.
     - `after_train_step` is called after each training step.
     - `after_monitor` is called after each monitor step.
+    - `after_save_checkpoint` is called once a new checkpoint is saved.
     - `finalize` is called at the end of the `fit` method of the trainer.
 
     And here's the lifecycle of the callbacks:
@@ -1587,6 +1588,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     * training loop:
 
         train step -> `log_train_step` -> `after_train_step` -> monitor step -> `after_monitor`
+     -> save checkpoint -> `after_save_checkpoint`
 
     * train step:
 
@@ -1654,6 +1656,9 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
         pass
 
     def after_monitor(self, monitored: MonitorResults, trainer: "ITrainer") -> None:
+        pass
+
+    def after_save_checkpoint(self, trainer: "ITrainer") -> None:
         pass
 
     def finalize(self, trainer: "ITrainer") -> None:

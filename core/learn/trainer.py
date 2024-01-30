@@ -324,6 +324,8 @@ class Trainer(ITrainer):
                         metric_outputs = monitored.metric_outputs
                         assert metric_outputs is not None
                         self.save_checkpoint(metric_outputs.final_score)
+                        for callback in self.callbacks:
+                            callback.after_save_checkpoint(self)
                     terminate = monitored.terminate or self.state.should_terminate
                     if terminate:
                         break
