@@ -188,12 +188,17 @@ class MoE(Module):
         dim: int,
         top_k: int,
         num_experts: int,
+        num_common_experts: int = 0,
         router: str = "basic",
         router_config: TConfig = None,
     ) -> None:
         super().__init__()
         build = lambda: build_module(expert_name, config=expert_config)
         self.experts = nn.ModuleList([build() for _ in range(num_experts)])
+        if num_common_experts <= 0:
+            self.commons = None
+        else:
+            self.commons = nn.ModuleList([build() for _ in range(num_common_experts)])
         router_kwargs = dict(dim=dim, num_experts=num_experts)
         self.router = build_moe_router(router, config=router_config, **router_kwargs)
         self.dispatcher = MoEDispatcher(top_k=top_k, num_experts=num_experts)
@@ -205,10 +210,14 @@ class MoE(Module):
         noise_eps: float = 1e-2,
         **kwargs: Any,
     ) -> tensor_dict_type:
+        inp = net
         routings = self.router(net, noise_eps)
         dispatch = self.dispatcher.dispatch(net, routings)
         outs = [m(inp, **kwargs) for m, inp in zip(self.experts, dispatch.inputs)]
         net = self.dispatcher.combine(outs, dispatch.indices, dispatch.gates_gahtered)
+        if self.commons is not None:
+            for m in self.commons:
+                net += m(inp, **kwargs)
         return {
             PREDICTIONS_KEY: net,
             "importances": dispatch.gates.sum(0),

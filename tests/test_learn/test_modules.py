@@ -28,6 +28,9 @@ class TestModules(unittest.TestCase):
                 for i, idx in enumerate(indices.tolist()):
                     i_net = moe.experts[idx](sample)
                     sample_out += i_net * weights[i]
+                if moe.commons is not None:
+                    for m in moe.commons:
+                        sample_out += m(sample)
                 moe_outputs.append(sample_out)
             return torch.cat(moe_outputs)
 
@@ -43,6 +46,7 @@ class TestModules(unittest.TestCase):
             dim=dim,
             top_k=top_k,
             num_experts=num_experts,
+            num_common_experts=1,
         )
         moe.eval()
         moe.router.w_gate.data.normal_()
