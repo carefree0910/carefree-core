@@ -189,6 +189,8 @@ class WandBCallback(TrainerCallback):
                 k: wandb.Histogram(v.detach().cpu().numpy())
                 for k, v in m.named_parameters()
             }
+            for k, v in m.named_buffers():
+                hists[k] = wandb.Histogram(v.detach().cpu().numpy())
             step = None if trainer.state is None else trainer.state.step
             wandb.log(hists, step=self._wandb_step(step))
         if self._log_artifacts:
