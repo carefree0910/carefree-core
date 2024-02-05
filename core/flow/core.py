@@ -27,11 +27,11 @@ from ..toolkit.misc import register_core
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.misc import JsonPack
 from ..toolkit.misc import ISerializableDataClass
+from ..toolkit.types import TPath
 from ..toolkit.data_structures import Item
 from ..toolkit.data_structures import Bundle
 
 
-TPath = Union[str, Path]
 TNode = TypeVar("TNode", bound="Node")
 TTNode = TypeVar("TTNode", bound=Type["Node"])
 nodes: Dict[str, Type["Node"]] = {}

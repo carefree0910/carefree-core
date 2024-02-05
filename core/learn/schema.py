@@ -39,7 +39,6 @@ from torch.utils.data import WeightedRandomSampler
 from torch.utils.data import DataLoader as TorchDataLoader
 from torch.utils.data.dataloader import _BaseDataLoaderIter
 
-from .toolkit import TPath
 from .toolkit import device_type
 from .toolkit import get_device
 from .toolkit import get_ddp_info
@@ -65,6 +64,7 @@ from ..toolkit.misc import ISerializableDataClass
 from ..toolkit.array import to_numpy
 from ..toolkit.array import to_torch
 from ..toolkit.array import to_device
+from ..toolkit.types import TPath
 from ..toolkit.types import np_dict_type
 from ..toolkit.types import tensor_dict_type
 from ..toolkit.pipeline import IBlock

@@ -15,5 +15,6 @@ TArray = TypeVar("TArray", bound=arr_type)
 np_dict_type = Dict[str, Union[np.ndarray, Any]]
 tensor_dict_type = Dict[str, Union[torch.Tensor, Any]]
 
-TConfig = Optional[Union[str, Path, Dict[str, Any]]]
+TPath = Union[str, Path]
+TConfig = Optional[Union[TPath, Dict[str, Any]]]
 TNumberPair = Optional[Union[int, Tuple[int, int]]]

@@ -44,12 +44,11 @@ from ..toolkit.misc import truncate_string_to_length
 from ..toolkit.misc import DataClassBase
 from ..toolkit.array import is_string
 from ..toolkit.array import to_standard
+from ..toolkit.types import TPath
 from ..toolkit.types import TArray
 from ..toolkit.types import np_dict_type
 from ..toolkit.types import tensor_dict_type
 
-
-TPath = Union[str, Path]
 
 param_type = Union[Tensor, nn.Parameter]
 device_type = Optional[Union[int, str, device]]
