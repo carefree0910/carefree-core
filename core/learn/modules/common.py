@@ -121,8 +121,8 @@ class EMA(Module):
             decay = min(self._decay, (1 + self.num_updates) / (10 + self.num_updates))
         for name, param in self.tgt_params:
             ema_attr = getattr(self, name)
-            ema = (1.0 - decay) * param.data + decay * ema_attr
-            setattr(self, name, ema.clone())
+            ema = torch.lerp(param.data, ema_attr, decay)
+            setattr(self, name, ema)
 
     def train(self, mode: bool = True) -> "EMA":
         super().train(mode)
