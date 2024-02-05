@@ -1,5 +1,7 @@
+import tempfile
 import unittest
 
+from pathlib import Path
 from core.toolkit.array import *
 
 
@@ -306,6 +308,53 @@ class TestArray(unittest.TestCase):
         full_logits = get_full_logits(logits)
         np.testing.assert_allclose(logits, full_logits[..., [1]])
         np.testing.assert_allclose(-logits, full_logits[..., [0]])
+
+
+class TestNpSafeSerializer(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.folder = Path(self.temp_dir.name)
+        self.data = np.array([1, 2, 3, 4, 5])
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_save(self):
+        NpSafeSerializer.save(self.folder, self.data)
+        self.assertTrue((self.folder / NpSafeSerializer.array_file).exists())
+        self.assertTrue((self.folder / NpSafeSerializer.size_file).exists())
+
+    def test_load(self):
+        NpSafeSerializer.save(self.folder, self.data)
+        loaded_data = NpSafeSerializer.load(self.folder)
+        np.testing.assert_array_equal(loaded_data, self.data)
+
+    def test_try_load(self):
+        NpSafeSerializer.save(self.folder, self.data)
+        loaded_data = NpSafeSerializer.try_load(self.folder)
+        np.testing.assert_array_equal(loaded_data, self.data)
+
+    def test_try_load_no_load(self):
+        NpSafeSerializer.save(self.folder, self.data)
+        loaded_data = NpSafeSerializer.try_load(self.folder, no_load=True)
+        np.testing.assert_array_equal(loaded_data, np.zeros(0))
+
+    def test_try_load_invalid_size(self):
+        NpSafeSerializer.save(self.folder, self.data)
+        with open(self.folder / NpSafeSerializer.size_file, "w") as f:
+            f.write("invalid")
+        loaded_data = NpSafeSerializer.try_load(self.folder)
+        self.assertIsNone(loaded_data)
+
+    def test_load_with(self):
+        def init_fn():
+            return np.array([6, 7, 8, 9, 10])
+
+        NpSafeSerializer.cleanup(self.folder)
+        loaded_data = NpSafeSerializer.load_with(self.folder, init_fn)
+        np.testing.assert_array_equal(loaded_data, init_fn())
+        self.assertTrue((self.folder / NpSafeSerializer.array_file).exists())
+        self.assertTrue((self.folder / NpSafeSerializer.size_file).exists())
 
 
 if __name__ == "__main__":
