@@ -431,6 +431,41 @@ class TestMisc(unittest.TestCase):
         num_tasks = 50
         asyncio.run(main())
 
+    def test_get_file_info(self) -> None:
+        text = "This is a test file."
+        test_file = Path("test_file.txt")
+        test_file.write_text(text)
+
+        file_info = get_file_info(test_file)
+
+        self.assertIsInstance(file_info, FileInfo)
+        self.assertEqual(file_info.sha, hashlib.sha256(text.encode()).hexdigest())
+        self.assertEqual(file_info.st_size, len(text))
+
+        test_file.unlink()
+
+    def test_check_sha_with_matching_hash(self) -> None:
+        path = Path("test_file.txt")
+        path.write_text("This is a test file.")
+        tgt_sha = hashlib.sha256(path.read_bytes()).hexdigest()
+
+        result = check_sha_with(path, tgt_sha)
+
+        self.assertTrue(result)
+
+        path.unlink()
+
+    def test_check_sha_with_non_matching_hash(self) -> None:
+        path = Path("test_file.txt")
+        path.write_text("This is a test file.")
+        tgt_sha = "0"
+
+        result = check_sha_with(path, tgt_sha)
+
+        self.assertFalse(result)
+
+        path.unlink()
+
     def test_data_class_base(self):
         @dataclass
         class Foo(DataClassBase):
