@@ -48,6 +48,7 @@ from dataclasses import Field
 from concurrent.futures import ThreadPoolExecutor
 
 from . import console
+from .types import TPath
 from .types import TConfig
 from .types import arr_type
 from .types import np_dict_type
@@ -488,6 +489,12 @@ def compress(absolute_folder: str, remove_original: bool = True) -> None:
     shutil.make_archive(absolute_folder, "zip", absolute_folder)
     if remove_original:
         shutil.rmtree(absolute_folder)
+
+
+def to_path(path: TPath) -> Path:
+    if isinstance(path, Path):
+        return path
+    return Path(path)
 
 
 # util modules
