@@ -10,13 +10,18 @@ from typing import Dict
 from typing import List
 from typing import Tuple
 from typing import Union
+from typing import Callable
 from typing import Optional
 from typing import NamedTuple
 from collections import Counter
 from multiprocessing.shared_memory import SharedMemory
 from numpy.lib.stride_tricks import as_strided
 
+from .misc import to_path
 from .misc import random_hash
+from .misc import get_file_size
+from .misc import timeit
+from .types import TPath
 from .types import TArray
 from .types import arr_type
 from .types import tensor_dict_type
@@ -643,3 +648,72 @@ def make_grid(arr: arr_type, n_row: Optional[int] = None) -> torch.Tensor:
     if n_row is None:
         n_row = math.ceil(math.sqrt(len(arr)))
     return torchvision.utils.make_grid(arr, n_row)
+
+
+class NpSafeSerializer:
+    size_file = "size.txt"
+    array_file = "array.npy"
+
+    @classmethod
+    def save(cls, folder: TPath, data: np.ndarray, *, verbose: bool = True) -> None:
+        folder = to_path(folder)
+        folder.mkdir(parents=True, exist_ok=True)
+        array_path = folder / cls.array_file
+        with timeit(f"save '{folder}'", enabled=verbose):
+            np.save(array_path, data)
+            with open(folder / cls.size_file, "w") as f:
+                f.write(str(get_file_size(array_path)))
+
+    @classmethod
+    def load(cls, folder: TPath, *, mmap_mode: Optional[str] = None) -> np.ndarray:
+        return np.load(to_path(folder) / cls.array_file, mmap_mode=mmap_mode)
+
+    @classmethod
+    def try_load(
+        cls,
+        folder: TPath,
+        *,
+        mmap_mode: Optional[str] = None,
+        no_load: bool = False,
+        **kwargs: Any,
+    ) -> Optional[np.ndarray]:
+        folder = to_path(folder)
+        array_path = folder / cls.array_file
+        if not array_path.exists():
+            return None
+        size_path = folder / cls.size_file
+        if not size_path.is_file():
+            return None
+        with (folder / cls.size_file).open("r") as f:
+            try:
+                size = int(f.read().strip())
+            except ValueError:
+                return None
+        if size != get_file_size(array_path):
+            return None
+        if no_load:
+            return np.zeros(0)
+        return np.load(array_path, mmap_mode=mmap_mode, **kwargs)
+
+    @classmethod
+    def load_with(
+        cls,
+        folder: TPath,
+        init_fn: Callable[[], np.ndarray],
+        *,
+        mmap_mode: Optional[str] = None,
+        no_load: bool = False,
+        verbose: bool = True,
+        **kwargs: Any,
+    ) -> np.ndarray:
+        array = cls.try_load(folder, mmap_mode=mmap_mode, no_load=no_load, **kwargs)
+        if array is None:
+            array = init_fn()
+            cls.save(folder, array, verbose=verbose)
+        return array
+
+    @classmethod
+    def cleanup(cls, folder: TPath) -> None:
+        folder = to_path(folder)
+        (folder / cls.array_file).unlink(missing_ok=True)
+        (folder / cls.size_file).unlink(missing_ok=True)
