@@ -54,6 +54,7 @@ from .constants import INPUT_KEY
 from .constants import LABEL_KEY
 from .constants import PREDICTIONS_KEY
 from ..toolkit import console
+from ..toolkit.misc import update_dict
 from ..toolkit.misc import safe_execute
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.misc import WithRegister
@@ -250,6 +251,7 @@ class DataConfig(ISerializableDataClass["DataConfig"]):
     shuffle_valid: bool = False
     block_names: Optional[List[str]] = None
     block_configs: Optional[Dict[str, Dict[str, Any]]] = None
+    loader_configs: Optional[Dict[str, Any]] = None
 
     def add_blocks(self, *blocks: Type["IDataBlock"]) -> None:
         if self.block_names is None:
@@ -505,6 +507,8 @@ class IData(  # type: ignore
         else:
             shuffle = False
             sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
+        loader_configs = shallow_copy_dict(self.config.loader_configs or {})
+        kwargs = update_dict(kwargs, loader_configs)
         loader = DataLoader(
             dataset,
             shuffle=shuffle,
