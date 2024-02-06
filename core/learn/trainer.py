@@ -209,6 +209,8 @@ class Trainer(ITrainer):
             device = get_torch_device(device)
             if device.type == "cpu":
                 cpu = True
+            else:
+                torch.cuda.set_device(device)
         self.accelerator = Accelerator(
             cpu=cpu,
             split_batches=self.config.split_batches,
