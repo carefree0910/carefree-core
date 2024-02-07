@@ -649,16 +649,18 @@ class DataClassBase:
             setattr(self, field_name, getattr(updated, field_name))
         return self
 
-    def to_hash(self) -> str:
+    def to_hash(self, *, excludes: Optional[List[str]] = None) -> str:
         cls = self.__class__
         requirements = set(get_requirements(cls))
         d = {k: getattr(self, k) for k in requirements}
         defaults = cls(**d)
+        excludes_set = set(excludes or [])
         return hash_dict(
             {
                 k: getattr(self, k)
                 for k in self.field_names
-                if k in requirements or getattr(self, k) != getattr(defaults, k)
+                if k not in excludes_set
+                and (k in requirements or getattr(self, k) != getattr(defaults, k))
             }
         )
 
