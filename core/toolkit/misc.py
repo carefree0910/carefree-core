@@ -593,6 +593,14 @@ def check_sha_with(path: TPath, tgt_sha: str) -> bool:
     return get_file_info(path).sha == tgt_sha
 
 
+def to_set(inp: Any) -> Set:
+    if isinstance(inp, set):
+        return inp
+    if isinstance(inp, (list, tuple, dict)):
+        return set(inp)
+    return {inp}
+
+
 # util modules
 
 
@@ -649,12 +657,22 @@ class DataClassBase:
             setattr(self, field_name, getattr(updated, field_name))
         return self
 
-    def to_hash(self, *, excludes: Optional[List[str]] = None) -> str:
+    def to_hash(
+        self,
+        *,
+        focuses: Optional[Union[str, List[str]]] = None,
+        excludes: Optional[Union[str, List[str]]] = None,
+    ) -> str:
         cls = self.__class__
         requirements = set(get_requirements(cls))
         d = {k: getattr(self, k) for k in requirements}
         defaults = cls(**d)
-        excludes_set = set(excludes or [])
+        excludes_set = to_set(excludes)
+        if focuses is not None:
+            focus_set = to_set(focuses)
+            for k in self.field_names:
+                if k not in focus_set:
+                    excludes_set.add(k)
         return hash_dict(
             {
                 k: getattr(self, k)

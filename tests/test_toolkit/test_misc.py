@@ -505,8 +505,10 @@ class TestMisc(unittest.TestCase):
         self.assertEqual(Foo().to_hash(), Foo(0).to_hash())
         self.assertEqual(Foo().to_hash(), FooExtended().to_hash())
         self.assertEqual(Foo().to_hash(), FooExtended(baz=1).to_hash())
+        self.assertNotEqual(Bar().to_hash(), Bar(1).to_hash())
+        self.assertEqual(Bar().to_hash(), Bar(1).to_hash(focuses="b"))
         self.assertNotEqual(Foo().to_hash(), Foo(1).to_hash())
-        self.assertEqual(Foo().to_hash(), Foo(1).to_hash(excludes=["bar"]))
+        self.assertEqual(Foo().to_hash(), Foo(1).to_hash(excludes="bar"))
 
     def test_with_register(self):
         class Foo(WithRegister):
