@@ -87,6 +87,7 @@ class Inference(IInference):
                     np_outputs = self.onnx.predict(np_batch)
                 elif self.model is not None:
                     tensor_batch = to_device(tensor_batch, device)
+                    Flag.in_step = True
                     step_outputs = self.model.step(
                         i,
                         tensor_batch,
@@ -95,6 +96,7 @@ class Inference(IInference):
                         get_losses=use_losses_as_metrics,
                         use_inference_mode=use_inference_mode,
                     )
+                    Flag.in_step = False
                     np_outputs = tensor_batch_to_np(step_outputs.forward_results)
                     if use_losses_as_metrics:
                         for k, vl in step_outputs.loss_dict.items():
@@ -172,12 +174,17 @@ class Inference(IInference):
                 ),
             )
 
+        class Flag:
+            in_step = False
+
         use_grad = kwargs.pop("use_grad", self.use_grad_in_predict)
         try:
             return run()
         except KeyboardInterrupt:
             raise
         except:
+            if not Flag.in_step:
+                raise
             use_grad = self.use_grad_in_predict = True
             return run()
 
