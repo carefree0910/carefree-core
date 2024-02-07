@@ -46,6 +46,7 @@ from .toolkit import get_world_size
 from .toolkit import is_local_rank_0
 from .toolkit import get_torch_device
 from .toolkit import fix_denormal_states
+from .toolkit import ONNX
 from .toolkit import eval_context
 from .toolkit import no_grad_context
 from .toolkit import toggle_optimizer
@@ -817,6 +818,8 @@ class InferenceOutputs(NamedTuple):
 
 
 class IInference(ABC):
+    onnx: Optional[ONNX]
+    model: Optional["IModel"]
     use_grad_in_predict = False
 
     @abstractmethod
