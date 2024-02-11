@@ -10,7 +10,6 @@ from typing import Optional
 from typing import Protocol
 
 from ..losses import build_loss
-from ..schema import train_forward_results_type
 from ..schema import ILoss
 from ..schema import Config
 from ..schema import IModel
@@ -34,7 +33,7 @@ class CommonTrainStep(TrainStep):
         m: IModel,
         state: Optional[TrainerState],
         batch: tensor_dict_type,
-        forward_results: train_forward_results_type,
+        forward_results: tensor_dict_type,
         **kwargs: Any,
     ) -> TrainStepLoss:
         losses = self.loss(forward_results, batch, state)

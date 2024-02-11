@@ -10,7 +10,6 @@ import torch.nn.functional as F
 
 from typing import Optional
 from core.learn.schema import losses_type
-from core.learn.schema import train_forward_results_type
 from core.learn.schema import TrainerState
 from core.toolkit.types import tensor_dict_type
 
@@ -75,7 +74,7 @@ class TestModules(unittest.TestCase):
         class MoELoss(cflearn.ILoss):
             def forward(
                 self,
-                forward_results: train_forward_results_type,
+                forward_results: tensor_dict_type,
                 batch: tensor_dict_type,
                 state: Optional[TrainerState] = None,
             ) -> losses_type:

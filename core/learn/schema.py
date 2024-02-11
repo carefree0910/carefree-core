@@ -81,7 +81,6 @@ data_type = Optional[Union[str, np.ndarray, np_dict_type, td_type, Any]]
 configs_type = Optional[Union[List[Dict[str, Any]], Dict[str, Any]]]
 sample_weights_type = Optional[Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]]
 raw_forward_results_type = Union[Tensor, td_type]
-train_forward_results_type = Union[tensor_dict_type, List[tensor_dict_type]]
 losses_type = Union[Tensor, td_type]
 
 T_d = TypeVar("T_d", bound="IData", covariant=True)
@@ -662,7 +661,7 @@ class ILoss(nn.Module, metaclass=ABCMeta):
     @abstractmethod
     def forward(
         self,
-        forward_results: train_forward_results_type,
+        forward_results: tensor_dict_type,
         batch: tensor_dict_type,
         state: Optional["TrainerState"] = None,
     ) -> losses_type:
@@ -889,7 +888,7 @@ class StepOutputs(NamedTuple):
 
 
 class TrainStepOutputs(NamedTuple):
-    forward_results: train_forward_results_type
+    forward_results: tensor_dict_type
     loss_dict: Dict[str, float]
 
 
@@ -903,14 +902,12 @@ class TrainStep(ABC):
         self,
         scope: str = "all",
         *,
-        num_forward: int = 1,
         grad_accumulate: Optional[int] = None,
         requires_new_forward: bool = False,
         requires_grad_in_forward: bool = True,
         enable_toggle_optimizer: bool = True,
     ) -> None:
         self.scope = scope
-        self.num_forward = num_forward
         self.grad_accumulate = grad_accumulate
         self.requires_new_forward = requires_new_forward
         self.requires_grad_in_forward = requires_grad_in_forward
@@ -922,7 +919,7 @@ class TrainStep(ABC):
         m: "IModel",
         state: Optional["TrainerState"],
         batch: tensor_dict_type,
-        forward_results: train_forward_results_type,
+        forward_results: tensor_dict_type,
         **kwargs: Any,
     ) -> TrainStepLoss:
         pass
@@ -940,7 +937,7 @@ class TrainStep(ABC):
         m: "IModel",
         trainer: "ITrainer",
         batch: tensor_dict_type,
-        forward_results: train_forward_results_type,
+        forward_results: tensor_dict_type,
     ) -> None:
         pass
 
@@ -1124,7 +1121,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         """
 
         state = trainer.state
-        forward: train_forward_results_type = {}
+        forward: tensor_dict_type = {}
         loss_dict = {}
         update_fn = get_update_fn(trainer)
         any_update = False
@@ -1159,10 +1156,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                 if i == 0 or train_step.requires_new_forward:
                     no_grad = not train_step.requires_grad_in_forward
                     with no_grad_context(enabled=no_grad), autocast_ctx:
-                        if train_step.num_forward == 1:
-                            forward = get_fw()
-                        else:
-                            forward = [get_fw() for _ in range(train_step.num_forward)]
+                        forward = get_fw()
                 optimizer = trainer.optimizers[train_step.scope]
                 should_toggle = train_step.enable_toggle_optimizer
                 with toggle_optimizer(self.m, optimizer, enabled=should_toggle):
