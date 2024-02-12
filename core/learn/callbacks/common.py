@@ -111,10 +111,13 @@ class NaNDetectorCallback(TrainerCallback):
             for k, v in np_batch.items():
                 if isinstance(v, np.ndarray):
                     np.save(batch_paths[k], v)
+            ckpt_folder = debug_folder / "checkpoints"
+            ckpt_folder.mkdir(exist_ok=True)
+            trainer.save_checkpoint(0.0, ckpt_folder, no_history=True)
             console.error(
                 f"following losses are NaN: {sorted(is_nan)}, nan ratios of the batch "
-                f"are {nan_ratios}. Current batch will be saved to {batch_paths} "
-                f"for further investigation"
+                f"are {nan_ratios}. Current batch / states will be saved to "
+                f"{batch_paths} / {ckpt_folder} for further investigation"
             )
             # sleep for 1 second in case other processes in ddp also encounter NaN,
             # so they can save the batch & log the error while this process is sleeping
