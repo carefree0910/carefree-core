@@ -18,6 +18,18 @@ class TestCallbacks(unittest.TestCase):
         config.to_debug().num_steps = 10  # comment this line to disable debug mode
         cflearn.TrainingPipeline.init(config).fit(data)
 
+    def test_nan_detector_callback(self) -> None:
+        data, in_dim, out_dim, _ = cflearn.testing.linear_data(3)
+        data.bundle.y_train[0, 0] = float("nan")
+        config = cflearn.Config(
+            module_name="linear",
+            module_config=dict(input_dim=in_dim, output_dim=out_dim, bias=False),
+            loss_name="mse",
+        )
+        config.to_debug()
+        with self.assertRaises(RuntimeError):
+            cflearn.TrainingPipeline.init(config).fit(data)
+
 
 if __name__ == "__main__":
     unittest.main()
