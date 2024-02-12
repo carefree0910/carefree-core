@@ -1739,7 +1739,7 @@ class ITrainer(ABC):
     def save_checkpoint(
         self,
         score: float,
-        folder: Optional[str] = None,
+        folder: Optional[TPath] = None,
         *,
         no_history: bool = False,
     ) -> None:
@@ -1748,7 +1748,7 @@ class ITrainer(ABC):
     @abstractmethod
     def restore_checkpoint(
         self,
-        folder: Optional[str] = None,
+        folder: Optional[TPath] = None,
         strict: bool = True,
         state_dict_callback: Optional[Callable[[tensor_dict_type], None]] = None,
     ) -> bool:

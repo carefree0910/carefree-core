@@ -44,25 +44,28 @@ from .constants import SCORES_FILE
 from .constants import CHECKPOINTS_FOLDER
 from .schedulers import WarmupScheduler
 from ..toolkit import console
+from ..toolkit.misc import to_path
 from ..toolkit.misc import safe_execute
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.misc import sort_dict_by_value
 from ..toolkit.misc import Incrementer
+from ..toolkit.types import TPath
 from ..toolkit.types import tensor_dict_type
 
 
 T_Lo = Optional[DataLoader]
 
 
-def get_scores(folder: str) -> Dict[str, float]:
-    scores_path = os.path.join(folder, SCORES_FILE)
-    if not os.path.isfile(scores_path):
+def get_scores(folder: TPath) -> Dict[str, float]:
+    folder = to_path(folder)
+    scores_path = folder / SCORES_FILE
+    if not scores_path.is_file():
         return {}
-    with open(scores_path, "r") as f:
+    with scores_path.open("r") as f:
         return json.load(f)
 
 
-def get_sorted_checkpoints(checkpoint_folder: str) -> List[str]:
+def get_sorted_checkpoints(checkpoint_folder: TPath) -> List[str]:
     """
     better checkpoints will be placed earlier,
     which means `checkpoints[0]` is the best checkpoint
@@ -371,7 +374,7 @@ class Trainer(ITrainer):
     def save_checkpoint(
         self,
         score: float,
-        folder: Optional[str] = None,
+        folder: Optional[TPath] = None,
         *,
         no_history: bool = False,
     ) -> None:
@@ -383,6 +386,7 @@ class Trainer(ITrainer):
                 msg = "either `folder` or `checkpoint_folder` should be provided"
                 raise ValueError(msg)
             folder = self.checkpoint_folder
+        folder = to_path(folder)
         state: Optional[TrainerState] = getattr(self, "state", None)
         pt_file = f"{PT_PREFIX}{-1 if state is None else state.step}.pt"
         if state is None:
@@ -390,8 +394,8 @@ class Trainer(ITrainer):
                 "`state` is not initialized, "
                 "latest model will be saved and the recorded score will always be 0"
             )
-            self.model.save(os.path.join(folder, pt_file))
-            with open(os.path.join(folder, SCORES_FILE), "w") as f:
+            self.model.save(folder / pt_file)
+            with (folder / SCORES_FILE).open("w") as f:
                 json.dump({pt_file: 0.0}, f)
             return
         # leave top_k snapshots only
@@ -400,18 +404,18 @@ class Trainer(ITrainer):
             if len(checkpoints) >= state.max_snapshot_file:
                 for file in checkpoints[state.max_snapshot_file - 1 :]:
                     self.checkpoint_scores.pop(file)
-                    os.remove(os.path.join(folder, file))
+                    (folder / file).unlink()
         # pt
-        self.model.save(os.path.join(folder, pt_file))
+        self.model.save(folder / pt_file)
         # scores
         scores = {} if no_history else self.checkpoint_scores
         scores[pt_file] = score
-        with open(os.path.join(folder, SCORES_FILE), "w") as f:
+        with (folder / SCORES_FILE).open("w") as f:
             json.dump(sort_dict_by_value(scores, reverse=True), f)
 
     def restore_checkpoint(
         self,
-        folder: Optional[str] = None,
+        folder: Optional[TPath] = None,
         strict: bool = True,
         state_dict_callback: Optional[Callable[[tensor_dict_type], None]] = None,
     ) -> bool:
@@ -420,6 +424,7 @@ class Trainer(ITrainer):
                 msg = "either `folder` or `checkpoint_folder` should be provided"
                 raise ValueError(msg)
             folder = self.checkpoint_folder
+        folder = to_path(folder)
         checkpoints = get_sorted_checkpoints(folder)
         if not checkpoints:
             if not self.tqdm_settings.in_distributed:
@@ -427,7 +432,7 @@ class Trainer(ITrainer):
             return False
         success = False
         for checkpoint in checkpoints:
-            model_file = os.path.join(folder, checkpoint)
+            model_file = folder / checkpoint
             if not os.path.isfile(model_file):
                 continue
             if not self.tqdm_settings.in_distributed:
