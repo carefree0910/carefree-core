@@ -1735,6 +1735,25 @@ class ITrainer(ABC):
     ) -> "ITrainer":
         pass
 
+    @abstractmethod
+    def save_checkpoint(
+        self,
+        score: float,
+        folder: Optional[str] = None,
+        *,
+        no_history: bool = False,
+    ) -> None:
+        pass
+
+    @abstractmethod
+    def restore_checkpoint(
+        self,
+        folder: Optional[str] = None,
+        strict: bool = True,
+        state_dict_callback: Optional[Callable[[tensor_dict_type], None]] = None,
+    ) -> bool:
+        pass
+
 
 # configs
 

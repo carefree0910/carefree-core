@@ -413,7 +413,7 @@ class Trainer(ITrainer):
         self,
         folder: Optional[str] = None,
         strict: bool = True,
-        state_dict_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        state_dict_callback: Optional[Callable[[tensor_dict_type], None]] = None,
     ) -> bool:
         if folder is None:
             if self.checkpoint_folder is None:
