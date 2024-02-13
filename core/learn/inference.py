@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 
 from tqdm import tqdm
@@ -76,7 +78,8 @@ class Inference(IInference):
             device = None if self.model is None else get_device(self.model)
             iterator = enumerate(loader)
             if use_tqdm:
-                iterator = tqdm(iterator, "inference", len(loader))
+                total = math.floor(len(loader) * portion)
+                iterator = tqdm(iterator, "inference", total)
             for i, tensor_batch in iterator:
                 if i / len(loader) >= portion:
                     break
