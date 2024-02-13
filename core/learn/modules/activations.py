@@ -150,9 +150,9 @@ class QuickGELU(Module):
 
 @register_activation("geglu")
 class GEGLU(Module):
-    def __init__(self, in_dim: int, out_dim: int):
+    def __init__(self, in_dim: int, out_dim: int, bias: bool = True):
         super().__init__()
-        self.net = nn.Linear(in_dim, out_dim * 2)
+        self.net = nn.Linear(in_dim, out_dim * 2, bias=bias)
 
     def forward(self, net: Tensor) -> Tensor:
         net, gate = self.net(net).chunk(2, dim=-1)
