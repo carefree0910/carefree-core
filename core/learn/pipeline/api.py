@@ -203,12 +203,19 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
     def build_metrics(self) -> BuildMetricsBlock:
         return self.get_block(BuildMetricsBlock)
 
-    def evaluate(self, loader: DataLoader, **kwargs: Any) -> MetricsOutputs:
+    def evaluate(
+        self,
+        loader: DataLoader,
+        *,
+        portion: float = 1.0,
+        **kwargs: Any,
+    ) -> MetricsOutputs:
         return self.build_model.model.evaluate(
             self.config,
             self.build_metrics.metrics,
             self.build_inference.inference,
             loader,
+            portion=portion,
             forward_kwargs=kwargs,
         )
 
