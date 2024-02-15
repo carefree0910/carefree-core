@@ -32,6 +32,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from torch.optim import Optimizer
 from torch.profiler import profile
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.cuda.amp import autocast
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import Dataset
@@ -1231,7 +1232,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
 
     def state_dict(self, **kwargs: Any) -> tensor_dict_type:
         d = self.m.state_dict(**kwargs)
-        if get_ddp_info() is not None:
+        if isinstance(self.m, DDP):
             # remove the `module.` prefix
             d = {k[7:]: v for k, v in d.items()}
         return d
@@ -1243,7 +1244,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         return self.m.named_parameters()
 
     def load_state_dict(self, d: tensor_dict_type, strict: bool = True) -> None:
-        if get_ddp_info() is not None:
+        if isinstance(self.m, DDP):
             d = {f"module.{k}": v for k, v in d.items()}
         self.m.load_state_dict(d, strict)
 
