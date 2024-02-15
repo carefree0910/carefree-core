@@ -1106,18 +1106,18 @@ def summary(
         return num_params, num_trainable_params
 
     def register_hook(m: nn.Module) -> None:
-        def inject_output_shape(output: Any, res: Dict[int, Any]) -> None:
-            idx = 0 if not res else max(res)
-            if isinstance(output, Tensor):
-                o_shape = list(output.shape)
+        def inject_output_shape(o: Any, r: Dict[str, Any], prefix: str = "") -> None:
+            if isinstance(o, Tensor):
+                o_shape = list(o.shape)
                 if o_shape:
                     o_shape[0] = -1
-                res[idx + 1] = o_shape
-                return
-            if isinstance(output, (list, tuple)):
-                o_res = res[idx + 1] = {}
-                for o in output:
-                    inject_output_shape(o, o_res)
+                r[prefix] = o_shape
+            elif isinstance(o, (list, tuple)):
+                for i, elem in enumerate(o):
+                    inject_output_shape(elem, r, f"{prefix}{i}.")
+            elif isinstance(o, dict):
+                for k, v in o.items():
+                    inject_output_shape(v, r, f"{prefix}{k}.")
 
         def hook(m: nn.Module, inp: Any, output: Any) -> None:
             m_name = module_names.get(m)
@@ -1245,35 +1245,25 @@ def summary(
         if layer_summary is None:
             messages.append(line_format.format(layer_name, "", "", ""))
         else:
-            is_title = True
+            output_shape_item = layer_summary["output_shape"]
             all_output_shapes: List[List[int]] = []
-
-            def _inject(output_shape_item: Dict[int, Any], prefix: str) -> None:
-                only_one = len(output_shape_item) == 1
-                for i, idx in enumerate(sorted(output_shape_item)):
-                    if not prefix and only_one:
-                        idx_prefix = ""
-                    else:
-                        idx_prefix = f"{prefix}{idx}."
-                    value = output_shape_item[idx]
-                    if isinstance(value, dict):
-                        _inject(value, idx_prefix)
-                        continue
-                    output_shape_str = f"{idx_prefix} {str(value):>16s}"
-                    ntp_str = "{0:,}".format(layer_summary["num_trainable_params"])
-                    nonlocal is_title
-                    messages.append(
-                        line_format.format(
-                            layer_name if is_title else "",
-                            str(layer_summary["input_shape"]) if is_title else "",
-                            output_shape_str,
-                            ntp_str if is_title else "",
-                        )
+            only_one = len(output_shape_item) == 1
+            for i, key in enumerate(sorted(output_shape_item)):
+                value = output_shape_item[key]
+                if only_one:
+                    key = ""
+                output_shape_str = f"{key} {str(value):>16s}"
+                ntp_str = "{0:,}".format(layer_summary["num_trainable_params"])
+                is_title = i == 0
+                messages.append(
+                    line_format.format(
+                        layer_name if is_title else "",
+                        str(layer_summary["input_shape"]) if is_title else "",
+                        output_shape_str,
+                        ntp_str if is_title else "",
                     )
-                    is_title = False
-                    all_output_shapes.append(value)
-
-            _inject(layer_summary["output_shape"], "")
+                )
+                all_output_shapes.append(value)
             for shape in all_output_shapes:
                 total_output += int(round(prod(shape)))
 
