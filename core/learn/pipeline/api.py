@@ -774,30 +774,30 @@ class PipelineSerializer:
             )
         ckpts = [ckpt_folder / f for f in sorted_ckpt_files[:num_ensemble]]
         # get empty pipeline
-        p_folder = workspace / cls.pipeline_folder
-        if not ensemble_weights:
-            p = cls._build_ensemble_pipeline(p_folder, pack_type, num_ensemble)
-            merged_states = cls._get_merged_states(p, device, ckpts, states_callback)  # type: ignore
-        else:
-            fn = (
-                cls._load_inference
-                if pack_type == PackType.INFERENCE
-                else cls._load_evaluation
-            )
-            p = fn(p_folder)
-            merged_states = OrderedDict()
-            for ckpt in ckpts:
-                states = torch.load(ckpt, map_location=device)["states"]
-                if states_callback is not None:
-                    states = states_callback(p, states)
-                for k, v in states.items():
-                    mv = merged_states.get(k)
-                    if mv is None:
-                        merged_states[k] = v
-                    else:
-                        merged_states[k] = mv + v
-            for k in merged_states:
-                merged_states[k] /= num_ensemble
+        with get_folder(workspace / cls.pipeline_folder, force_new=True) as p_folder:
+            if not ensemble_weights:
+                p = cls._build_ensemble_pipeline(p_folder, pack_type, num_ensemble)
+                merged_states = cls._get_merged_states(p, device, ckpts, states_callback)  # type: ignore
+            else:
+                fn = (
+                    cls._load_inference
+                    if pack_type == PackType.INFERENCE
+                    else cls._load_evaluation
+                )
+                p = fn(p_folder)
+                merged_states = OrderedDict()
+                for ckpt in ckpts:
+                    states = torch.load(ckpt, map_location=device)["states"]
+                    if states_callback is not None:
+                        states = states_callback(p, states)
+                    for k, v in states.items():
+                        mv = merged_states.get(k)
+                        if mv is None:
+                            merged_states[k] = v
+                        else:
+                            merged_states[k] = mv + v
+                for k in merged_states:
+                    merged_states[k] /= num_ensemble
         # load state dict
         model = p.build_model.model
         model.to(device)
