@@ -14,6 +14,7 @@ from typing import Type
 from typing import Tuple
 from typing import Optional
 from typing import OrderedDict as OrderedDictType
+from pathlib import Path
 from collections import OrderedDict
 from dataclasses import dataclass
 from torch.optim import Optimizer
@@ -807,7 +808,7 @@ class SerializeModelBlock(Block):
     config: Config
 
     verbose: bool = True
-    ckpt_folder: Optional[str] = None
+    ckpt_folder: Optional[Path] = None
     ckpt_scores: Optional[Dict[str, float]] = None
 
     def build(self, config: Config) -> None:
@@ -883,12 +884,13 @@ class SerializeModelBlock(Block):
         self.ckpt_folder = folder
         self.ckpt_scores = scores
 
-    def _save_current(self, folder: str) -> None:
+    def _save_current(self, folder: TPath) -> None:
+        folder = to_path(folder)
         latest_file = f"{PT_PREFIX}-1.pt"
-        latest_path = os.path.join(folder, latest_file)
-        new_scores_path = os.path.join(folder, SCORES_FILE)
+        latest_path = folder / latest_file
+        new_scores_path = folder / SCORES_FILE
         self.build_model.model.save(latest_path)
-        with open(new_scores_path, "w") as f:
+        with new_scores_path.open("w") as f:
             json.dump({latest_file: 0.0}, f)
 
 

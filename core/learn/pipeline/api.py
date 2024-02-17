@@ -579,9 +579,9 @@ class PipelineSerializer:
         focuses: Optional[List[Type[Block]]] = None,
         excludes: Optional[List[Type[Block]]] = None,
     ) -> Pipeline:
-        with get_folder(folder) as folder:
+        with get_folder(folder) as folder_path:
             # handle info
-            info = Serializer.load_info(folder)
+            info = Serializer.load_info(folder_path)
             if focuses is not None or excludes is not None:
                 if focuses is None:
                     focuses_set = None
@@ -601,13 +601,13 @@ class PipelineSerializer:
                     block_types = [b for b in block_types if b not in excludes_set]
                 info["blocks"] = block_types
             # load
-            pipeline = Serializer.load_empty(folder, Pipeline, swap_id=swap_id)
-            pipeline.serialize_folder = folder
+            pipeline = Serializer.load_empty(folder_path, Pipeline, swap_id=swap_id)
+            pipeline.serialize_folder = folder_path
             if info is None:
-                info = Serializer.load_info(folder)
+                info = Serializer.load_info(folder_path)
             pipeline.from_info(info)
             for block in pipeline.blocks:
-                block.load_from(folder / block.__identifier__)
+                block.load_from(folder_path / block.__identifier__)
             pipeline.after_load()
         return pipeline
 
@@ -720,15 +720,15 @@ class PipelineSerializer:
             )
             num_repeat = num_picked
         # get empty pipeline
-        with get_folder(src_folders[0], force_new=True) as folder:
-            p = cls._build_ensemble_pipeline(folder, pack_type, num_repeat)
+        with get_folder(src_folders[0], force_new=True) as src_folder:
+            p = cls._build_ensemble_pipeline(src_folder, pack_type, num_repeat)
         # merge state dict
         ckpt_paths = []
         for folder in src_folders:
             with get_folder(folder) as i_folder:
-                ckpt_folder = os.path.join(i_folder, SerializeModelBlock.__identifier__)
-                checkpoints = get_sorted_checkpoints(ckpt_folder)
-                ckpt_paths.append(os.path.join(ckpt_folder, checkpoints[0]))
+                i_ckpt_folder = i_folder / SerializeModelBlock.__identifier__
+                checkpoints = get_sorted_checkpoints(i_ckpt_folder)
+                ckpt_paths.append(i_ckpt_folder / checkpoints[0])
         merged_states = cls._get_merged_states(p, device, ckpt_paths, states_callback)
         # load state dict
         model = p.build_model.model
@@ -762,7 +762,7 @@ class PipelineSerializer:
         p_folder = workspace / cls.pipeline_folder
         p = cls._build_ensemble_pipeline(p_folder, pack_type, num_ensemble)
         # merge state dict
-        merged_states = cls._get_merged_states(p, device, ckpts, states_callback)
+        merged_states = cls._get_merged_states(p, device, ckpts, states_callback)  # type: ignore
         # load state dict
         model = p.build_model.model
         model.to(device)
