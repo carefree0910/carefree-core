@@ -125,6 +125,7 @@ class TestPipeline(unittest.TestCase):
             cflearn.PipelineSerializer._fuse_multiple(ws, cflearn.PackType.TRAINING)
 
     def test_self_ensemble(self):
+        self_ensemble = cflearn.PipelineSerializer.self_ensemble_inference
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()
         config = cflearn.Config(
             module_name="linear",
@@ -144,9 +145,20 @@ class TestPipeline(unittest.TestCase):
             p.build_model.model.load_state_dict(states)
             r += p.predict(test_loader)[cflearn.PREDICTIONS_KEY]
         r /= 3
-        pe = cflearn.PipelineSerializer.self_ensemble_inference(3, workspace)
+        pe = self_ensemble(3, workspace)
         re = pe.predict(test_loader)[cflearn.PREDICTIONS_KEY]
         np.testing.assert_array_almost_equal(r, re)
+        states = {k: 0 for k in p.build_model.model.state_dict()}
+        for ckpt_file in cflearn.get_sorted_checkpoints(ckpt_folder)[:3]:
+            i_states = torch.load(os.path.join(ckpt_folder, ckpt_file))["states"]
+            for k, v in i_states.items():
+                states[k] += v
+        for k in states:
+            states[k] /= 3
+        p.build_model.model.load_state_dict(states)
+        r = p.predict(test_loader)[cflearn.PREDICTIONS_KEY]
+        pe = self_ensemble(3, workspace, ensemble_weights=True)
+        re = pe.predict(test_loader)[cflearn.PREDICTIONS_KEY]
         cflearn.PipelineSerializer.self_ensemble_evaluation(4, workspace)
         with self.assertRaises(RuntimeError):
             cflearn.PipelineSerializer.self_ensemble_inference(5, workspace)
