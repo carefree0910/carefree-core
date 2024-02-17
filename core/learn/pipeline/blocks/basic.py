@@ -878,7 +878,7 @@ class SerializeModelBlock(Block):
         model = self.build_model.model
         folder = to_path(folder)
         best_file = get_sorted_checkpoints(folder)[0]
-        states = torch.load(folder / best_file)["states"]
+        states = torch.load(folder / best_file, map_location="cpu")["states"]
         model.load_state_dict(states)
         scores = get_scores(folder)
         self.ckpt_folder = folder
