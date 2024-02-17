@@ -5,6 +5,7 @@ from typing import TypeVar
 from typing import Generic
 from typing import Optional
 from typing import ContextManager
+from pathlib import Path
 from collections import OrderedDict
 
 from ..schema import IData
@@ -13,6 +14,7 @@ from ..toolkit import get_ddp_info
 from ...toolkit import console
 from ...toolkit.misc import safe_execute
 from ...toolkit.misc import shallow_copy_dict
+from ...toolkit.types import TPath
 from ...toolkit.pipeline import IBlock
 from ...toolkit.pipeline import IPipeline
 from ...toolkit.pipeline import TPipeline
@@ -35,7 +37,7 @@ class Block(IBlock):
 
     data: Optional[IData]
     training_workspace: Optional[str]
-    serialize_folder: Optional[str]
+    serialize_folder: Optional[Path]
     previous: Dict[str, "Block"]
     pipeline: "Pipeline"
 
@@ -47,10 +49,10 @@ class Block(IBlock):
     def run(self, data: IData, _defaults: OrderedDict, **kwargs: Any) -> None:
         pass
 
-    def save_extra(self, folder: str) -> None:
+    def save_extra(self, folder: TPath) -> None:
         pass
 
-    def load_from(self, folder: str) -> None:
+    def load_from(self, folder: TPath) -> None:
         pass
 
     # api
@@ -103,7 +105,7 @@ class Pipeline(Generic[TPipeline], IPipeline[Block, Config, TPipeline]):
 
     data: Optional[IData] = None
     training_workspace: Optional[str] = None
-    serialize_folder: Optional[str] = None
+    serialize_folder: Optional[Path] = None
     config_file = "config.json"
 
     # inheritance

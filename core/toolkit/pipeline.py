@@ -13,13 +13,16 @@ from typing import Mapping
 from typing import TypeVar
 from typing import Optional
 from typing import ContextManager
+from pathlib import Path
 from zipfile import ZipFile
 from tempfile import mkdtemp
 
+from .misc import to_path
 from .misc import shallow_copy_dict
 from .misc import WithRegister
 from .misc import ISerializable
 from .misc import ISerializableDataClass
+from .types import TPath
 
 
 TB = TypeVar("TB", bound="IBlock")
@@ -32,24 +35,25 @@ pipelines: Dict[str, Type["IPipeline"]] = {}
 pipeline_blocks: Dict[str, Type["IBlock"]] = {}
 
 
-def get_workspace(folder: str, *, force_new: bool = False) -> ContextManager:
+def get_workspace(folder: TPath, *, force_new: bool = False) -> ContextManager:
     class _:
-        tmp_folder: Optional[str]
+        tmp_folder: Optional[Path]
 
         def __init__(self) -> None:
             self.tmp_folder = None
 
-        def __enter__(self) -> str:
-            if os.path.isdir(folder):
+        def __enter__(self) -> Path:
+            folder = to_path(folder_input)
+            if folder.is_dir():
                 if not force_new:
                     return folder
-                self.tmp_folder = mkdtemp()
+                self.tmp_folder = Path(mkdtemp())
                 shutil.copytree(folder, self.tmp_folder, dirs_exist_ok=True)
                 return self.tmp_folder
-            path = f"{folder}.zip"
-            if not os.path.isfile(path):
+            path = Path(f"{folder}.zip")
+            if not path.is_file():
                 raise ValueError(f"neither '{folder}' nor '{path}' exists")
-            self.tmp_folder = mkdtemp()
+            self.tmp_folder = Path(mkdtemp())
             with ZipFile(path, "r") as ref:
                 ref.extractall(self.tmp_folder)
             return self.tmp_folder
@@ -58,6 +62,7 @@ def get_workspace(folder: str, *, force_new: bool = False) -> ContextManager:
             if self.tmp_folder is not None:
                 shutil.rmtree(self.tmp_folder)
 
+    folder_input = folder
     return _()
 
 

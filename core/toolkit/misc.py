@@ -486,7 +486,7 @@ async def offload(future: Coroutine[Any, Any, TFutureResponse]) -> TFutureRespon
         )
 
 
-def compress(absolute_folder: str, remove_original: bool = True) -> None:
+def compress(absolute_folder: TPath, remove_original: bool = True) -> None:
     shutil.make_archive(absolute_folder, "zip", absolute_folder)
     if remove_original:
         shutil.rmtree(absolute_folder)
@@ -887,87 +887,91 @@ class Serializer:
     @classmethod
     def save_info(
         cls,
-        folder: str,
+        folder: TPath,
         *,
         info: Optional[Dict[str, Any]] = None,
         serializable: Optional[ISerializable] = None,
     ) -> None:
-        os.makedirs(folder, exist_ok=True)
+        folder = to_path(folder)
+        folder.mkdir(parents=True, exist_ok=True)
         if info is None and serializable is None:
             raise ValueError("either `info` or `serializable` should be provided")
         if info is None:
             info = serializable.to_info()  # type: ignore
-        with open(os.path.join(folder, cls.info_file), "w") as f:
+        with (folder / cls.info_file).open("w") as f:
             json.dump(info, f)
 
     @classmethod
-    def load_info(cls, folder: str) -> Dict[str, Any]:
+    def load_info(cls, folder: TPath) -> Dict[str, Any]:
         return cls.try_load_info(folder, strict=True)  # type: ignore
 
     @classmethod
     def try_load_info(
         cls,
-        folder: str,
+        folder: TPath,
         *,
         strict: bool = False,
     ) -> Optional[Dict[str, Any]]:
-        info_path = os.path.join(folder, cls.info_file)
-        if not os.path.isfile(info_path):
+        folder = to_path(folder)
+        info_path = folder / cls.info_file
+        if not info_path.is_file():
             if not strict:
                 return None
             raise ValueError(f"'{info_path}' does not exist")
-        with open(info_path, "r") as f:
+        with info_path.open("r") as f:
             info = json.load(f)
         return info
 
     @classmethod
     def save_npd(
         cls,
-        folder: str,
+        folder: TPath,
         *,
         npd: Optional[np_dict_type] = None,
         serializable: Optional[ISerializableArrays] = None,
     ) -> None:
-        os.makedirs(folder, exist_ok=True)
+        folder = to_path(folder)
+        folder.mkdir(parents=True, exist_ok=True)
         if npd is None and serializable is None:
             raise ValueError("either `npd` or `serializable` should be provided")
         if npd is None:
             npd = serializable.to_npd()  # type: ignore
-        npd_folder = os.path.join(folder, cls.npd_folder)
-        os.makedirs(npd_folder, exist_ok=True)
+        npd_folder = folder / cls.npd_folder
+        npd_folder.mkdir(exist_ok=True)
         for k, v in npd.items():
-            np.save(os.path.join(npd_folder, f"{k}.npy"), v)
+            np.save(npd_folder / f"{k}.npy", v)
 
     @classmethod
-    def load_npd(cls, folder: str) -> np_dict_type:
-        os.makedirs(folder, exist_ok=True)
-        npd_folder = os.path.join(folder, cls.npd_folder)
-        if not os.path.isdir(npd_folder):
+    def load_npd(cls, folder: TPath) -> np_dict_type:
+        folder = to_path(folder)
+        folder.mkdir(parents=True, exist_ok=True)
+        npd_folder = folder / cls.npd_folder
+        if not npd_folder.is_dir():
             raise ValueError(f"'{npd_folder}' does not exist")
         npd = {}
-        for file in os.listdir(npd_folder):
-            key = os.path.splitext(file)[0]
-            npd[key] = np.load(os.path.join(npd_folder, file))
+        for file in npd_folder.iterdir():
+            npd[file.stem] = np.load(npd_folder / file)
         return npd
 
     @classmethod
     def save(
         cls,
-        folder: str,
+        folder: TPath,
         serializable: ISerializable,
         *,
         save_npd: bool = True,
     ) -> None:
+        folder = to_path(folder)
         cls.save_info(folder, serializable=serializable)
         if save_npd and isinstance(serializable, ISerializableArrays):
             cls.save_npd(folder, serializable=serializable)
-        with open(os.path.join(folder, cls.id_file), "w") as f:
+        with (folder / cls.id_file).open("w") as f:
             f.write(serializable.__identifier__)
 
     @classmethod
     def load(
         cls,
-        folder: str,
+        folder: TPath,
         base: Type[TSerializable],
         *,
         swap_id: Optional[str] = None,
@@ -984,7 +988,7 @@ class Serializer:
     @classmethod
     def load_empty(
         cls,
-        folder: str,
+        folder: TPath,
         base: Type[TSerializable],
         *,
         swap_id: Optional[str] = None,
@@ -992,10 +996,11 @@ class Serializer:
         if swap_id is not None:
             s_type = swap_id
         else:
-            id_path = os.path.join(folder, cls.id_file)
-            if not os.path.isfile(id_path):
+            folder = to_path(folder)
+            id_path = folder / cls.id_file
+            if not id_path.is_file():
                 raise ValueError(f"cannot find '{id_path}'")
-            with open(id_path, "r") as f:
+            with id_path.open("r") as f:
                 s_type = f.read().strip()
         return base.make(s_type, {})
 

@@ -14,6 +14,7 @@ from typing import Union
 from typing import TypeVar
 from typing import Callable
 from typing import Optional
+from pathlib import Path
 from tempfile import mkdtemp
 from tempfile import TemporaryDirectory
 from collections import OrderedDict
@@ -53,12 +54,14 @@ from ..trainer import get_sorted_checkpoints
 from ..constants import PREDICTIONS_KEY
 from ...toolkit import console
 from ...toolkit.misc import compress as compress_folder
+from ...toolkit.misc import to_path
 from ...toolkit.misc import safe_execute
 from ...toolkit.misc import shallow_copy_dict
 from ...toolkit.misc import prepare_workspace_from
 from ...toolkit.misc import Serializer
 from ...toolkit.array import sigmoid
 from ...toolkit.array import softmax
+from ...toolkit.types import TPath
 from ...toolkit.types import np_dict_type
 from ...toolkit.types import tensor_dict_type
 from ...toolkit.pipeline import get_workspace
@@ -522,29 +525,30 @@ class PipelineSerializer:
     def _save(
         cls,
         pipeline: Pipeline,
-        folder: str,
+        folder: TPath,
         *,
         compress: bool = False,
         verbose: bool = True,
     ) -> None:
+        folder = to_path(folder)
         original_folder = None
         if compress:
             original_folder = folder
-            folder = mkdtemp()
+            folder = Path(mkdtemp())
         Serializer.save(folder, pipeline)
         with pipeline.verbose_context(verbose):
             for block in pipeline.blocks:
-                block.save_extra(os.path.join(folder, block.__identifier__))
+                block.save_extra(folder / block.__identifier__)
         if compress and original_folder is not None:
-            absolute_folder = os.path.abspath(folder)
-            absolute_original = os.path.abspath(original_folder)
+            absolute_folder = folder.absolute()
+            absolute_original = original_folder.absolute()
             compress_folder(absolute_folder)
             shutil.move(f"{absolute_folder}.zip", f"{absolute_original}.zip")
 
     @classmethod
     def _load(
         cls,
-        folder: str,
+        folder: TPath,
         *,
         swap_id: Optional[str] = None,
         focuses: Optional[List[Type[Block]]] = None,
@@ -578,14 +582,14 @@ class PipelineSerializer:
                 info = Serializer.load_info(workspace)
             pipeline.from_info(info)
             for block in pipeline.blocks:
-                block.load_from(os.path.join(workspace, block.__identifier__))
+                block.load_from(workspace / block.__identifier__)
             pipeline.after_load()
         return pipeline
 
     @classmethod
     def _load_inference(
         cls,
-        folder: str,
+        folder: TPath,
         excludes: Optional[List[Type[Block]]] = None,
     ) -> InferencePipeline:
         return cls._load(  # type: ignore
@@ -598,7 +602,7 @@ class PipelineSerializer:
     @classmethod
     def _load_evaluation(
         cls,
-        folder: str,
+        folder: TPath,
         excludes: Optional[List[Type[Block]]] = None,
     ) -> EvaluationPipeline:
         return cls._load(  # type: ignore

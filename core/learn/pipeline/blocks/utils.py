@@ -7,6 +7,8 @@ from collections import OrderedDict
 
 from ..common import Block
 from ...schema import Config
+from ....toolkit.misc import to_path
+from ....toolkit.types import TPath
 
 
 class InjectDefaultsMixin:
@@ -24,7 +26,7 @@ class TryLoadBlock(Block, metaclass=ABCMeta):
     # abstract
 
     @abstractmethod
-    def try_load(self, folder: str) -> bool:
+    def try_load(self, folder: TPath) -> bool:
         pass
 
     @abstractmethod
@@ -32,20 +34,21 @@ class TryLoadBlock(Block, metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def dump_to(self, folder: str) -> None:
+    def dump_to(self, folder: TPath) -> None:
         pass
 
     # inheritance
 
     def build(self, config: Config) -> None:
         if self.serialize_folder is not None:
-            serialize_folder = os.path.join(self.serialize_folder, self.__identifier__)
+            serialize_folder = self.serialize_folder / self.__identifier__
             if self.try_load(serialize_folder):
                 return
         self.from_scratch(config)
 
-    def save_extra(self, folder: str) -> None:
-        os.makedirs(folder, exist_ok=True)
+    def save_extra(self, folder: TPath) -> None:
+        folder = to_path(folder)
+        folder.mkdir(parents=True, exist_ok=True)
         self.dump_to(folder)
 
 

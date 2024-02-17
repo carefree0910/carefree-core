@@ -54,6 +54,7 @@ from ...optimizers import optimizer_dict
 from ...schedulers import scheduler_dict
 from ...schedulers import WarmupScheduler
 from ....toolkit import console
+from ....toolkit.misc import to_path
 from ....toolkit.misc import filter_kw
 from ....toolkit.misc import update_dict
 from ....toolkit.misc import shallow_copy_dict
@@ -62,6 +63,7 @@ from ....toolkit.misc import prepare_workspace_from
 from ....toolkit.misc import truncate_string_to_length
 from ....toolkit.misc import Serializer
 from ....toolkit.misc import DataClassBase
+from ....toolkit.types import TPath
 
 
 # static blocks
@@ -133,7 +135,7 @@ class ExtractStateInfoBlock(TryLoadBlock):
     config: Config
     state_info: StateInfo
 
-    def try_load(self, folder: str) -> bool:
+    def try_load(self, folder: TPath) -> bool:
         info = Serializer.try_load_info(folder)
         if info is None:
             return False
@@ -182,7 +184,7 @@ class ExtractStateInfoBlock(TryLoadBlock):
         )
         config.state_config = state_config
 
-    def dump_to(self, folder: str) -> None:
+    def dump_to(self, folder: TPath) -> None:
         if self.is_local_rank_0:
             Serializer.save_info(folder, info=self.state_info.asdict())
 
@@ -784,7 +786,8 @@ class SerializeDataBlock(Block):
         self.data = None
         self.config = config
 
-    def save_extra(self, folder: str) -> None:
+    def save_extra(self, folder: TPath) -> None:
+        folder = to_path(folder)
         if not self.is_local_rank_0:
             return
         if self.training_workspace is not None:
@@ -793,8 +796,9 @@ class SerializeDataBlock(Block):
         elif self.data is not None:
             Serializer.save(folder, self.data, save_npd=False)
 
-    def load_from(self, folder: str) -> None:
-        if os.path.isdir(folder):
+    def load_from(self, folder: TPath) -> None:
+        folder = to_path(folder)
+        if folder.is_dir():
             self.data = Serializer.load(folder, IData, load_npd=False)  # type: ignore
 
 
@@ -818,10 +822,11 @@ class SerializeModelBlock(Block):
     def build_model(self) -> BuildModelBlock:
         return self.get_previous(BuildModelBlock)
 
-    def save_extra(self, folder: str) -> None:
+    def save_extra(self, folder: TPath) -> None:
         if not self.is_local_rank_0:
             return
-        os.makedirs(folder, exist_ok=True)
+        folder = to_path(folder)
+        folder.mkdir(parents=True, exist_ok=True)
         warn_msg = "no checkpoints found at {}, current model states will be saved"
         if self.training_workspace is not None:
             ckpt_folder = os.path.join(self.training_workspace, CHECKPOINTS_FOLDER)
@@ -868,10 +873,11 @@ class SerializeModelBlock(Block):
                     console.warn(warn_msg.format(self.ckpt_folder))
                 self._save_current(folder)
 
-    def load_from(self, folder: str) -> None:
+    def load_from(self, folder: TPath) -> None:
         model = self.build_model.model
+        folder = to_path(folder)
         best_file = get_sorted_checkpoints(folder)[0]
-        states = torch.load(os.path.join(folder, best_file))["states"]
+        states = torch.load(folder / best_file)["states"]
         model.load_state_dict(states)
         scores = get_scores(folder)
         self.ckpt_folder = folder
@@ -902,7 +908,7 @@ class SerializeOptimizerBlock(Block):
     def build_optimizers(self) -> BuildOptimizersBlock:
         return self.get_previous(BuildOptimizersBlock)
 
-    def save_extra(self, folder: str) -> None:
+    def save_extra(self, folder: TPath) -> None:
         optims = self.build_optimizers.optimizers
         scheds = self.build_optimizers.schedulers
         opt_d = {k: v.state_dict() for k, v in optims.items()}
@@ -911,11 +917,12 @@ class SerializeOptimizerBlock(Block):
         torch.save(opt_d, os.path.join(folder, self.optimizer_file))
         torch.save(sch_d, os.path.join(folder, self.scheduler_file))
 
-    def load_from(self, folder: str) -> None:
+    def load_from(self, folder: TPath) -> None:
+        folder = to_path(folder)
         optimizers = self.build_optimizers.optimizers
         schedulers = self.build_optimizers.schedulers
-        opt_d = torch.load(os.path.join(folder, self.optimizer_file))
-        sch_d = torch.load(os.path.join(folder, self.scheduler_file))
+        opt_d = torch.load(folder / self.optimizer_file)
+        sch_d = torch.load(folder / self.scheduler_file)
         for k, states in opt_d.items():
             optimizers[k].load_state_dict(states)
         for k, states in sch_d.items():
@@ -931,14 +938,15 @@ class SerializeScriptBlock(Block):
     def build(self, config: Config) -> None:
         pass
 
-    def save_extra(self, folder: str) -> None:
-        os.makedirs(folder, exist_ok=True)
+    def save_extra(self, folder: TPath) -> None:
+        folder = to_path(folder)
+        folder.mkdir(parents=True, exist_ok=True)
         frame = inspect.currentframe()
         if frame is None:
             return None
         while frame.f_back is not None:
             frame = frame.f_back
-        with open(os.path.join(folder, self.script_file), "w") as f:
+        with (folder / self.script_file).open("w") as f:
             f.write(inspect.getsource(frame))
 
 
