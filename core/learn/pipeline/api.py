@@ -613,6 +613,52 @@ class PipelineSerializer:
         )
 
     @classmethod
+    def _build_ensemble_pipeline(
+        cls,
+        workspace: Path,
+        pack_type: PackType,
+        num_repeat: int,
+    ) -> Union[InferencePipeline, EvaluationPipeline]:
+        info = Serializer.load_info(workspace)
+        config = Config.from_pack(info["config"])
+        config.num_repeat = num_repeat
+        info["config"] = config.to_pack().asdict()
+        Serializer.save_info(workspace, info=info)
+        fn = (
+            cls._load_inference
+            if pack_type == PackType.INFERENCE
+            else cls._load_evaluation
+        )
+        # avoid loading model because the ensembled model has different states
+        p = fn(workspace, excludes=[SerializeModelBlock])
+        # but we need to build the SerializeModelBlock again for further save/load
+        b_serialize_model = SerializeModelBlock()
+        b_serialize_model.verbose = False
+        p.build(b_serialize_model)
+        return p
+
+    @classmethod
+    def _get_merged_states(
+        cls,
+        p: Pipeline,
+        device: torch.device,
+        ckpt_paths: List[TPath],
+        states_callback: states_callback_type = None,
+    ) -> OrderedDict[str, torch.Tensor]:
+        merged_states: OrderedDict[str, torch.Tensor] = OrderedDict()
+        for i, ckpt_path in enumerate(tqdm(ckpt_paths, desc="merge states")):
+            states = torch.load(ckpt_path, map_location=device)["states"]
+            current_keys = list(states.keys())
+            for k, v in list(states.items()):
+                states[f"{i}.{k}"] = v
+            for k in current_keys:
+                states.pop(k)
+            if states_callback is not None:
+                states = states_callback(p, states)
+            merged_states.update(states)
+        return merged_states
+
+    @classmethod
     def _fuse_multiple(
         cls,
         src_folders: List[str],
@@ -650,38 +696,15 @@ class PipelineSerializer:
             num_repeat = num_picked
         # get empty pipeline
         with get_workspace(src_folders[0], force_new=True) as workspace:
-            info = Serializer.load_info(workspace)
-            config = Config.from_pack(info["config"])
-            config.num_repeat = num_repeat
-            info["config"] = config.to_pack().asdict()
-            Serializer.save_info(workspace, info=info)
-            fn = (
-                cls._load_inference
-                if pack_type == PackType.INFERENCE
-                else cls._load_evaluation
-            )
-            # avoid loading model because the ensembled model has different states
-            p = fn(workspace, excludes=[SerializeModelBlock])
-            # but we need to build the SerializeModelBlock again for further save/load
-            b_serialize_model = SerializeModelBlock()
-            b_serialize_model.verbose = False
-            p.build(b_serialize_model)
+            p = cls._build_ensemble_pipeline(workspace, pack_type, num_repeat)
         # merge state dict
-        merged_states: OrderedDict[str, torch.Tensor] = OrderedDict()
-        for i, folder in enumerate(tqdm(src_folders, desc="fuse")):
+        ckpt_paths = []
+        for folder in src_folders:
             with get_workspace(folder) as i_folder:
                 ckpt_folder = os.path.join(i_folder, SerializeModelBlock.__identifier__)
                 checkpoints = get_sorted_checkpoints(ckpt_folder)
-                checkpoint_path = os.path.join(ckpt_folder, checkpoints[0])
-                states = torch.load(checkpoint_path, map_location=device)["states"]
-            current_keys = list(states.keys())
-            for k, v in list(states.items()):
-                states[f"{i}.{k}"] = v
-            for k in current_keys:
-                states.pop(k)
-            if states_callback is not None:
-                states = states_callback(p, states)
-            merged_states.update(states)
+                ckpt_paths.append(os.path.join(ckpt_folder, checkpoints[0]))
+        merged_states = cls._get_merged_states(p, device, ckpt_paths, states_callback)
         # load state dict
         model = p.build_model.model
         model.to(device)
