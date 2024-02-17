@@ -644,8 +644,8 @@ class PipelineSerializer:
         device: torch.device,
         ckpt_paths: List[TPath],
         states_callback: states_callback_type = None,
-    ) -> OrderedDict[str, torch.Tensor]:
-        merged_states: OrderedDict[str, torch.Tensor] = OrderedDict()
+    ) -> OrderedDict:
+        merged_states = OrderedDict()
         for i, ckpt_path in enumerate(tqdm(ckpt_paths, desc="merge states")):
             states = torch.load(ckpt_path, map_location=device)["states"]
             current_keys = list(states.keys())
