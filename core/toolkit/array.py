@@ -666,7 +666,7 @@ class NpSafeSerializer:
 
     @classmethod
     def load(cls, folder: TPath, *, mmap_mode: Optional[str] = None) -> np.ndarray:
-        return np.load(to_path(folder) / cls.array_file, mmap_mode=mmap_mode)
+        return np.load(to_path(folder) / cls.array_file, mmap_mode=mmap_mode)  # type: ignore
 
     @classmethod
     def try_load(
@@ -693,7 +693,7 @@ class NpSafeSerializer:
             return None
         if no_load:
             return np.zeros(0)
-        return np.load(array_path, mmap_mode=mmap_mode, **kwargs)
+        return np.load(array_path, mmap_mode=mmap_mode, **kwargs)  # type: ignore
 
     @classmethod
     def load_with(
