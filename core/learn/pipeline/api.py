@@ -529,6 +529,7 @@ class PipelineSerializer:
         ensemble_weights: bool = False,
         device: device_type = None,
         states_callback: states_callback_type = None,
+        verbose: bool = True,
     ) -> InferencePipeline:
         return cls._self_ensemble(
             workspace,
@@ -537,6 +538,7 @@ class PipelineSerializer:
             ensemble_weights,
             device,
             states_callback,
+            verbose,
         )
 
     @classmethod
@@ -548,6 +550,7 @@ class PipelineSerializer:
         ensemble_weights: bool = False,
         device: device_type = None,
         states_callback: states_callback_type = None,
+        verbose: bool = True,
     ) -> InferencePipeline:
         return cls._self_ensemble(
             workspace,
@@ -556,6 +559,7 @@ class PipelineSerializer:
             ensemble_weights,
             device,
             states_callback,
+            verbose,
         )
 
     # internal
@@ -759,6 +763,7 @@ class PipelineSerializer:
         ensemble_weights: bool = False,
         device: device_type = None,
         states_callback: states_callback_type = None,
+        verbose: bool = True,
     ) -> InferencePipeline:
         if pack_type == PackType.TRAINING:
             raise ValueError("should not pack to training pipeline when fusing")
@@ -772,7 +777,10 @@ class PipelineSerializer:
                 f"only {len(sorted_ckpt_files)} checkpoints are available, "
                 f"but `num_ensemble` is set to {num_ensemble}"
             )
-        ckpts = [ckpt_folder / f for f in sorted_ckpt_files[:num_ensemble]]
+        picked = sorted_ckpt_files[:num_ensemble]
+        ckpts = [ckpt_folder / f for f in picked]
+        if verbose:
+            console.log(f"follwing checkpoints are picked: {', '.join(picked)}")
         # get empty pipeline
         with get_folder(workspace / cls.pipeline_folder, force_new=True) as p_folder:
             if not ensemble_weights:
