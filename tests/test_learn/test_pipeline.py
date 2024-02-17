@@ -9,7 +9,6 @@ import core.learn as cflearn
 import torch.nn.functional as F
 
 from core.learn.schema import losses_type
-from core.toolkit.misc import prepare_workspace_from
 
 
 class TestPipeline(unittest.TestCase):
@@ -124,6 +123,35 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(len(pf.build_model.model.m), 2)
         with self.assertRaises(ValueError):
             cflearn.PipelineSerializer._fuse_multiple(ws, cflearn.PackType.TRAINING)
+
+    def test_self_ensemble(self):
+        data, in_dim, out_dim, _ = cflearn.testing.linear_data()
+        config = cflearn.Config(
+            module_name="linear",
+            module_config=dict(input_dim=in_dim, output_dim=out_dim),
+            loss_name="mse",
+        )
+        config.to_debug().num_steps = 4
+        config.log_steps = 1
+        p = cflearn.TrainingPipeline.init(config).fit(data)
+        x, y = data.bundle.x_train, data.bundle.y_train
+        test_loader = data.build_loader(x, y)
+        workspace = p.config.workspace
+        ckpt_folder = os.path.join(workspace, cflearn.CHECKPOINTS_FOLDER)
+        r = 0.0
+        for ckpt_file in cflearn.get_sorted_checkpoints(ckpt_folder)[:3]:
+            states = torch.load(os.path.join(ckpt_folder, ckpt_file))["states"]
+            p.build_model.model.load_state_dict(states)
+            r += p.predict(test_loader)[cflearn.PREDICTIONS_KEY]
+        r /= 3
+        pe = cflearn.PipelineSerializer.self_ensemble_inference(3, workspace)
+        re = pe.predict(test_loader)[cflearn.PREDICTIONS_KEY]
+        np.testing.assert_array_almost_equal(r, re)
+        cflearn.PipelineSerializer.self_ensemble_evaluation(4, workspace)
+        with self.assertRaises(RuntimeError):
+            cflearn.PipelineSerializer.self_ensemble_inference(5, workspace)
+        with self.assertRaises(RuntimeError):
+            cflearn.PipelineSerializer.self_ensemble_evaluation(5, workspace)
 
 
 class TestBlocks(unittest.TestCase):

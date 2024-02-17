@@ -52,6 +52,7 @@ from ..toolkit import get_torch_device
 from ..trainer import get_scores
 from ..trainer import get_sorted_checkpoints
 from ..constants import PREDICTIONS_KEY
+from ..constants import CHECKPOINTS_FOLDER
 from ...toolkit import console
 from ...toolkit.misc import compress as compress_folder
 from ...toolkit.misc import to_path
@@ -519,6 +520,30 @@ class PipelineSerializer:
         folder = os.path.join(workspace, cls.pipeline_folder)
         return cls._load_evaluation(folder)
 
+    @classmethod
+    def self_ensemble_inference(
+        cls,
+        n: int,
+        workspace: TPath,
+        *,
+        device: device_type = None,
+        states_callback: states_callback_type = None,
+    ) -> InferencePipeline:
+        args = workspace, PackType.INFERENCE, n, device, states_callback
+        return cls._self_ensemble(*args)
+
+    @classmethod
+    def self_ensemble_evaluation(
+        cls,
+        n: int,
+        workspace: TPath,
+        *,
+        device: device_type = None,
+        states_callback: states_callback_type = None,
+    ) -> InferencePipeline:
+        args = workspace, PackType.EVALUATION, n, device, states_callback
+        return cls._self_ensemble(*args)
+
     # internal
 
     @classmethod
@@ -705,6 +730,39 @@ class PipelineSerializer:
                 checkpoints = get_sorted_checkpoints(ckpt_folder)
                 ckpt_paths.append(os.path.join(ckpt_folder, checkpoints[0]))
         merged_states = cls._get_merged_states(p, device, ckpt_paths, states_callback)
+        # load state dict
+        model = p.build_model.model
+        model.to(device)
+        model.load_state_dict(merged_states)
+        return p
+
+    @classmethod
+    def _self_ensemble(
+        cls,
+        workspace: TPath,
+        pack_type: PackType,
+        num_ensemble: int,
+        device: device_type = None,
+        states_callback: states_callback_type = None,
+    ) -> InferencePipeline:
+        if pack_type == PackType.TRAINING:
+            raise ValueError("should not pack to training pipeline when fusing")
+        device = get_torch_device(device)
+        workspace = to_path(workspace)
+        # pick ckpts
+        ckpt_folder = workspace / CHECKPOINTS_FOLDER
+        sorted_ckpt_files = get_sorted_checkpoints(ckpt_folder)
+        if num_ensemble > len(sorted_ckpt_files):
+            raise RuntimeError(
+                f"only {len(sorted_ckpt_files)} checkpoints are available, "
+                f"but `num_ensemble` is set to {num_ensemble}"
+            )
+        ckpts = [ckpt_folder / f for f in sorted_ckpt_files[:num_ensemble]]
+        # get empty pipeline
+        p_folder = workspace / cls.pipeline_folder
+        p = cls._build_ensemble_pipeline(p_folder, pack_type, num_ensemble)
+        # merge state dict
+        merged_states = cls._get_merged_states(p, device, ckpts, states_callback)
         # load state dict
         model = p.build_model.model
         model.to(device)
