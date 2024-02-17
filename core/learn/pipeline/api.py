@@ -366,7 +366,15 @@ class PipelineSerializer:
     @classmethod
     def update(cls, p: Pipeline, workspace: str) -> None:
         folder = os.path.join(workspace, cls.pipeline_folder)
-        cls._update(p, folder)
+        if os.path.isdir(folder):
+            compress = False
+            shutil.rmtree(folder)
+        elif os.path.isfile(f"{folder}.zip"):
+            compress = True
+            os.remove(f"{folder}.zip")
+        else:
+            raise ValueError(f"neither `{folder}` nor `{folder}.zip` exists")
+        cls._save(p, folder, compress=compress)
 
     @classmethod
     def pack(
@@ -427,8 +435,8 @@ class PipelineSerializer:
         verbose: bool = True,
         **kwargs: Any,
     ) -> InferencePipeline:
-        m = cls.pack_and_load_inference(workspace)
-        model = m.build_model.model
+        p = cls.pack_and_load_inference(workspace)
+        model = p.build_model.model
         if input_sample is None:
             if loader_sample is None:
                 msg = "either `input_sample` or `loader_sample` should be provided"
@@ -444,7 +452,7 @@ class PipelineSerializer:
             verbose=verbose,
             **kwargs,
         )
-        return m
+        return p
 
     @classmethod
     def pack_scripted(
@@ -452,10 +460,10 @@ class PipelineSerializer:
         workspace: str,
         export_file: str = "model.pt",
     ) -> InferencePipeline:
-        m = cls.pack_and_load_inference(workspace)
-        model = torch.jit.script(m.build_model.model.m)
+        p = cls.pack_and_load_inference(workspace)
+        model = torch.jit.script(p.build_model.model.m)
         torch.jit.save(model, export_file)
-        return m
+        return p
 
     @classmethod
     def fuse_inference(
@@ -532,18 +540,6 @@ class PipelineSerializer:
             absolute_original = os.path.abspath(original_folder)
             compress_folder(absolute_folder)
             shutil.move(f"{absolute_folder}.zip", f"{absolute_original}.zip")
-
-    @classmethod
-    def _update(cls, p: Pipeline, folder: str) -> None:
-        if os.path.isdir(folder):
-            compress = False
-            shutil.rmtree(folder)
-        elif os.path.isfile(f"{folder}.zip"):
-            compress = True
-            os.remove(f"{folder}.zip")
-        else:
-            raise ValueError(f"neither `{folder}` nor `{folder}.zip` exists")
-        cls._save(p, folder, compress=compress)
 
     @classmethod
     def _load(
@@ -661,11 +657,11 @@ class PipelineSerializer:
                 else cls._load_evaluation
             )
             # avoid loading model because the ensembled model has different states
-            m = fn(workspace, excludes=[SerializeModelBlock])
+            p = fn(workspace, excludes=[SerializeModelBlock])
             # but we need to build the SerializeModelBlock again for further save/load
             b_serialize_model = SerializeModelBlock()
             b_serialize_model.verbose = False
-            m.build(b_serialize_model)
+            p.build(b_serialize_model)
         # merge state dict
         merged_states: OrderedDict[str, torch.Tensor] = OrderedDict()
         for i, folder in enumerate(tqdm(src_folders, desc="fuse")):
@@ -680,13 +676,13 @@ class PipelineSerializer:
             for k in current_keys:
                 states.pop(k)
             if states_callback is not None:
-                states = states_callback(m, states)
+                states = states_callback(p, states)
             merged_states.update(states)
         # load state dict
-        model = m.build_model.model
+        model = p.build_model.model
         model.to(device)
         model.load_state_dict(merged_states)
-        return m
+        return p
 
 
 __all__ = [
