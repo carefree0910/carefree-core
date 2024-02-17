@@ -64,7 +64,7 @@ from ...toolkit.array import softmax
 from ...toolkit.types import TPath
 from ...toolkit.types import np_dict_type
 from ...toolkit.types import tensor_dict_type
-from ...toolkit.pipeline import get_workspace
+from ...toolkit.pipeline import get_folder
 
 
 TInferPipeline = TypeVar("TInferPipeline", bound="InferencePipeline", covariant=True)
@@ -554,9 +554,9 @@ class PipelineSerializer:
         focuses: Optional[List[Type[Block]]] = None,
         excludes: Optional[List[Type[Block]]] = None,
     ) -> Pipeline:
-        with get_workspace(folder) as workspace:
+        with get_folder(folder) as folder:
             # handle info
-            info = Serializer.load_info(workspace)
+            info = Serializer.load_info(folder)
             if focuses is not None or excludes is not None:
                 if focuses is None:
                     focuses_set = None
@@ -576,13 +576,13 @@ class PipelineSerializer:
                     block_types = [b for b in block_types if b not in excludes_set]
                 info["blocks"] = block_types
             # load
-            pipeline = Serializer.load_empty(workspace, Pipeline, swap_id=swap_id)
-            pipeline.serialize_folder = workspace
+            pipeline = Serializer.load_empty(folder, Pipeline, swap_id=swap_id)
+            pipeline.serialize_folder = folder
             if info is None:
-                info = Serializer.load_info(workspace)
+                info = Serializer.load_info(folder)
             pipeline.from_info(info)
             for block in pipeline.blocks:
-                block.load_from(workspace / block.__identifier__)
+                block.load_from(folder / block.__identifier__)
             pipeline.after_load()
         return pipeline
 
@@ -615,22 +615,22 @@ class PipelineSerializer:
     @classmethod
     def _build_ensemble_pipeline(
         cls,
-        workspace: Path,
+        folder: Path,
         pack_type: PackType,
         num_repeat: int,
     ) -> Union[InferencePipeline, EvaluationPipeline]:
-        info = Serializer.load_info(workspace)
+        info = Serializer.load_info(folder)
         config = Config.from_pack(info["config"])
         config.num_repeat = num_repeat
         info["config"] = config.to_pack().asdict()
-        Serializer.save_info(workspace, info=info)
+        Serializer.save_info(folder, info=info)
         fn = (
             cls._load_inference
             if pack_type == PackType.INFERENCE
             else cls._load_evaluation
         )
         # avoid loading model because the ensembled model has different states
-        p = fn(workspace, excludes=[SerializeModelBlock])
+        p = fn(folder, excludes=[SerializeModelBlock])
         # but we need to build the SerializeModelBlock again for further save/load
         b_serialize_model = SerializeModelBlock()
         b_serialize_model.verbose = False
@@ -695,12 +695,12 @@ class PipelineSerializer:
             )
             num_repeat = num_picked
         # get empty pipeline
-        with get_workspace(src_folders[0], force_new=True) as workspace:
-            p = cls._build_ensemble_pipeline(workspace, pack_type, num_repeat)
+        with get_folder(src_folders[0], force_new=True) as folder:
+            p = cls._build_ensemble_pipeline(folder, pack_type, num_repeat)
         # merge state dict
         ckpt_paths = []
         for folder in src_folders:
-            with get_workspace(folder) as i_folder:
+            with get_folder(folder) as i_folder:
                 ckpt_folder = os.path.join(i_folder, SerializeModelBlock.__identifier__)
                 checkpoints = get_sorted_checkpoints(ckpt_folder)
                 ckpt_paths.append(os.path.join(ckpt_folder, checkpoints[0]))

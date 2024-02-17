@@ -35,7 +35,7 @@ pipelines: Dict[str, Type["IPipeline"]] = {}
 pipeline_blocks: Dict[str, Type["IBlock"]] = {}
 
 
-def get_workspace(folder: TPath, *, force_new: bool = False) -> ContextManager:
+def get_folder(folder: TPath, *, force_new: bool = False) -> ContextManager:
     class _:
         tmp_folder: Optional[Path]
 
@@ -208,6 +208,6 @@ __all__ = [
     "IBlock",
     "IPipeline",
     "TPipeline",
-    "get_workspace",
+    "get_folder",
     "get_req_choices",
 ]
