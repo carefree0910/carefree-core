@@ -10,6 +10,7 @@ from typing import Optional
 from typing import Protocol
 
 from ..losses import build_loss
+from ..schema import raw_forward_results_type
 from ..schema import ILoss
 from ..schema import Config
 from ..schema import IModel
@@ -66,13 +67,20 @@ class EnsembleFn(Protocol):
         pass
 
 
+class EnsembleModule(nn.ModuleList):
+    def forward(self, *args: Any, **kwargs: Any) -> List[raw_forward_results_type]:
+        return [m(*args, **kwargs) for m in self]
+
+
 class EnsembleModel(CommonModel):
+    m: EnsembleModule
     ensemble_fn: Optional[EnsembleFn]
 
     def __init__(self, m: IModel, num_repeat: int) -> None:
         super().__init__()
-        self.m = get_clones(m.m, num_repeat)
+        self.m = EnsembleModule(get_clones(m.m, num_repeat))
         self.model = m
+        self.t_model = m.__class__
         self.config = m.config.copy()
         self.ensemble_fn = None
         self.__identifier__ = m.__identifier__
@@ -88,18 +96,27 @@ class EnsembleModel(CommonModel):
     def build(self, config: Config) -> None:
         raise RuntimeError("`build` should not be called for `EnsembleModel`")
 
-    def run(
+    def forward(
         self,
         batch_idx: int,
         batch: tensor_dict_type,
-        state: Optional[TrainerState] = None,
+        state: Optional["TrainerState"] = None,
+        **kwargs: Any,
+    ) -> raw_forward_results_type:
+        return self.t_model.forward(self, batch_idx, batch, state, **kwargs)
+
+    def postprocess(
+        self,
+        batch_idx: int,
+        batch: tensor_dict_type,
+        forward_results: List[raw_forward_results_type],  # type: ignore
+        state: Optional["TrainerState"] = None,
         **kwargs: Any,
     ) -> tensor_dict_type:
         outputs: Dict[str, List[Tensor]] = {}
-        for m in self.m:
-            self.model.m = m
-            m_outputs = self.model.run(batch_idx, batch, state, **kwargs)
-            for k, v in m_outputs.items():
+        for rs in forward_results:
+            i_rs = self.t_model.postprocess(self, batch_idx, batch, rs, state, **kwargs)
+            for k, v in i_rs.items():
                 outputs.setdefault(k, []).append(v)
         final_results: tensor_dict_type = {}
         for k in sorted(outputs):
