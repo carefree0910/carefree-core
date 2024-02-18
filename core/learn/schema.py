@@ -250,6 +250,7 @@ class DataConfig(ISerializableDataClass["DataConfig"]):
     valid_batch_size: Optional[int] = None
     shuffle_train: bool = True
     shuffle_valid: bool = False
+    drop_train_last: bool = False
     block_names: Optional[List[str]] = None
     block_configs: Optional[Dict[str, Dict[str, Any]]] = None
     loader_configs: Optional[Dict[str, Any]] = None
@@ -609,6 +610,7 @@ class IData(  # type: ignore
             batch_size=self.config.batch_size,
             for_inference=False if for_inference is None else for_inference,
             sample_weights=self.train_weights,
+            drop_last=self.config.drop_train_last,
         )
         if self.valid_dataset is None:
             valid_loader = None
