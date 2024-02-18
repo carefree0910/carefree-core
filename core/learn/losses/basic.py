@@ -23,7 +23,7 @@ class BCELoss(ILoss):
 
     def forward(
         self,
-        forward_results: tensor_dict_type,  # type: ignore
+        forward_results: tensor_dict_type,
         batch: tensor_dict_type,
         state: Optional[TrainerState] = None,
     ) -> Tensor:
@@ -36,7 +36,7 @@ class BCELoss(ILoss):
 class MSELoss(ILoss):
     def forward(
         self,
-        forward_results: tensor_dict_type,  # type: ignore
+        forward_results: tensor_dict_type,
         batch: tensor_dict_type,
         state: Optional[TrainerState] = None,
     ) -> Tensor:
@@ -49,7 +49,7 @@ class MSELoss(ILoss):
 class CorrelationLoss(ILoss):
     def forward(
         self,
-        forward_results: tensor_dict_type,  # type: ignore
+        forward_results: tensor_dict_type,
         batch: tensor_dict_type,
         state: Optional[TrainerState] = None,
     ) -> Tensor:
@@ -72,7 +72,7 @@ class CrossEntropyLoss(ILoss):
 
     def forward(
         self,
-        forward_results: tensor_dict_type,  # type: ignore
+        forward_results: tensor_dict_type,
         batch: tensor_dict_type,
         state: Optional[TrainerState] = None,
     ) -> Tensor:
