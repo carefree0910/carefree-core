@@ -2,12 +2,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torch import Tensor
+from typing import Any
+from typing import Dict
+from typing import List
 from typing import Tuple
 from typing import Optional
+from dataclasses import dataclass
 
+from .schema import build_loss
 from .schema import register_loss
 from ..schema import ILoss
 from ..schema import TrainerState
+from ..constants import LOSS_KEY
 from ..constants import INPUT_KEY
 from ..constants import LABEL_KEY
 from ..constants import PREDICTIONS_KEY
@@ -83,9 +89,45 @@ class CrossEntropyLoss(ILoss):
         return nll_losses.mean()
 
 
+@dataclass
+class LossItem:
+    name: str
+    config: Optional[Dict[str, Any]] = None
+    weight: float = 1.0
+
+
+@register_loss("multi_loss")
+class MultiLoss(ILoss):
+    def __init__(self, losses: List[Dict[str, Any]]):
+        super().__init__()
+        loss_items = [LossItem(**loss) for loss in losses]
+        self.losses = nn.ModuleDict(
+            {
+                loss.name: build_loss(loss.name, config=loss.config)
+                for loss in loss_items
+            }
+        )
+        self.weights = {loss.name: loss.weight for loss in loss_items}
+
+    def forward(
+        self,
+        forward_results: tensor_dict_type,  # type: ignore
+        batch: tensor_dict_type,
+        state: Optional[TrainerState] = None,
+    ) -> tensor_dict_type:
+        loss = 0.0
+        losses: tensor_dict_type = {}
+        for name, loss_fn in self.losses.items():
+            losses[name] = loss_fn(forward_results, batch, state)
+            loss += self.weights[name] * losses[name]
+        losses[LOSS_KEY] = loss
+        return losses
+
+
 __all__ = [
     "BCELoss",
     "MSELoss",
     "CorrelationLoss",
     "CrossEntropyLoss",
+    "MultiLoss",
 ]

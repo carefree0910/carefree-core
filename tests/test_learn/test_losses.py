@@ -31,6 +31,22 @@ class TestLosses(unittest.TestCase):
         gt_corr = -torch.sum(vx * vy) / std
         torch.testing.assert_close(corr, gt_corr)
 
+    def test_multi_loss(self) -> None:
+        x = torch.randn(13, 1)
+        y = torch.randn(13, 1)
+        mse = get_loss("mse", x, y)
+        corr = get_loss("corr", x, y)
+        multi = get_loss(
+            "multi_loss",
+            x,
+            y,
+            losses=[
+                {"name": "mse", "weight": 0.17},
+                {"name": "corr", "weight": 0.19},
+            ],
+        )[cflearn.LOSS_KEY]
+        torch.testing.assert_close(multi, 0.17 * mse + 0.19 * corr)
+
 
 if __name__ == "__main__":
     unittest.main()
