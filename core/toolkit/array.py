@@ -28,19 +28,19 @@ from .types import tensor_dict_type
 
 
 def is_int(arr: arr_type) -> bool:
-    if isinstance(arr, np.ndarray):
+    if isinstance(arr, (np.ndarray, np.number)):
         return np.issubdtype(arr.dtype, np.integer)
     return not torch.is_floating_point(arr) and not torch.is_complex(arr)
 
 
 def is_float(arr: arr_type) -> bool:
-    if isinstance(arr, np.ndarray):
+    if isinstance(arr, (np.ndarray, np.number)):
         return np.issubdtype(arr.dtype, np.floating)
     return torch.is_floating_point(arr)
 
 
 def is_string(arr: arr_type) -> bool:
-    if isinstance(arr, np.ndarray):
+    if isinstance(arr, (np.ndarray, np.character)):
         return np.issubdtype(arr.dtype, str)
     return False
 
