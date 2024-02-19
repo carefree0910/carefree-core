@@ -43,6 +43,7 @@ from .constants import PT_PREFIX
 from .constants import SCORES_FILE
 from .constants import CHECKPOINTS_FOLDER
 from .schedulers import WarmupScheduler
+from .modules.common import EMA
 from ..toolkit import console
 from ..toolkit.misc import to_path
 from ..toolkit.misc import safe_execute
@@ -163,6 +164,11 @@ class Trainer(ITrainer):
                     self.model.parameters(),
                     max_norm=self.config.clip_norm,
                 )
+
+    def ema_step(self) -> None:
+        for module in self.model.m.modules():
+            if isinstance(module, EMA):
+                module()
 
     def scheduler_step(self) -> None:
         if self.config.update_scheduler_per_epoch:

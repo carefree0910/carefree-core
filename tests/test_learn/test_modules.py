@@ -2,7 +2,6 @@ import time
 import torch
 import unittest
 
-import numpy as np
 import torch.nn as nn
 import core.learn as cflearn
 import core.toolkit.console as console
@@ -164,6 +163,43 @@ class TestModules(unittest.TestCase):
         with cflearn.eval_context(ema):
             with self.assertRaises(RuntimeError):
                 ema()
+
+    def test_ema_training(self) -> None:
+        dim = 11
+        data, _, out_dim, _ = cflearn.testing.linear_data(dim=dim)
+        config = cflearn.Config(
+            module_name="linear",
+            module_config=dict(input_dim=dim, output_dim=out_dim, bias=False),
+            loss_name="mse",
+        )
+        config.to_debug()
+        p = cflearn.TrainingPipeline.init(config).fit(data)
+        model = p.build_model.model
+        x = torch.from_numpy(data.bundle.x_train)
+        y0 = model.m(x)
+        with model.eval_context():
+            y1 = model.m(x)
+        torch.testing.assert_close(y0, y1)
+
+        @cflearn.register_module("linear_ema")
+        class _(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.net = cflearn.Linear(**config.module_config)
+                self.ema = cflearn.EMA.hook(self.net, 0.9)
+
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                return self.net(x)
+
+        config.module_name = "linear_ema"
+        p = cflearn.TrainingPipeline.init(config).fit(data)
+        model = p.build_model.model
+        x = torch.from_numpy(data.bundle.x_train)
+        y0 = model.m(x)
+        with model.eval_context():
+            y1 = model.m(x)
+        with self.assertRaises(AssertionError):
+            torch.testing.assert_close(y0, y1)
 
     def test_residual(self) -> None:
         dim = 11

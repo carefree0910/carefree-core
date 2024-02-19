@@ -1171,6 +1171,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             if update:
                 any_update = True
         if any_update:
+            trainer.ema_step()
             trainer.scheduler_step()
         # callbacks
         for train_step in self.train_steps:
@@ -1712,6 +1713,10 @@ class ITrainer(ABC):
 
     @abstractmethod
     def clip_norm_step(self) -> None:
+        pass
+
+    @abstractmethod
+    def ema_step(self) -> None:
         pass
 
     @abstractmethod
