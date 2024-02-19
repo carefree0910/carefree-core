@@ -182,14 +182,10 @@ class TestModules(unittest.TestCase):
         torch.testing.assert_close(y0, y1)
 
         @cflearn.register_module("linear_ema")
-        class _(nn.Module):
+        class _(cflearn.Linear):
             def __init__(self) -> None:
-                super().__init__()
-                self.net = cflearn.Linear(**config.module_config)
-                self.ema = cflearn.EMA.hook(self.net, 0.9)
-
-            def forward(self, x: torch.Tensor) -> torch.Tensor:
-                return self.net(x)
+                super().__init__(**config.module_config)
+                self.ema = cflearn.EMA.hook(self, 0.9)
 
         config.module_name = "linear_ema"
         p = cflearn.TrainingPipeline.init(config).fit(data)
