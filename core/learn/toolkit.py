@@ -1108,10 +1108,7 @@ def summary(
     def register_hook(m: nn.Module) -> None:
         def inject_output_shape(o: Any, r: Dict[str, Any], prefix: str = "") -> None:
             if isinstance(o, Tensor):
-                o_shape = list(o.shape)
-                if o_shape:
-                    o_shape[0] = -1
-                r[prefix] = o_shape
+                r[prefix] = list(o.shape)
             elif isinstance(o, (list, tuple)):
                 for i, elem in enumerate(o):
                     inject_output_shape(elem, r, f"{prefix}{i}.")
