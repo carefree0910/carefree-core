@@ -62,6 +62,7 @@ from ...toolkit.misc import prepare_workspace_from
 from ...toolkit.misc import Serializer
 from ...toolkit.array import sigmoid
 from ...toolkit.array import softmax
+from ...toolkit.array import is_float
 from ...toolkit.types import TPath
 from ...toolkit.types import np_dict_type
 from ...toolkit.types import tensor_dict_type
@@ -804,8 +805,9 @@ class PipelineSerializer:
                             merged_states[k] = v
                         else:
                             merged_states[k] = mv + v
-                for k in merged_states:
-                    merged_states[k] /= num_ensemble
+                for k, v in merged_states.items():
+                    if is_float(v):
+                        merged_states[k] /= num_ensemble
         # load state dict
         model = p.build_model.model
         model.to(device)
