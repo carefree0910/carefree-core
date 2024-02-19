@@ -98,18 +98,11 @@ class EMA(Module):
         super().__init__()
         self._cache: tensor_dict_type = {}
         self._decay = decay
-        self._named_parameters = named_parameters
+        self.tgt_params = [(p[0].replace(".", "_"), p[1]) for p in named_parameters]
         for name, param in self.tgt_params:
             self.register_buffer(name, param.data.clone())
         num_updates = torch.tensor(0 if use_num_updates else -1, dtype=torch.int)
         self.register_buffer("num_updates", num_updates)
-
-    @property
-    def tgt_params(self) -> Iterator[Tuple[str, nn.Parameter]]:
-        return map(
-            lambda pair: (pair[0].replace(".", "_"), pair[1]),
-            self._named_parameters,
-        )
 
     def forward(self) -> None:
         if not self.training:
