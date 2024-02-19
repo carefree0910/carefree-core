@@ -10,7 +10,6 @@ from typing import Type
 from typing import Tuple
 from typing import TypeVar
 from typing import Callable
-from typing import Iterator
 from typing import Optional
 from torch.nn import Module
 
@@ -19,6 +18,7 @@ from ...toolkit.misc import parse_config
 from ...toolkit.misc import register_core
 from ...toolkit.misc import safe_instantiate
 from ...toolkit.misc import shallow_copy_dict
+from ...toolkit.array import is_int
 from ...toolkit.types import TConfig
 from ...toolkit.types import tensor_dict_type
 
@@ -98,7 +98,11 @@ class EMA(Module):
         super().__init__()
         self._cache: tensor_dict_type = {}
         self._decay = decay
-        self.tgt_params = [(p[0].replace(".", "_"), p[1]) for p in named_parameters]
+        self.tgt_params = [
+            (name.replace(".", "_"), parameter)
+            for name, parameter in named_parameters
+            if not is_int(parameter.data)
+        ]
         for name, param in self.tgt_params:
             self.register_buffer(name, param.data.clone())
         num_updates = torch.tensor(0 if use_num_updates else -1, dtype=torch.int)
