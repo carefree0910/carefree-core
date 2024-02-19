@@ -142,6 +142,10 @@ class EMA(Module):
             + [")"]
         )
 
+    @classmethod
+    def hook(cls, m: Module, decay: float, *, use_num_updates: bool = False) -> "EMA":
+        return cls(decay, list(m.named_parameters()), use_num_updates=use_num_updates)
+
 
 # common structures
 
