@@ -62,6 +62,18 @@ class CommonModel(IModel):
         self.loss = build_loss(config.loss_name, config=config.loss_config)
 
 
+@IModel.register("direct")
+class DirectModel(CommonModel):
+    def forward(
+        self,
+        batch_idx: int,
+        batch: tensor_dict_type,
+        state: Optional["TrainerState"] = None,
+        **kwargs: Any,
+    ) -> raw_forward_results_type:
+        return self.m(batch, **kwargs)
+
+
 class EnsembleFn(Protocol):
     def __call__(self, key: str, tensors: List[Tensor]) -> Tensor:
         pass
@@ -131,5 +143,6 @@ class EnsembleModel(CommonModel):
 __all__ = [
     "CommonTrainStep",
     "CommonModel",
+    "DirectModel",
     "EnsembleModel",
 ]
