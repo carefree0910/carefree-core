@@ -18,6 +18,14 @@ class TestArray(unittest.TestCase):
         self.assertFalse(is_int(np.float16(1)))
         self.assertFalse(is_int(np.float32(1)))
         self.assertFalse(is_int(np.float64(1)))
+        self.assertTrue(is_int(torch.tensor(1, dtype=torch.int8)))
+        self.assertTrue(is_int(torch.tensor(1, dtype=torch.int16)))
+        self.assertTrue(is_int(torch.tensor(1, dtype=torch.int32)))
+        self.assertTrue(is_int(torch.tensor(1, dtype=torch.int64)))
+        self.assertTrue(is_int(torch.tensor(1, dtype=torch.uint8)))
+        self.assertFalse(is_int(torch.tensor(1, dtype=torch.float16)))
+        self.assertFalse(is_int(torch.tensor(1, dtype=torch.float32)))
+        self.assertFalse(is_int(torch.tensor(1, dtype=torch.float64)))
 
     def test_is_float(self):
         self.assertFalse(is_float(np.int8(1)))
@@ -31,6 +39,14 @@ class TestArray(unittest.TestCase):
         self.assertTrue(is_float(np.float16(1)))
         self.assertTrue(is_float(np.float32(1)))
         self.assertTrue(is_float(np.float64(1)))
+        self.assertFalse(is_float(torch.tensor(1, dtype=torch.int8)))
+        self.assertFalse(is_float(torch.tensor(1, dtype=torch.int16)))
+        self.assertFalse(is_float(torch.tensor(1, dtype=torch.int32)))
+        self.assertFalse(is_float(torch.tensor(1, dtype=torch.int64)))
+        self.assertFalse(is_float(torch.tensor(1, dtype=torch.uint8)))
+        self.assertTrue(is_float(torch.tensor(1, dtype=torch.float16)))
+        self.assertTrue(is_float(torch.tensor(1, dtype=torch.float32)))
+        self.assertTrue(is_float(torch.tensor(1, dtype=torch.float64)))
 
     def test_is_string(self):
         self.assertFalse(is_string(np.int8(1)))
@@ -46,6 +62,14 @@ class TestArray(unittest.TestCase):
         self.assertFalse(is_string(np.float64(1)))
         self.assertTrue(is_string(np.str_("1")))
         self.assertTrue(is_string(np.array(["1"])))
+        self.assertFalse(is_string(torch.tensor(1, dtype=torch.int8)))
+        self.assertFalse(is_string(torch.tensor(1, dtype=torch.int16)))
+        self.assertFalse(is_string(torch.tensor(1, dtype=torch.int32)))
+        self.assertFalse(is_string(torch.tensor(1, dtype=torch.int64)))
+        self.assertFalse(is_string(torch.tensor(1, dtype=torch.uint8)))
+        self.assertFalse(is_string(torch.tensor(1, dtype=torch.float16)))
+        self.assertFalse(is_string(torch.tensor(1, dtype=torch.float32)))
+        self.assertFalse(is_string(torch.tensor(1, dtype=torch.float64)))
 
     def test_functions(self):
         array = np.random.randn(3, 5, 7)
