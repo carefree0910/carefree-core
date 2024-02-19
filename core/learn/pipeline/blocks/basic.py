@@ -878,7 +878,12 @@ class SerializeModelBlock(Block):
         model = self.build_model.model
         folder = to_path(folder)
         best_file = get_sorted_checkpoints(folder)[0]
-        states = torch.load(folder / best_file, map_location="cpu")["states"]
+        states = torch.load(folder / best_file, map_location="cpu")
+        # check if the loaded `states` is a full state dict
+        # this check makes it compatible with 'pure' states, for which
+        # we don't need to extract from the 'states' key
+        if set(states) == {"config", "states"}:
+            states = states["states"]
         model.load_state_dict(states)
         scores = get_scores(folder)
         self.ckpt_folder = folder
