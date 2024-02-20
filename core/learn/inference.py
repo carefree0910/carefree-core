@@ -17,6 +17,7 @@ from .schema import DataLoader
 from .schema import MetricsOutputs
 from .schema import InferenceOutputs
 from .toolkit import get_device
+from .toolkit import is_local_rank_0
 from .toolkit import tensor_batch_to_np
 from .toolkit import ONNX
 from .constants import LABEL_KEY
@@ -71,10 +72,11 @@ class Inference(IInference):
             max_shape = max([array.shape[pad_dim] for array in arrays])
             if all(array.shape[pad_dim] == max_shape for array in arrays):
                 return arrays
-            console.warn(
-                f"padding '{k}' at dim {pad_dim} to {max_shape}, please perform "
-                "post-processing to remove the paddings if necessary."
-            )
+            if is_local_rank_0():
+                console.warn(
+                    f"padding '{k}' at dim {pad_dim} to {max_shape}, please perform "
+                    "post-processing to remove the paddings if necessary."
+                )
             for array in arrays:
                 i_paddings = [[0, 0] for _ in range(array.ndim)]
                 i_paddings[pad_dim][1] = max_shape - array.shape[pad_dim]
