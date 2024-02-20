@@ -834,6 +834,8 @@ class IInference(ABC):
         return_outputs: bool = True,
         stack_outputs: bool = True,
         use_tqdm: bool = False,
+        use_inference_mode: Optional[bool] = None,
+        accelerator: Optional[Accelerator] = None,
         **kwargs: Any,
     ) -> InferenceOutputs:
         pass
@@ -884,14 +886,21 @@ def get_input_names(model: onnx.ModelProto) -> List[str]:
     return input_names
 
 
-class StepOutputs(NamedTuple):
+@dataclass
+class StepOutputs:
     forward_results: tensor_dict_type
     loss_items: Dict[str, float]
+
+
+@dataclass
+class InferenceStepOutputs(StepOutputs):
+    loss_tensors: tensor_dict_type  # for distributed gathering
 
 
 class TrainStepLoss(NamedTuple):
     loss: Tensor
     loss_items: Dict[str, float]
+    loss_tensors: tensor_dict_type  # for distributed gathering
 
 
 class TrainStep(ABC):
@@ -1043,15 +1052,16 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         get_losses: bool = False,
         loss_kwargs: Optional[Dict[str, Any]] = None,
         use_inference_mode: Optional[bool] = None,
-    ) -> StepOutputs:
+    ) -> InferenceStepOutputs:
         with self.eval_context(use_grad=use_grad, use_inference=use_inference_mode):
             loss_items = {}
+            loss_tensors = {}
             loss_kwargs = loss_kwargs or {}
             forward_kwargs = forward_kwargs or {}
             get_fw = lambda: self.run(batch_idx, batch, None, **forward_kwargs)
             train_steps = self.train_steps
             if not train_steps:
-                return StepOutputs(get_fw(), {})
+                return InferenceStepOutputs(get_fw(), {}, {})
             for i, train_step in enumerate(self.train_steps):
                 if train_step.should_skip(self, None):
                     continue
@@ -1060,7 +1070,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                 if get_losses:
                     loss_res = train_step.loss_fn(self, None, batch, fw, **loss_kwargs)
                     loss_items.update(loss_res.loss_items)
-            return StepOutputs(fw, loss_items)
+                    loss_tensors.update(loss_res.loss_tensors)
+            return InferenceStepOutputs(fw, loss_items, loss_tensors)
 
     def train(
         self,
@@ -1181,6 +1192,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         *,
         portion: float = 1.0,
         state: Optional["TrainerState"] = None,
+        accelerator: Optional[Accelerator] = None,
         forward_kwargs: Optional[Dict[str, Any]] = None,
     ) -> MetricsOutputs:
         outputs = inference.get_outputs(
@@ -1189,6 +1201,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             metrics=metrics,
             use_losses_as_metrics=config.use_losses_as_metrics,  # type: ignore
             return_outputs=False,
+            accelerator=accelerator,
             **(forward_kwargs or {}),
         )
         metric_values = {}

@@ -247,14 +247,14 @@ class Trainer(ITrainer):
         n_optim = len(optimizers)
         optim_keys = sorted(optimizers)
         train_loader, valid_loader = data.build_loaders()
-        ## 'valid_loader' is often only used at 'rank 0', so it should not be
-        ## 'prepared' for distributed behaviors
         prepared = self.accelerator.prepare(
             train_loader,
+            valid_loader,
             *model.all_modules,
             *[optimizers[k] for k in optim_keys],
         )
         distributed_train_loader = prepared[0]
+        distributed_valid_loader = prepared[1]
         self.state = TrainerState(
             num_epoch=self.config.num_epoch,
             num_steps=self.config.num_steps,
@@ -262,7 +262,7 @@ class Trainer(ITrainer):
             loader_length=len(train_loader),
             **(self.config.state_config or {}),
         )
-        self.model = model.from_accelerator(*prepared[1:-n_optim])
+        self.model = model.from_accelerator(*prepared[2:-n_optim])
         self.optimizers = {k: prepared[-n_optim + i] for i, k in enumerate(optim_keys)}
         self.schedulers = schedulers
         for sch in schedulers.values():
@@ -327,7 +327,11 @@ class Trainer(ITrainer):
                             callback.log_train_step(step_outputs, self.state)
                     for callback in self.callbacks:
                         callback.after_train_step(batch, step_outputs, self)
-                    monitored = self._monitor(train_loader, valid_loader, step_outputs)
+                    monitored = self._monitor(
+                        distributed_train_loader,
+                        distributed_valid_loader,
+                        step_outputs,
+                    )
                     if self.state.should_monitor:
                         for callback in self.callbacks:
                             callback.after_monitor(monitored, self)
@@ -364,9 +368,7 @@ class Trainer(ITrainer):
         # finalize
         self.state.set_terminate()
         if self.is_local_rank_0:
-            # should use the 'non-distributed' loaders here to avoid
-            # unwanted distributed behaviors (e.g., hang when `dispatch_batches=True`)
-            loader = valid_loader or train_loader
+            loader = distributed_valid_loader or distributed_train_loader
             self.final_results = self._get_metrics(loader, self.config.valid_portion)
             self._logging(self.final_results)
             if not has_ckpt:
@@ -491,6 +493,7 @@ class Trainer(ITrainer):
             msg = msg_fmt.format(num_trainable, "trainable", freeze_except)
         console.log("\n".join(["=" * 100, msg, "-" * 100] + param_names + ["-" * 100]))
 
+    # `loader` is distributed loader
     def _get_metrics(self, loader: DataLoader, portion: float = 1.0) -> MetricsOutputs:
         if self.use_tqdm_in_validation:
             loader = tqdm(
@@ -508,6 +511,7 @@ class Trainer(ITrainer):
             loader,
             portion=portion,
             state=self.state,
+            accelerator=self.accelerator,
             forward_kwargs=self.config.metric_forward_kwargs,
         )
 
@@ -548,6 +552,7 @@ class Trainer(ITrainer):
                     self.state,
                 )
 
+    # `*_loader`s are distributed loaders
     def _monitor(
         self,
         train_loader: DataLoader,

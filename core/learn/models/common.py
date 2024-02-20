@@ -40,7 +40,11 @@ class CommonTrainStep(TrainStep):
         losses = self.loss(forward_results, batch, state)
         if isinstance(losses, Tensor):
             losses = {LOSS_KEY: losses}
-        return TrainStepLoss(losses[LOSS_KEY], {k: v.item() for k, v in losses.items()})
+        return TrainStepLoss(
+            losses[LOSS_KEY],
+            {k: v.item() for k, v in losses.items()},
+            {k: v[None] for k, v in losses.items()},
+        )
 
 
 @IModel.register("common")

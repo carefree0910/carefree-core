@@ -8,6 +8,7 @@ from typing import Dict
 from typing import List
 from typing import Union
 from typing import Optional
+from accelerate import Accelerator
 
 from .schema import IModel
 from .schema import IMetric
@@ -21,6 +22,8 @@ from .toolkit import ONNX
 from .constants import LABEL_KEY
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.array import to_device
+from ..toolkit.types import np_dict_type
+from ..toolkit.types import tensor_dict_type
 
 
 TArrays = Dict[str, List[Union[np.ndarray, Any]]]
@@ -56,6 +59,7 @@ class Inference(IInference):
         stack_outputs: bool = True,
         use_tqdm: bool = False,
         use_inference_mode: Optional[bool] = None,
+        accelerator: Optional[Accelerator] = None,
         **kwargs: Any,
     ) -> InferenceOutputs:
         def stack(arrays: TArrays, return_arrays: bool, should_stack: bool) -> Any:
@@ -67,6 +71,11 @@ class Inference(IInference):
                 k: np.vstack(v) if isinstance(v[0], np.ndarray) else v
                 for k, v in arrays.items()
             }
+
+        def to_np_batch(tensor_batch: tensor_dict_type) -> np_dict_type:
+            if accelerator is not None:
+                tensor_batch = accelerator.gather_for_metrics(tensor_batch)
+            return tensor_batch_to_np(tensor_batch)
 
         def run() -> InferenceOutputs:
             all_np_outputs: TArrays = {}
@@ -86,6 +95,7 @@ class Inference(IInference):
                 np_batch = None
                 np_outputs = None
                 if self.onnx is not None:
+                    # will not consider distributed stuffs at onnx inference
                     np_batch = tensor_batch_to_np(tensor_batch)
                     np_outputs = self.onnx.predict(np_batch)
                 elif self.model is not None:
@@ -100,15 +110,20 @@ class Inference(IInference):
                         use_inference_mode=use_inference_mode,
                     )
                     Flag.in_step = False
-                    np_outputs = tensor_batch_to_np(step_outputs.forward_results)
+                    np_outputs = to_np_batch(step_outputs.forward_results)
                     if use_losses_as_metrics:
-                        for k, vl in step_outputs.loss_items.items():
-                            loss_items_lists.setdefault(k, []).append(vl)
+                        if accelerator is None:
+                            for k, vl in step_outputs.loss_items.items():
+                                loss_items_lists.setdefault(k, []).append(vl)
+                        else:
+                            for k, vl in step_outputs.loss_tensors.items():
+                                vg = accelerator.gather_for_metrics(vl).tolist()
+                                loss_items_lists.setdefault(k, []).extend(vg)
                 assert np_outputs is not None
                 # metrics
                 if metrics is not None and not metrics.requires_all:
                     if np_batch is None:
-                        np_batch = tensor_batch_to_np(tensor_batch)
+                        np_batch = to_np_batch(tensor_batch)
                     metric_outputs = metrics.evaluate(np_batch, np_outputs)
                     metric_outputs_list.append(metric_outputs)
                 # gather
@@ -118,13 +133,13 @@ class Inference(IInference):
                             all_np_outputs.setdefault(k, []).append(v)
                 if return_labels:
                     if np_batch is None:
-                        np_batch = tensor_batch_to_np(tensor_batch)
+                        np_batch = to_np_batch(tensor_batch)
                     for k, v in np_batch.items():
                         if v is not None and k.endswith(LABEL_KEY):
                             all_labels.setdefault(k, []).append(v)
                 if metrics is not None and metrics.requires_all:
                     if np_batch is None:
-                        np_batch = tensor_batch_to_np(tensor_batch)
+                        np_batch = to_np_batch(tensor_batch)
                     for k, v in np_batch.items():
                         if v is not None and metrics.requires(k):
                             all_metrics_requires.setdefault(k, []).append(v)
