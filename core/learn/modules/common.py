@@ -86,7 +86,7 @@ class Lambda(Module):
 
 
 class EMA(Module):
-    num_updates: Tensor
+    num_updates: Optional[Tensor]
 
     def __init__(
         self,
@@ -105,13 +105,15 @@ class EMA(Module):
         ]
         for name, param in self.tgt_params:
             self.register_buffer(name, param.data.clone())
-        num_updates = torch.tensor(0 if use_num_updates else -1, dtype=torch.int)
-        self.register_buffer("num_updates", num_updates)
+        if not use_num_updates:
+            self.num_updates = None
+        else:
+            self.register_buffer("num_updates", torch.tensor(0, dtype=torch.int))
 
     def forward(self) -> None:
         if not self.training:
             raise RuntimeError("should not update `EMA` at inference stage")
-        if self.num_updates < 0:
+        if self.num_updates is None:
             decay = self._decay
         else:
             self.num_updates += 1
