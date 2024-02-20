@@ -11,10 +11,10 @@ from typing import Optional
 from pathlib import Path
 
 from ..schema import ITrainer
+from ..schema import StepOutputs
 from ..schema import TrainerState
 from ..schema import MetricsOutputs
 from ..schema import TrainerCallback
-from ..schema import TrainStepOutputs
 from ..toolkit import get_ddp_info
 from ..toolkit import tensor_batch_to_np
 from ...toolkit import console
@@ -96,7 +96,7 @@ class NaNDetectorCallback(TrainerCallback):
     def after_train_step(
         self,
         batch: tensor_dict_type,
-        stepped: TrainStepOutputs,
+        stepped: StepOutputs,
         trainer: ITrainer,
     ) -> None:
         is_nan = [k for k, v in stepped.loss_items.items() if math.isnan(v)]
@@ -176,7 +176,7 @@ class WandBCallback(TrainerCallback):
     def log_lr(self, key: str, lr: float, state: TrainerState) -> None:
         wandb.log({key: lr}, step=self._wandb_step(state.step))
 
-    def log_train_step(self, stepped: TrainStepOutputs, state: TrainerState) -> None:
+    def log_train_step(self, stepped: StepOutputs, state: TrainerState) -> None:
         if state.should_log_losses:
             wandb.log(prefix_dict(stepped.loss_items, "tr"), step=state.step)
 

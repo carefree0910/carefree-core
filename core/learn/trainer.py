@@ -27,6 +27,7 @@ from .schema import IMetric
 from .schema import ITrainer
 from .schema import IInference
 from .schema import DataLoader
+from .schema import StepOutputs
 from .schema import TqdmSettings
 from .schema import TrainerState
 from .schema import TrainerConfig
@@ -35,7 +36,6 @@ from .schema import MonitorResults
 from .schema import TrainerMonitor
 from .schema import MultipleMetrics
 from .schema import TrainerCallback
-from .schema import TrainStepOutputs
 from .toolkit import summary
 from .toolkit import get_ddp_info
 from .toolkit import get_torch_device
@@ -552,7 +552,7 @@ class Trainer(ITrainer):
         self,
         train_loader: DataLoader,
         valid_loader: T_Lo,
-        step_outputs: TrainStepOutputs,
+        step_outputs: StepOutputs,
     ) -> MonitorResults:
         extension = 0
         terminate = False
@@ -605,7 +605,7 @@ class Trainer(ITrainer):
                         terminate = True
         return MonitorResults(terminate, save_checkpoint, self.intermediate)
 
-    def _step(self, batch_idx: int, batch: tensor_dict_type) -> TrainStepOutputs:
+    def _step(self, batch_idx: int, batch: tensor_dict_type) -> StepOutputs:
         forward_kw: Dict[str, Any] = {}
         for callback in self.callbacks:
             callback.mutate_forward_kwargs(forward_kw, self)

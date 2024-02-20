@@ -889,11 +889,6 @@ class StepOutputs(NamedTuple):
     loss_items: Dict[str, float]
 
 
-class TrainStepOutputs(NamedTuple):
-    forward_results: tensor_dict_type
-    loss_items: Dict[str, float]
-
-
 class TrainStepLoss(NamedTuple):
     loss: Tensor
     loss_items: Dict[str, float]
@@ -1074,7 +1069,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         trainer: "ITrainer",
         forward_kwargs: Dict[str, Any],
         loss_kwargs: Dict[str, Any],
-    ) -> TrainStepOutputs:
+    ) -> StepOutputs:
         """
         Runs a series of custom training steps on a batch of data.
 
@@ -1093,7 +1088,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
 
         Returns
         -------
-        TrainStepOutputs
+        StepOutputs
             An object containing the outputs of the forward pass and the calculated loss values of the training steps.
 
         Step by step explanation
@@ -1119,7 +1114,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
           7) Update the `loss_items` with the loss values for this training step.
         5. If any optimizer updates occurred, call `trainer.scheduler_step()` to update the learning rate.
         6. Loop through each training step and call its callback function with the model, trainer, batch, and forward pass outputs.
-        7. Return the `TrainStepOutputs` object containing the forward pass outputs and loss values.
+        7. Return the `StepOutputs` object containing the forward pass outputs and loss values.
         """
 
         state = trainer.state
@@ -1175,7 +1170,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         # callbacks
         for train_step in self.train_steps:
             train_step.callback(self, trainer, batch, forward)
-        return TrainStepOutputs(forward, loss_items)
+        return StepOutputs(forward, loss_items)
 
     def evaluate(
         self,
@@ -1628,7 +1623,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     def log_lr(self, key: str, lr: float, state: TrainerState) -> None:
         pass
 
-    def log_train_step(self, stepped: TrainStepOutputs, state: TrainerState) -> None:
+    def log_train_step(self, stepped: StepOutputs, state: TrainerState) -> None:
         pass
 
     def log_metrics(self, metric_outputs: MetricsOutputs, state: TrainerState) -> None:
@@ -1648,7 +1643,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     def after_train_step(
         self,
         batch: tensor_dict_type,
-        stepped: TrainStepOutputs,
+        stepped: StepOutputs,
         trainer: "ITrainer",
     ) -> None:
         pass
