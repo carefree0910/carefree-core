@@ -40,6 +40,7 @@ from ...schema import TrainerMonitor
 from ...schema import TrainerCallback
 from ...losses import losses
 from ...models import EnsembleModel
+from ...toolkit import get_ddp_info
 from ...toolkit import _get_environ_workspace
 from ...toolkit import scheduler_requires_metric
 from ...trainer import get_scores
@@ -771,7 +772,7 @@ class TrainingBlock(Block):
             profile_config["on_trace_ready"] = trace_handler
             profile_config.setdefault("record_shapes", True)
             profile_config.setdefault("profile_memory", False)
-            profile_config.setdefault("with_stack", True)
+            profile_config.setdefault("with_stack", get_ddp_info() is None)
             profile_config.setdefault("with_flops", True)
             profile_config.setdefault("with_modules", True)
             with profile():
