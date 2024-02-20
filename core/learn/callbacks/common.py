@@ -96,10 +96,10 @@ class NaNDetectorCallback(TrainerCallback):
     def after_train_step(
         self,
         batch: tensor_dict_type,
-        stepped: StepOutputs,
+        step_outputs: StepOutputs,
         trainer: ITrainer,
     ) -> None:
-        is_nan = [k for k, v in stepped.loss_items.items() if math.isnan(v)]
+        is_nan = [k for k, v in step_outputs.loss_items.items() if math.isnan(v)]
         if is_nan:
             np_batch = tensor_batch_to_np(batch)
             nan_ratios = {k: np.isnan(v).mean().item() for k, v in np_batch.items()}
@@ -176,9 +176,9 @@ class WandBCallback(TrainerCallback):
     def log_lr(self, key: str, lr: float, state: TrainerState) -> None:
         wandb.log({key: lr}, step=self._wandb_step(state.step))
 
-    def log_train_step(self, stepped: StepOutputs, state: TrainerState) -> None:
+    def log_train_step(self, step_outputs: StepOutputs, state: TrainerState) -> None:
         if state.should_log_losses:
-            wandb.log(prefix_dict(stepped.loss_items, "tr"), step=state.step)
+            wandb.log(prefix_dict(step_outputs.loss_items, "tr"), step=state.step)
 
     def log_metrics(self, metric_outputs: MetricsOutputs, state: TrainerState) -> None:
         metrics = shallow_copy_dict(metric_outputs.metric_values)

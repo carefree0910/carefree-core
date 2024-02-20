@@ -321,13 +321,13 @@ class Trainer(ITrainer):
                     )
                 for i, batch in enumerate(step_iterator):
                     self.state.step += 1
-                    train_stepped = self._step(i, batch)
+                    step_outputs = self._step(i, batch)
                     if self.is_local_rank_0:
                         for callback in self.callbacks:
-                            callback.log_train_step(train_stepped, self.state)
+                            callback.log_train_step(step_outputs, self.state)
                     for callback in self.callbacks:
-                        callback.after_train_step(batch, train_stepped, self)
-                    monitored = self._monitor(train_loader, valid_loader, train_stepped)
+                        callback.after_train_step(batch, step_outputs, self)
+                    monitored = self._monitor(train_loader, valid_loader, step_outputs)
                     if self.state.should_monitor:
                         for callback in self.callbacks:
                             callback.after_monitor(monitored, self)

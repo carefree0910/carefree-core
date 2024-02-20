@@ -1623,7 +1623,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     def log_lr(self, key: str, lr: float, state: TrainerState) -> None:
         pass
 
-    def log_train_step(self, stepped: StepOutputs, state: TrainerState) -> None:
+    def log_train_step(self, step_outputs: StepOutputs, state: TrainerState) -> None:
         pass
 
     def log_metrics(self, metric_outputs: MetricsOutputs, state: TrainerState) -> None:
@@ -1643,7 +1643,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     def after_train_step(
         self,
         batch: tensor_dict_type,
-        stepped: StepOutputs,
+        step_outputs: StepOutputs,
         trainer: "ITrainer",
     ) -> None:
         pass
