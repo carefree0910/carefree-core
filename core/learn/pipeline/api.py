@@ -153,6 +153,7 @@ class _InferenceMixin:
         binary_threshold: float = 0.5,
         return_probabilities: bool = False,
         recover_labels: Optional[bool] = None,
+        accelerator: Optional[Accelerator] = None,
         **kwargs: Any,
     ) -> np_dict_type:
         if not self.is_built:
@@ -163,6 +164,7 @@ class _InferenceMixin:
             )
         kw = shallow_copy_dict(kwargs)
         kw["loader"] = loader
+        kw["accelerator"] = accelerator
         outputs = safe_execute(self.build_inference.inference.get_outputs, kw)
         results = outputs.forward_results
         # handle predict flags
