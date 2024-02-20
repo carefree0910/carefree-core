@@ -281,7 +281,6 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
             callback_names = [callback_names]
         auto_callback = config.auto_callback
         default_callbacks = [
-            NaNDetectorCallback.__identifier__,
             LogMetricsMsgCallback.__identifier__,
             UpdateArtifactsCallback.__identifier__,
         ]

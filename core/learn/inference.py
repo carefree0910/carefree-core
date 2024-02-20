@@ -1,8 +1,10 @@
 import math
+import torch
 
 import numpy as np
 
 from tqdm import tqdm
+from torch import Tensor
 from typing import Any
 from typing import Dict
 from typing import List
@@ -105,7 +107,7 @@ class Inference(IInference):
             all_labels: TArrays = {}
             all_metrics_requires: TArrays = {}
             metric_outputs_list: List[MetricsOutputs] = []
-            loss_items_lists: Dict[str, List[float]] = {}
+            loss_tensors_lists: Dict[str, List[Tensor]] = {}
 
             device = None if self.model is None else get_device(self.model)
             iterator = enumerate(loader)
@@ -140,12 +142,12 @@ class Inference(IInference):
                     np_outputs = to_np_batch(step_outputs.forward_results)
                     if use_losses_as_metrics:
                         if accelerator is None:
-                            for k, vl in step_outputs.loss_items.items():
-                                loss_items_lists.setdefault(k, []).append(vl)
+                            for k, vl in step_outputs.loss_tensors.items():
+                                loss_tensors_lists.setdefault(k, []).append(vl)
                         else:
                             for k, vl in step_outputs.loss_tensors.items():
-                                vg = accelerator.gather_for_metrics(vl).tolist()
-                                loss_items_lists.setdefault(k, []).extend(vg)
+                                vg = accelerator.gather_for_metrics(vl)
+                                loss_tensors_lists.setdefault(k, []).append(vg)
                 assert np_outputs is not None
                 # metrics
                 if metrics is not None and not metrics.requires_all:
@@ -217,7 +219,10 @@ class Inference(IInference):
                 (
                     None
                     if not use_losses_as_metrics
-                    else {k: sum(v) / len(v) for k, v in loss_items_lists.items()}
+                    else {
+                        k: torch.cat(v).mean().item()
+                        for k, v in loss_tensors_lists.items()
+                    }
                 ),
             )
 

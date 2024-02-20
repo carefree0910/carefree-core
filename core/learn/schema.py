@@ -890,18 +890,16 @@ def get_input_names(model: onnx.ModelProto) -> List[str]:
 @dataclass
 class StepOutputs:
     forward_results: tensor_dict_type
-    loss_items: Dict[str, float]
+    loss_tensors: tensor_dict_type
 
-
-@dataclass
-class InferenceStepOutputs(StepOutputs):
-    loss_tensors: tensor_dict_type  # for distributed gathering
+    @property
+    def loss_items(self) -> Dict[str, float]:
+        return {k: v.item() for k, v in self.loss_tensors.items()}
 
 
 class TrainStepLoss(NamedTuple):
     loss: Tensor
-    loss_items: Dict[str, float]
-    loss_tensors: tensor_dict_type  # for distributed gathering
+    loss_tensors: tensor_dict_type
 
 
 class TrainStep(ABC):
@@ -1053,16 +1051,15 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         get_losses: bool = False,
         loss_kwargs: Optional[Dict[str, Any]] = None,
         use_inference_mode: Optional[bool] = None,
-    ) -> InferenceStepOutputs:
+    ) -> StepOutputs:
         with self.eval_context(use_grad=use_grad, use_inference=use_inference_mode):
-            loss_items = {}
             loss_tensors = {}
             loss_kwargs = loss_kwargs or {}
             forward_kwargs = forward_kwargs or {}
             get_fw = lambda: self.run(batch_idx, batch, None, **forward_kwargs)
             train_steps = self.train_steps
             if not train_steps:
-                return InferenceStepOutputs(get_fw(), {}, {})
+                return StepOutputs(get_fw(), {})
             for i, train_step in enumerate(self.train_steps):
                 if train_step.should_skip(self, None):
                     continue
@@ -1070,9 +1067,9 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                     fw = get_fw()
                 if get_losses:
                     loss_res = train_step.loss_fn(self, None, batch, fw, **loss_kwargs)
-                    loss_items.update(loss_res.loss_items)
-                    loss_tensors.update(loss_res.loss_tensors)
-            return InferenceStepOutputs(fw, loss_items, loss_tensors)
+                    i_losses = {k: v.detach() for k, v in loss_res.loss_tensors.items()}
+                    loss_tensors.update(i_losses)
+            return StepOutputs(fw, loss_tensors)
 
     def train(
         self,
@@ -1105,7 +1102,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
 
         Step by step explanation
         ------------------------
-        1. Initialize variables: `forward` (an empty dictionary), `loss_items` (an empty dictionary), `any_update`
+        1. Initialize variables: `forward` (an empty dictionary), `loss_tensors` (an empty dictionary), `any_update`
         (a bool flag set to `False`), and `update_fn` (a function returned by the `get_update_fn` function defined above).
         2. Check whether the forward pass should have gradients (`fw_has_grad`) and which training step to use for the
         forward pass (`fw_train_step`). This is done by looping through each training step and checking its
@@ -1123,7 +1120,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
           5) Calculate the loss for this training step using the model, state, batch, and forward pass outputs. The
           `autocast` context manager is used if mixed-precision training is enabled.
           6) Update the optimizer if `train_step.grad_accumulate` is a factor of the current `state.step`.
-          7) Update the `loss_items` with the loss values for this training step.
+          7) Update the `loss_tensors` with the loss values for this training step.
         5. If any optimizer updates occurred, call `trainer.scheduler_step()` to update the learning rate.
         6. Loop through each training step and call its callback function with the model, trainer, batch, and forward pass outputs.
         7. Return the `StepOutputs` object containing the forward pass outputs and loss values.
@@ -1131,7 +1128,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
 
         state = trainer.state
         forward: tensor_dict_type = {}
-        loss_items = {}
+        loss_tensors = {}
         update_fn = get_update_fn(trainer)
         any_update = False
         # sanity check
@@ -1173,7 +1170,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                         loss_args = self, state, batch, forward
                         loss_res = train_step.loss_fn(*loss_args, **loss_kwargs)
                     update_fn(loss_res.loss, optimizer, update)
-                    loss_items.update(loss_res.loss_items)
+                    i_losses = {k: v.detach() for k, v in loss_res.loss_tensors.items()}
+                    loss_tensors.update(i_losses)
             if update:
                 any_update = True
         if any_update:
@@ -1182,7 +1180,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         # callbacks
         for train_step in self.train_steps:
             train_step.callback(self, trainer, batch, forward)
-        return StepOutputs(forward, loss_items)
+        return StepOutputs(forward, loss_tensors)
 
     def evaluate(
         self,
