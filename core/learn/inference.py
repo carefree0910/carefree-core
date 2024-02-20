@@ -89,6 +89,8 @@ class Inference(IInference):
             if use_tqdm:
                 total = math.floor(len(loader) * portion)
                 iterator = tqdm(iterator, "inference", total)
+            if accelerator is not None:
+                accelerator.wait_for_everyone()
             for i, tensor_batch in iterator:
                 if i / len(loader) >= portion:
                     break
@@ -99,7 +101,9 @@ class Inference(IInference):
                     np_batch = tensor_batch_to_np(tensor_batch)
                     np_outputs = self.onnx.predict(np_batch)
                 elif self.model is not None:
-                    tensor_batch = to_device(tensor_batch, device)
+                    # accelerator will handle the device stuffs
+                    if accelerator is None:
+                        tensor_batch = to_device(tensor_batch, device)
                     Flag.in_step = True
                     step_outputs = self.model.step(
                         i,
@@ -143,6 +147,8 @@ class Inference(IInference):
                     for k, v in np_batch.items():
                         if v is not None and metrics.requires(k):
                             all_metrics_requires.setdefault(k, []).append(v)
+            if accelerator is not None:
+                accelerator.wait_for_everyone()
 
             # stack
             stacked_np_outputs = stack(all_np_outputs, return_outputs, stack_outputs)
