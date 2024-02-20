@@ -133,8 +133,6 @@ class Trainer(ITrainer):
     def use_tqdm_in_validation(self) -> bool:
         if not self.is_local_rank_0:
             return False
-        if self.tqdm_settings.in_distributed:
-            return False
         return self.tqdm_settings.use_tqdm_in_validation or self.state.is_terminate
 
     @property
@@ -208,7 +206,7 @@ class Trainer(ITrainer):
         schedulers_requires_metric: Set[str],
         *,
         config_export_file: Optional[str] = None,
-        show_summary: Optional[bool] = None,
+        show_summary: bool = True,
         device: device_type = None,
         p: Optional[profile] = None,
     ) -> "Trainer":
@@ -272,9 +270,7 @@ class Trainer(ITrainer):
         self.model.init_with_trainer(self)
         # finetune
         self._init_finetune()
-        # verbose
-        if show_summary is None:
-            show_summary = not self.tqdm_settings.in_distributed
+        # summary
         ## should always summary to sync the statuses in distributed training
         input_sample = train_loader.get_input_sample(self.device)
         summary_msg = summary(
@@ -362,7 +358,7 @@ class Trainer(ITrainer):
             self.epoch_tqdm.close()
         # restore
         if self.has_checkpoint_folder:
-            if not self.tqdm_settings.in_distributed:
+            if self.is_local_rank_0:
                 console.debug("rolling back to the best checkpoint")
             has_ckpt = self.restore_checkpoint()
         # finalize
@@ -434,7 +430,7 @@ class Trainer(ITrainer):
         folder = to_path(folder)
         checkpoints = get_sorted_checkpoints(folder)
         if not checkpoints:
-            if not self.tqdm_settings.in_distributed:
+            if self.is_local_rank_0:
                 console.warn(f"no model file found in {folder}")
             return False
         success = False
@@ -442,7 +438,7 @@ class Trainer(ITrainer):
             model_file = folder / checkpoint
             if not os.path.isfile(model_file):
                 continue
-            if not self.tqdm_settings.in_distributed:
+            if self.is_local_rank_0:
                 console.debug(f"restoring from '{model_file}'")
             states = torch.load(model_file, map_location=self.device)["states"]
             if state_dict_callback is not None:

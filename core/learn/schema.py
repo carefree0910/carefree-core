@@ -1741,7 +1741,7 @@ class ITrainer(ABC):
         schedulers_requires_metric: Set[str],
         *,
         config_export_file: Optional[str] = None,
-        show_summary: Optional[bool] = None,
+        show_summary: bool = True,
         device: device_type = None,
         p: Optional[profile] = None,
     ) -> "ITrainer":
@@ -1775,7 +1775,6 @@ class TqdmSettings(DataClassBase):
     use_tqdm: bool = False
     use_step_tqdm: bool = False
     use_tqdm_in_validation: bool = False
-    in_distributed: bool = False
     position: int = 0
     desc: str = "epoch"
 
