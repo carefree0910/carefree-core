@@ -119,9 +119,8 @@ class NaNDetectorCallback(TrainerCallback):
                 f"are {nan_ratios}. Current batch / states will be saved to "
                 f"{batch_paths} / {ckpt_folder} for further investigation"
             )
-            # sleep for 1 second in case other processes in ddp also encounter NaN,
-            # so they can save the batch & log the error while this process is sleeping
-            time.sleep(1)
+        trainer.accelerator.wait_for_everyone()
+        if is_nan:
             raise RuntimeError("NaN detected")
 
 
