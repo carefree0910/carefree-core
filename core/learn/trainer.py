@@ -367,12 +367,11 @@ class Trainer(ITrainer):
             has_ckpt = self.restore_checkpoint()
         # finalize
         self.state.set_terminate()
-        if self.is_local_rank_0:
-            loader = distributed_valid_loader or distributed_train_loader
-            self.final_results = self._get_metrics(loader, self.config.valid_portion)
-            self._logging(self.final_results)
-            if not has_ckpt:
-                self.save_checkpoint(self.final_results.final_score)
+        loader = distributed_valid_loader or distributed_train_loader
+        self.final_results = self._get_metrics(loader, self.config.valid_portion)
+        self._logging(self.final_results)
+        if not has_ckpt and self.is_local_rank_0:
+            self.save_checkpoint(self.final_results.final_score)
         for callback in self.callbacks:
             callback.finalize(self)
         return self
