@@ -32,7 +32,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from torch.optim import Optimizer
 from torch.profiler import profile
-from torch.nn.parallel import DistributedDataParallel as DDP
+from accelerate.utils import extract_model_from_parallel
 from torch.cuda.amp import autocast
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import Dataset
@@ -42,7 +42,6 @@ from torch.utils.data.dataloader import _BaseDataLoaderIter
 
 from .toolkit import device_type
 from .toolkit import get_device
-from .toolkit import get_ddp_info
 from .toolkit import get_world_size
 from .toolkit import is_local_rank_0
 from .toolkit import get_torch_device
@@ -1234,11 +1233,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         return self
 
     def state_dict(self, **kwargs: Any) -> tensor_dict_type:
-        d = self.m.state_dict(**kwargs)
-        if isinstance(self.m, DDP):
-            # remove the `module.` prefix
-            d = {k[7:]: v for k, v in d.items()}
-        return d
+        return extract_model_from_parallel(self.m).state_dict(**kwargs)
 
     def parameters(self) -> Iterator[nn.Parameter]:
         return self.m.parameters()
@@ -1247,9 +1242,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         return self.m.named_parameters()
 
     def load_state_dict(self, d: tensor_dict_type, strict: bool = True) -> None:
-        if isinstance(self.m, DDP):
-            d = {f"module.{k}": v for k, v in d.items()}
-        self.m.load_state_dict(d, strict)
+        extract_model_from_parallel(self.m).load_state_dict(d, strict)
 
     def run(
         self,
