@@ -775,7 +775,8 @@ class TrainingBlock(Block):
             profile_config.setdefault("with_flops", True)
             profile_config.setdefault("with_modules", True)
             with profile():
-                console.debug("running dummy profiler warmup for CUPTI")
+                if self.is_local_rank_0:
+                    console.debug("running dummy profiler warmup for CUPTI")
             with profile(**profile_config) as p:
                 fit(p)
 

@@ -340,7 +340,7 @@ class Trainer(ITrainer):
                     terminate = monitored.terminate or self.state.should_terminate
                     if terminate:
                         break
-                    if p is not None:
+                    if p is not None and self.is_local_rank_0:
                         p.step()
             except KeyboardInterrupt:
                 if dist.is_initialized():
