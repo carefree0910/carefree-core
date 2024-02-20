@@ -836,6 +836,7 @@ class IInference(ABC):
         use_tqdm: bool = False,
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
+        pad_dim: Optional[int] = None,
         **kwargs: Any,
     ) -> InferenceOutputs:
         pass
@@ -1194,6 +1195,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         state: Optional["TrainerState"] = None,
         accelerator: Optional[Accelerator] = None,
         forward_kwargs: Optional[Dict[str, Any]] = None,
+        pad_dim: Optional[int] = None,
     ) -> MetricsOutputs:
         outputs = inference.get_outputs(
             loader,
@@ -1202,6 +1204,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             use_losses_as_metrics=config.use_losses_as_metrics,  # type: ignore
             return_outputs=False,
             accelerator=accelerator,
+            pad_dim=pad_dim,
             **(forward_kwargs or {}),
         )
         metric_values = {}
