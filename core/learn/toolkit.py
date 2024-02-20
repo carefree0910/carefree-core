@@ -21,7 +21,6 @@ from typing import Tuple
 from typing import Union
 from typing import TypeVar
 from typing import Callable
-from typing import Iterable
 from typing import Optional
 from typing import NamedTuple
 from typing import ContextManager
@@ -42,8 +41,8 @@ from ..toolkit.misc import check_requires
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.misc import truncate_string_to_length
 from ..toolkit.misc import DataClassBase
-from ..toolkit.array import is_string
 from ..toolkit.array import to_standard
+from ..toolkit.array import is_real_numeric
 from ..toolkit.types import TPath
 from ..toolkit.types import TArray
 from ..toolkit.types import np_dict_type
@@ -628,8 +627,12 @@ def np_batch_to_tensor(np_batch: np_dict_type) -> tensor_dict_type:
     """
 
     return {
-        k: v if not isinstance(v, np.ndarray) or is_string(v) else torch.from_numpy(v)
-        for k, v in np_batch.items()
+        key: (
+            array
+            if not isinstance(array, np.ndarray) or not is_real_numeric(array)
+            else torch.from_numpy(array)
+        )
+        for key, array in np_batch.items()
     }
 
 
