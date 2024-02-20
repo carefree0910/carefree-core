@@ -1129,8 +1129,6 @@ def summary(
 
             m_dict: OrderedDict[str, Any] = OrderedDict()
             m_dict["input_shape"] = list(inp.shape)
-            if len(m_dict["input_shape"]) > 0:
-                m_dict["input_shape"][0] = -1
             output_shape_res = m_dict["output_shape"] = {}
             inject_output_shape(output, output_shape_res)
 
