@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from torch.optim import Optimizer
 from torch.profiler import profile
 from torch.profiler import schedule
+from accelerate.utils import gather_object
+from accelerate.utils import wait_for_everyone
 from torch.optim.lr_scheduler import _LRScheduler
 
 from .utils import TryLoadBlock
@@ -113,12 +115,17 @@ class SetDefaultsBlock(InjectDefaultsMixin, Block):
 @Block.register("prepare_workspace")
 class PrepareWorkplaceBlock(InjectDefaultsMixin, Block):
     def build(self, config: Config) -> None:
-        if not self.is_local_rank_0 or self.training_workspace is None:
+        if self.training_workspace is None:
             return
-        if config.create_sub_workspace:
+        if self.is_local_rank_0 and config.create_sub_workspace:
             workspace = prepare_workspace_from(self.training_workspace)
             config.workspace = workspace
             self._defaults["workspace"] = workspace
+        wait_for_everyone()
+        workspaces = gather_object([config.workspace])
+        if not self.is_local_rank_0:
+            # use the workspace from local rank 0
+            config.workspace = workspaces[0]
 
 
 @dataclass
