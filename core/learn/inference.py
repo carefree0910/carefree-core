@@ -73,7 +73,7 @@ class Inference(IInference):
             all_labels: TArrays = {}
             all_metrics_requires: TArrays = {}
             metric_outputs_list: List[MetricsOutputs] = []
-            loss_items: Dict[str, List[float]] = {}
+            loss_items_lists: Dict[str, List[float]] = {}
 
             device = None if self.model is None else get_device(self.model)
             iterator = enumerate(loader)
@@ -102,8 +102,8 @@ class Inference(IInference):
                     Flag.in_step = False
                     np_outputs = tensor_batch_to_np(step_outputs.forward_results)
                     if use_losses_as_metrics:
-                        for k, vl in step_outputs.loss_dict.items():
-                            loss_items.setdefault(k, []).append(vl)
+                        for k, vl in step_outputs.loss_items.items():
+                            loss_items_lists.setdefault(k, []).append(vl)
                 assert np_outputs is not None
                 # metrics
                 if metrics is not None and not metrics.requires_all:
@@ -173,7 +173,7 @@ class Inference(IInference):
                 (
                     None
                     if not use_losses_as_metrics
-                    else {k: sum(v) / len(v) for k, v in loss_items.items()}
+                    else {k: sum(v) / len(v) for k, v in loss_items_lists.items()}
                 ),
             )
 

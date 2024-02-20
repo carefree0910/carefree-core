@@ -886,17 +886,17 @@ def get_input_names(model: onnx.ModelProto) -> List[str]:
 
 class StepOutputs(NamedTuple):
     forward_results: tensor_dict_type
-    loss_dict: Dict[str, float]
+    loss_items: Dict[str, float]
 
 
 class TrainStepOutputs(NamedTuple):
     forward_results: tensor_dict_type
-    loss_dict: Dict[str, float]
+    loss_items: Dict[str, float]
 
 
 class TrainStepLoss(NamedTuple):
     loss: Tensor
-    losses: Dict[str, float]
+    loss_items: Dict[str, float]
 
 
 class TrainStep(ABC):
@@ -1050,7 +1050,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         use_inference_mode: Optional[bool] = None,
     ) -> StepOutputs:
         with self.eval_context(use_grad=use_grad, use_inference=use_inference_mode):
-            loss_dict = {}
+            loss_items = {}
             loss_kwargs = loss_kwargs or {}
             forward_kwargs = forward_kwargs or {}
             get_fw = lambda: self.run(batch_idx, batch, None, **forward_kwargs)
@@ -1064,8 +1064,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                     fw = get_fw()
                 if get_losses:
                     loss_res = train_step.loss_fn(self, None, batch, fw, **loss_kwargs)
-                    loss_dict.update(loss_res.losses)
-            return StepOutputs(fw, loss_dict)
+                    loss_items.update(loss_res.loss_items)
+            return StepOutputs(fw, loss_items)
 
     def train(
         self,
@@ -1098,7 +1098,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
 
         Step by step explanation
         ------------------------
-        1. Initialize variables: `forward` (an empty dictionary), `loss_dict` (an empty dictionary), `any_update`
+        1. Initialize variables: `forward` (an empty dictionary), `loss_items` (an empty dictionary), `any_update`
         (a bool flag set to `False`), and `update_fn` (a function returned by the `get_update_fn` function defined above).
         2. Check whether the forward pass should have gradients (`fw_has_grad`) and which training step to use for the
         forward pass (`fw_train_step`). This is done by looping through each training step and checking its
@@ -1116,7 +1116,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
           5) Calculate the loss for this training step using the model, state, batch, and forward pass outputs. The
           `autocast` context manager is used if mixed-precision training is enabled.
           6) Update the optimizer if `train_step.grad_accumulate` is a factor of the current `state.step`.
-          7) Update the `loss_dict` with the loss values for this training step.
+          7) Update the `loss_items` with the loss values for this training step.
         5. If any optimizer updates occurred, call `trainer.scheduler_step()` to update the learning rate.
         6. Loop through each training step and call its callback function with the model, trainer, batch, and forward pass outputs.
         7. Return the `TrainStepOutputs` object containing the forward pass outputs and loss values.
@@ -1124,7 +1124,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
 
         state = trainer.state
         forward: tensor_dict_type = {}
-        loss_dict = {}
+        loss_items = {}
         update_fn = get_update_fn(trainer)
         any_update = False
         # sanity check
@@ -1166,7 +1166,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                         loss_args = self, state, batch, forward
                         loss_res = train_step.loss_fn(*loss_args, **loss_kwargs)
                     update_fn(loss_res.loss, optimizer, update)
-                    loss_dict.update(loss_res.losses)
+                    loss_items.update(loss_res.loss_items)
             if update:
                 any_update = True
         if any_update:
@@ -1175,7 +1175,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         # callbacks
         for train_step in self.train_steps:
             train_step.callback(self, trainer, batch, forward)
-        return TrainStepOutputs(forward, loss_dict)
+        return TrainStepOutputs(forward, loss_items)
 
     def evaluate(
         self,

@@ -565,7 +565,7 @@ class Trainer(ITrainer):
             self.state.num_epoch += extension
         if self.config.use_incrementer_for_train_losses_in_eval:
             window = max(3, self.state.num_step_per_snapshot)
-            for k, v in step_outputs.loss_dict.items():
+            for k, v in step_outputs.loss_items.items():
                 k_inc = self.loss_incrementers.setdefault(k, Incrementer(window))
                 k_inc.update(v)
         if self.state.should_monitor:
@@ -580,15 +580,15 @@ class Trainer(ITrainer):
                 self.intermediate = self._get_metrics(train_loader, valid_portion)
             else:
                 if not self.config.use_incrementer_for_train_losses_in_eval:
-                    loss_dict = shallow_copy_dict(step_outputs.loss_dict)
+                    loss_items = shallow_copy_dict(step_outputs.loss_items)
                 else:
-                    loss_dict = {
+                    loss_items = {
                         k: incrementer.mean
                         for k, incrementer in self.loss_incrementers.items()
                     }
-                is_positive = {k: False for k in loss_dict}
-                loss_score = weighted_loss_score(self.config, loss_dict)
-                self.intermediate = MetricsOutputs(loss_score, loss_dict, is_positive)
+                is_positive = {k: False for k in loss_items}
+                loss_score = weighted_loss_score(self.config, loss_items)
+                self.intermediate = MetricsOutputs(loss_score, loss_items, is_positive)
             self.lr_metrics_updated = True
             # logging
             self._logging(self.intermediate)
