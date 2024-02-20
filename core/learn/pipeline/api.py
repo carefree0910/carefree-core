@@ -10,6 +10,7 @@ from typing import Any
 from typing import Dict
 from typing import List
 from typing import Type
+from typing import Tuple
 from typing import Union
 from typing import TypeVar
 from typing import Callable
@@ -200,6 +201,12 @@ class _InferenceMixin:
         results = self.predict_callback(results)
         # return
         return results
+
+    def prepare_distributed(self, loader: DataLoader) -> Tuple[Accelerator, DataLoader]:
+        accelerator = Accelerator()
+        loader, *ms = accelerator.prepare(loader, *self.build_model.model.all_modules)
+        self.build_model.model.from_accelerator(*ms)
+        return accelerator, loader
 
 
 class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
