@@ -45,6 +45,10 @@ def is_string(arr: arr_type) -> bool:
     return False
 
 
+def is_real_numeric(arr: arr_type) -> bool:
+    return is_float(arr) or is_int(arr)
+
+
 def sigmoid(arr: TArray) -> TArray:
     if isinstance(arr, np.ndarray):
         return 1.0 / (1.0 + np.exp(-arr))
