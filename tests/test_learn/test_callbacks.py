@@ -25,6 +25,7 @@ class TestCallbacks(unittest.TestCase):
             module_name="linear",
             module_config=dict(input_dim=in_dim, output_dim=out_dim, bias=False),
             loss_name="mse",
+            callback_names="nan_detector",
         )
         config.to_debug()
         with self.assertRaises(RuntimeError):
