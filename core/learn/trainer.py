@@ -225,6 +225,7 @@ class Trainer(ITrainer):
             dispatch_batches=self.config.dispatch_batches,
             even_batches=self.config.even_batches,
         )
+        self.accelerator.wait_for_everyone()
         # initialize artifact structure
         if self.is_local_rank_0:
             os.makedirs(self.workspace, exist_ok=True)
