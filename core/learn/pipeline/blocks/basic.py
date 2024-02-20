@@ -772,7 +772,7 @@ class TrainingBlock(Block):
             profile_config["on_trace_ready"] = trace_handler
             profile_config.setdefault("record_shapes", True)
             profile_config.setdefault("profile_memory", False)
-            profile_config.setdefault("with_stack", get_ddp_info() is None)
+            profile_config.setdefault("with_stack", False)
             profile_config.setdefault("with_flops", True)
             profile_config.setdefault("with_modules", True)
             with profile():
