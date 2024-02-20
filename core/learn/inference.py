@@ -72,10 +72,10 @@ class Inference(IInference):
                 for k, v in arrays.items()
             }
 
-        def to_np_batch(tensor_batch: tensor_dict_type) -> np_dict_type:
+        def to_np_batch(tensors: tensor_dict_type) -> np_dict_type:
             if accelerator is not None:
-                tensor_batch = accelerator.gather_for_metrics(tensor_batch)
-            return tensor_batch_to_np(tensor_batch)
+                tensors = accelerator.gather_for_metrics(tensors)
+            return tensor_batch_to_np(tensors)
 
         def run() -> InferenceOutputs:
             all_np_outputs: TArrays = {}
