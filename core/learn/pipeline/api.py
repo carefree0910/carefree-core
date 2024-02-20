@@ -17,6 +17,7 @@ from typing import Optional
 from pathlib import Path
 from tempfile import mkdtemp
 from tempfile import TemporaryDirectory
+from accelerate import Accelerator
 from collections import OrderedDict
 
 from .common import Block
@@ -213,6 +214,7 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
         loader: DataLoader,
         *,
         portion: float = 1.0,
+        accelerator: Optional[Accelerator] = None,
         **kwargs: Any,
     ) -> MetricsOutputs:
         return self.build_model.model.evaluate(
@@ -221,6 +223,7 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
             self.build_inference.inference,
             loader,
             portion=portion,
+            accelerator=accelerator,
             forward_kwargs=kwargs,
         )
 
