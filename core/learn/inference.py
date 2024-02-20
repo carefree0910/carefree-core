@@ -20,6 +20,7 @@ from .toolkit import get_device
 from .toolkit import tensor_batch_to_np
 from .toolkit import ONNX
 from .constants import LABEL_KEY
+from ..toolkit import console
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.array import to_device
 from ..toolkit.types import np_dict_type
@@ -60,20 +61,40 @@ class Inference(IInference):
         use_tqdm: bool = False,
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
+        pad_dim: Optional[int] = None,
         **kwargs: Any,
     ) -> InferenceOutputs:
+        def pad(k: str, arrays: List[np.ndarray]) -> List[np.ndarray]:
+            if pad_dim is None:
+                return arrays
+            padded = []
+            max_shape = max([array.shape[pad_dim] for array in arrays])
+            if all(array.shape[pad_dim] == max_shape for array in arrays):
+                return arrays
+            console.warn(
+                f"padding '{k}' at dim {pad_dim} to {max_shape}, please perform "
+                "post-processing to remove the paddings if necessary."
+            )
+            for array in arrays:
+                i_paddings = [[0, 0] for _ in range(array.ndim)]
+                i_paddings[pad_dim][1] = max_shape - array.shape[pad_dim]
+                padded.append(np.pad(array, i_paddings))
+            return padded
+
         def stack(arrays: TArrays, return_arrays: bool, should_stack: bool) -> Any:
             if not return_arrays:
                 return {k: None for k in arrays}
             if not should_stack:
                 return arrays
             return {
-                k: np.vstack(v) if isinstance(v[0], np.ndarray) else v
+                k: np.vstack(pad(k, v)) if isinstance(v[0], np.ndarray) else v
                 for k, v in arrays.items()
             }
 
         def to_np_batch(tensors: tensor_dict_type) -> np_dict_type:
             if accelerator is not None:
+                if pad_dim is not None:
+                    tensors = accelerator.pad_across_processes(tensors, dim=pad_dim)
                 tensors = accelerator.gather_for_metrics(tensors)
             return tensor_batch_to_np(tensors)
 

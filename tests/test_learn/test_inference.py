@@ -1,8 +1,11 @@
+import torch
 import unittest
 
 import numpy as np
 import core.learn as cflearn
+import torch.nn as nn
 
+from torch import Tensor
 from typing import Optional
 from core.learn.schema import DataLoader
 from core.toolkit.types import np_dict_type
@@ -119,6 +122,48 @@ class TestInference(unittest.TestCase):
         self.assertEqual(metric_values["bar"], 3.45)
         final_score = model_outputs.metric_outputs.final_score
         self.assertEqual(final_score, 0.5 * (0.12 - 3.45))
+
+    def test_pad(self) -> None:
+        @cflearn.register_module("identity", allow_duplicate=True)
+        class _(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                return torch.from_numpy(x[0])
+
+        x = np.empty(4, dtype=object)
+        x[:] = [
+            np.array([[0], [1], [2]]),
+            np.array([[3, 4], [5, 6], [7, 8]]),
+            np.array([[9, 10, 11], [12, 13, 14], [15, 16, 17]]),
+            np.array([[18], [19], [20]]),
+        ]
+        data = cflearn.ArrayData.init().fit(x)
+        data.config.batch_size = 1
+        loader = data.build_loader(x)
+
+        config = cflearn.Config(module_name="identity", loss_name="mse")
+        inference = cflearn.Inference(model=cflearn.IModel.from_config(config))
+        with self.assertRaises(ValueError):
+            inference.get_outputs(loader)
+        outputs = inference.get_outputs(loader, pad_dim=1)
+        np.testing.assert_array_equal(
+            outputs.forward_results[cflearn.PREDICTIONS_KEY],
+            np.array(
+                [
+                    [0, 0, 0],
+                    [1, 0, 0],
+                    [2, 0, 0],
+                    [3, 4, 0],
+                    [5, 6, 0],
+                    [7, 8, 0],
+                    [9, 10, 11],
+                    [12, 13, 14],
+                    [15, 16, 17],
+                    [18, 0, 0],
+                    [19, 0, 0],
+                    [20, 0, 0],
+                ]
+            ),
+        )
 
 
 if __name__ == "__main__":
