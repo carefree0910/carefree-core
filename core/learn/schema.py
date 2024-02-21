@@ -185,6 +185,9 @@ class IDataset(Dataset):
 
     > It is also OK to return a torch-friendly-uncollated batch, and leave collation works
     to the default `collate_fn` given by PyTorch.
+    > If you want to use the default `collate_fn`, you should set the `bypass_collate_fn`
+    attribute of the `DataConfig` object to `False` (default is `True`, which means we want
+    you to collate the batch by yourself in the `__getitems__` method).
 
     """
 
