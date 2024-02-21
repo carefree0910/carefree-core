@@ -304,6 +304,7 @@ class Trainer(ITrainer):
                 json.dump(self.export_config, f)
         for callback in self.callbacks:
             callback.before_loop(self)
+        self.accelerator.wait_for_everyone()
         while self.state.should_train:
             try:
                 self.state.epoch += 1
