@@ -173,13 +173,11 @@ class ExtractStateInfoBlock(TryLoadBlock):
         # check num_step_per_snapshot
         num_step_per_snapshot = state_config.get("num_step_per_snapshot")
         if num_step_per_snapshot is None:
-            num_snapshot_per_epoch = state_config.get("num_snapshot_per_epoch", 2)
+            num_snapshot_per_epoch = state_config.get("num_snapshot_per_epoch", 2.0)
             max_step_per_snapshot = state_config.get("max_step_per_snapshot", 1000)
-            num_step_per_snapshot = max(1, int(num_batches / num_snapshot_per_epoch))
-            num_step_per_snapshot = min(
-                max_step_per_snapshot,
-                num_step_per_snapshot,
-            )
+            num_step_per_snapshot = int(round(num_batches / num_snapshot_per_epoch))
+            num_step_per_snapshot = max(1, num_step_per_snapshot)
+            num_step_per_snapshot = min(max_step_per_snapshot, num_step_per_snapshot)
         # construct
         state_config["num_step_per_snapshot"] = num_step_per_snapshot
         state_config["snapshot_start_step"] = snapshot_start_step

@@ -1402,7 +1402,7 @@ class TrainerState:
         min_num_sample: int = 3000,
         snapshot_start_step: Optional[int] = None,
         max_snapshot_file: int = 25,
-        num_snapshot_per_epoch: int = 2,
+        num_snapshot_per_epoch: float = 2.0,
         num_step_per_snapshot: Optional[int] = None,
         max_step_per_snapshot: int = 1000,
         min_snapshot_epoch_gap: int = 0,
@@ -1420,7 +1420,8 @@ class TrainerState:
         self.max_snapshot_file = max_snapshot_file
         self.num_snapshot_per_epoch = num_snapshot_per_epoch
         if num_step_per_snapshot is None:
-            num_step_per_snapshot = max(1, int(loader_length / num_snapshot_per_epoch))
+            num_step_per_snapshot = int(round(loader_length / num_snapshot_per_epoch))
+            num_step_per_snapshot = max(1, num_step_per_snapshot)
             num_step_per_snapshot = min(max_step_per_snapshot, num_step_per_snapshot)
         self.num_step_per_snapshot = num_step_per_snapshot
         self.max_step_per_snapshot = max_step_per_snapshot
