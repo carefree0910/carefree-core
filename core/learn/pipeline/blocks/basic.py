@@ -160,8 +160,8 @@ class ExtractStateInfoBlock(TryLoadBlock):
         if ddp_info is None:
             num_batches = len(loader)
         else:
-            num_batches = len(loader) / ddp_info.world_size
-            num_batches = (math.floor if loader.drop_last else math.ceil)(num_batches)
+            divided = len(loader) / ddp_info.world_size
+            num_batches = (math.floor if loader.drop_last else math.ceil)(divided)
         num_samples = len(loader.dataset)
         # from config
         log_steps = config.log_steps
