@@ -227,7 +227,7 @@ def to_numpy(tensor: torch.Tensor) -> np.ndarray:
 
 def to_device(
     batch: tensor_dict_type,
-    device: torch.device,
+    device: Optional[torch.device],
     **kwargs: Any,
 ) -> tensor_dict_type:
     def to(v: Any) -> Any:
@@ -239,6 +239,8 @@ def to_device(
             return [to(vv) for vv in v]
         return v
 
+    if device is None:
+        return batch
     return {k: to(v) for k, v in batch.items()}
 
 
