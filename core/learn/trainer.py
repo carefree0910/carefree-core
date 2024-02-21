@@ -246,7 +246,6 @@ class Trainer(ITrainer):
         n_optim = len(optimizers)
         optim_keys = sorted(optimizers)
         train_loader, valid_loader = data.build_loaders()
-        batch_process_fn = train_loader.get_process_fn()
         prepared = self.accelerator.prepare(
             train_loader,
             valid_loader,
@@ -319,7 +318,6 @@ class Trainer(ITrainer):
                         leave=False,
                     )
                 for i, batch in enumerate(step_iterator):
-                    batch = batch_process_fn(batch)
                     self.state.step += 1
                     step_outputs = self._step(i, batch)
                     if self.is_local_rank_0:
