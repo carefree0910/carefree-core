@@ -156,7 +156,12 @@ class ExtractStateInfoBlock(TryLoadBlock):
         # from loader
         loader = self.data.build_loaders()[0]
         batch_size = loader.batch_size
-        num_batches = len(loader)
+        ddp_info = get_ddp_info()
+        if ddp_info is None:
+            num_batches = len(loader)
+        else:
+            num_batches = len(loader) / ddp_info.world_size
+            num_batches = (math.floor if loader.drop_last else math.ceil)(num_batches)
         num_samples = len(loader.dataset)
         # from config
         log_steps = config.log_steps
