@@ -209,9 +209,7 @@ class DataLoader(TorchDataLoader):
         self.dataset.reset(for_inference=self.for_inference)
         return super().__iter__()
 
-    def get_collate_fn(self) -> Callable[[tensor_dict_type], tensor_dict_type]:
-        # here, the `collate_fn` only needs to process on batches, as we have already
-        # done the collation at `__getitems__` method of the `IDataset` object.
+    def get_process_fn(self) -> Callable[[tensor_dict_type], tensor_dict_type]:
         return partial(self.data.process_batch, for_inference=self.for_inference)
 
     def get_one_batch(self, device: device_type = None) -> tensor_dict_type:
@@ -253,6 +251,7 @@ class DataConfig(ISerializableDataClass["DataConfig"]):
     block_names: Optional[List[str]] = None
     block_configs: Optional[Dict[str, Dict[str, Any]]] = None
     loader_configs: Optional[Dict[str, Any]] = None
+    bypass_collate_fn: bool = True
 
     def add_blocks(self, *blocks: Type["IDataBlock"]) -> None:
         if self.block_names is None:
@@ -519,7 +518,9 @@ class IData(  # type: ignore
         )
         loader.data = self
         loader.for_inference = for_inference
-        loader.collate_fn = loader.get_collate_fn()
+        # this is useful when collation is already done in the `__getitems__` method
+        if self.config.bypass_collate_fn:
+            loader.collate_fn = lambda x: x
         return loader
 
     def get_bundle(
