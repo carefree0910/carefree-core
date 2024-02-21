@@ -182,13 +182,20 @@ class IDataset(Dataset):
     A thin wrapper of the `torch.utils.data.Dataset` class, which forces the user
     to implement the `__getitems__` method, which is used to get a collated batch of data
     with high performance.
+
+    > It is also OK to return a torch-friendly-uncollated batch, and leave collation works
+    to the default `collate_fn` given by PyTorch.
+
     """
 
     @abstractmethod
-    def __getitems__(self, indices: List[int]) -> tensor_dict_type:
+    def __getitems__(self, indices: List[int]) -> Any:
         pass
 
     # optional callbacks
+
+    def __getitem__(self, index: int) -> Any:
+        raise NotImplementedError("please implement the `__getitems__` method")
 
     def reset(self, *, for_inference: bool) -> None:
         """this will be called everytime the `DataLoader` enters `__iter__`"""
