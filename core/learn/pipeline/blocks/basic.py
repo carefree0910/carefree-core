@@ -764,12 +764,14 @@ class TrainingBlock(Block):
         else:
             os.environ["KINETO_LOG_LEVEL"] = "5"
             schedule_config = self.config.profile_schedule_config or {}
+            schedule_config = shallow_copy_dict(schedule_config)
             schedule_config.setdefault("skip_first", 5)
             schedule_config.setdefault("wait", 3)
             schedule_config.setdefault("warmup", 3)
             schedule_config.setdefault("active", 5)
             schedule_config.setdefault("repeat", 5)
             profile_config = self.config.profile_config or {}
+            profile_config = shallow_copy_dict(profile_config)
             profile_config["schedule"] = schedule(**schedule_config)
             profile_config["on_trace_ready"] = trace_handler
             profile_config.setdefault("record_shapes", True)
