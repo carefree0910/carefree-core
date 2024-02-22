@@ -122,6 +122,7 @@ class Inference(IInference):
                     break
                 np_batch = None
                 np_outputs = None
+                tensor_outputs = None
                 if self.onnx is not None:
                     # will not consider distributed stuffs at onnx inference
                     np_batch = tensor_batch_to_np(tensor_batch)
@@ -140,7 +141,7 @@ class Inference(IInference):
                         use_inference_mode=use_inference_mode,
                     )
                     Flag.in_step = False
-                    np_outputs = to_np_batch(step_outputs.forward_results)
+                    tensor_outputs = step_outputs.forward_results
                     if use_losses_as_metrics:
                         if accelerator is None:
                             for k, vl in step_outputs.loss_tensors.items():
@@ -149,15 +150,19 @@ class Inference(IInference):
                             for k, vl in step_outputs.loss_tensors.items():
                                 vg = accelerator.gather_for_metrics(vl)
                                 loss_tensors_lists.setdefault(k, []).append(vg)
-                assert np_outputs is not None
+                assert np_outputs is not None or tensor_outputs is not None
                 # metrics
                 if metrics is not None and not metrics.requires_all:
                     if np_batch is None:
                         np_batch = to_np_batch(tensor_batch)
+                    if np_outputs is None:
+                        np_outputs = tensor_batch_to_np(tensor_outputs)  # type: ignore
                     metric_outputs = metrics.evaluate(np_batch, np_outputs)
                     metric_outputs_list.append(metric_outputs)
                 # gather
                 if gather_np:
+                    if np_outputs is None:
+                        np_outputs = tensor_batch_to_np(tensor_outputs)  # type: ignore
                     for k, v in np_outputs.items():
                         if v is not None:
                             all_np_outputs.setdefault(k, []).append(v)
