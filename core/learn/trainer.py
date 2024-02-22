@@ -359,6 +359,7 @@ class Trainer(ITrainer):
                 step_tqdm.close()
             self.epoch_tqdm.close()
         # restore
+        self.accelerator.wait_for_everyone()
         if self.has_checkpoint_folder:
             if self.is_local_rank_0:
                 console.debug("rolling back to the best checkpoint")
