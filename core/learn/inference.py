@@ -114,6 +114,7 @@ class Inference(IInference):
             if use_tqdm:
                 total = math.floor(len(loader) * portion)
                 iterator = tqdm(iterator, "inference", total)
+            gather_np = return_outputs or (metrics is not None and metrics.requires_all)
             if accelerator is not None:
                 accelerator.wait_for_everyone()
             for i, tensor_batch in iterator:
@@ -156,7 +157,7 @@ class Inference(IInference):
                     metric_outputs = metrics.evaluate(np_batch, np_outputs)
                     metric_outputs_list.append(metric_outputs)
                 # gather
-                if return_outputs:
+                if gather_np:
                     for k, v in np_outputs.items():
                         if v is not None:
                             all_np_outputs.setdefault(k, []).append(v)
@@ -176,7 +177,7 @@ class Inference(IInference):
                 accelerator.wait_for_everyone()
 
             # stack
-            stacked_np_outputs = stack(all_np_outputs, return_outputs, stack_outputs)
+            stacked_np_outputs = stack(all_np_outputs, gather_np, stack_outputs)
             stacked_labels = stack(all_labels, return_labels, stack_outputs)
             # gather metric outputs
             if metrics is None:
