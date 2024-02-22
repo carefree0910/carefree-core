@@ -258,6 +258,7 @@ class DataConfig(ISerializableDataClass["DataConfig"]):
     block_names: Optional[List[str]] = None
     block_configs: Optional[Dict[str, Dict[str, Any]]] = None
     loader_configs: Optional[Dict[str, Any]] = None
+    valid_loader_configs: Optional[Dict[str, Any]] = None
     bypass_collate_fn: bool = True
 
     def add_blocks(self, *blocks: Type["IDataBlock"]) -> None:
@@ -506,6 +507,7 @@ class IData(  # type: ignore
         shuffle: bool,
         batch_size: int,
         for_inference: bool,
+        is_validation: bool = False,
         sample_weights: Optional[np.ndarray] = None,
         **kwargs: Any,
     ) -> DataLoader:
@@ -515,6 +517,9 @@ class IData(  # type: ignore
             shuffle = False
             sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
         loader_configs = shallow_copy_dict(self.config.loader_configs or {})
+        if is_validation and self.config.valid_loader_configs is not None:
+            valid_loader_configs = shallow_copy_dict(self.config.valid_loader_configs)
+            loader_configs = update_dict(valid_loader_configs, loader_configs)
         kwargs = update_dict(kwargs, loader_configs)
         loader = DataLoader(
             dataset,
@@ -633,6 +638,7 @@ class IData(  # type: ignore
                 shuffle=self.config.shuffle_valid,
                 batch_size=self.config.valid_batch_size or self.config.batch_size,
                 for_inference=True if for_inference is None else for_inference,
+                is_validation=True,
                 sample_weights=self.valid_weights,
             )
         return train_loader, valid_loader
