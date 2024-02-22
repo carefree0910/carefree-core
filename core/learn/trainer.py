@@ -295,8 +295,6 @@ class Trainer(ITrainer):
             )
         # train
         has_ckpt = terminate = False
-        if self.is_local_rank_0 and self.epoch_tqdm is None:
-            console.debug("entered training loop")
         if self.is_local_rank_0 and config_export_file is not None:
             config_export_path = os.path.join(self.workspace, config_export_file)
             with open(config_export_path, "w") as f:
@@ -304,6 +302,8 @@ class Trainer(ITrainer):
         for callback in self.callbacks:
             callback.before_loop(self)
         self.accelerator.wait_for_everyone()
+        if self.is_local_rank_0 and self.epoch_tqdm is None:
+            console.debug("entered training loop")
         while self.state.should_train:
             try:
                 self.state.epoch += 1
@@ -318,6 +318,8 @@ class Trainer(ITrainer):
                         leave=False,
                     )
                 for i, batch in enumerate(step_iterator):
+                    if i == 0:
+                        self.accelerator.wait_for_everyone()
                     self.state.step += 1
                     step_outputs = self._step(i, batch)
                     if self.is_local_rank_0:
