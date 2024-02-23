@@ -893,7 +893,7 @@ def get_update_fn(trainer: "ITrainer") -> Callable[[Tensor, Optimizer, bool], No
     return update_fn
 
 
-def get_no_sync_context(update: bool, trainer: "ITrainer") -> ContextManager:
+def no_sync_context(update: bool, trainer: "ITrainer") -> ContextManager:
     return nullcontext() if update else trainer.accelerator.no_sync(trainer.model.m)
 
 
@@ -1178,7 +1178,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                 % (train_step.grad_accumulate or trainer.config.grad_accumulate)
                 == 0
             )
-            with get_no_sync_context(update, trainer):
+            with no_sync_context(update, trainer):
                 if i == 0 or train_step.requires_new_forward:
                     no_grad = not train_step.requires_grad_in_forward
                     with no_grad_context(enabled=no_grad), autocast_ctx:
