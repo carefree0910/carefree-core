@@ -143,13 +143,8 @@ class Inference(IInference):
                     Flag.in_step = False
                     tensor_outputs = step_outputs.forward_results
                     if use_losses_as_metrics:
-                        if accelerator is None:
-                            for k, vl in step_outputs.loss_tensors.items():
-                                loss_tensors_lists.setdefault(k, []).append(vl)
-                        else:
-                            for k, vl in step_outputs.loss_tensors.items():
-                                vg = accelerator.gather_for_metrics(vl)
-                                loss_tensors_lists.setdefault(k, []).append(vg)
+                        for k, v in step_outputs.loss_tensors.items():
+                            loss_tensors_lists.setdefault(k, []).append(v)
                 assert np_outputs is not None or tensor_outputs is not None
                 # metrics
                 if metrics is not None and not metrics.requires_all:
@@ -215,9 +210,12 @@ class Inference(IInference):
                     {k: sum(vl) / len(vl) for k, vl in metric_values.items()},
                     is_positive,
                 )
-
+            # handle accelerator stuffs
             if accelerator is not None:
+                for k, vl in loss_tensors_lists.items():
+                    loss_tensors_lists[k] = accelerator.gather_for_metrics(vl)
                 accelerator.wait_for_everyone()
+
             return InferenceOutputs(
                 stacked_np_outputs,
                 stacked_labels,
