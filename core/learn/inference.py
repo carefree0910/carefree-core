@@ -10,7 +10,9 @@ from typing import Dict
 from typing import List
 from typing import Union
 from typing import Optional
+from typing import ContextManager
 from accelerate import Accelerator
+from contextlib import nullcontext
 
 from .schema import IModel
 from .schema import IMetric
@@ -31,6 +33,12 @@ from ..toolkit.types import tensor_dict_type
 
 
 TArrays = Dict[str, List[Union[np.ndarray, Any]]]
+
+
+def no_sync_context(accelerator: Accelerator, model: IModel) -> ContextManager:
+    if accelerator is None:
+        return nullcontext()
+    return accelerator.no_sync(model.m)
 
 
 class Inference(IInference):
@@ -115,11 +123,12 @@ class Inference(IInference):
                 total = math.floor(len(loader) * portion)
                 iterator = tqdm(iterator, "inference", total)
             gather_np = return_outputs or (metrics is not None and metrics.requires_all)
+            remainder = -1
             for i, tensor_batch in iterator:
                 if i / len(loader) >= portion:
                     break
                 if i == 0 and accelerator is not None:
-                    accelerator.wait_for_everyone()
+                    remainder = accelerator.gradient_state.remainder
                 np_batch = None
                 np_outputs = None
                 tensor_outputs = None
@@ -132,14 +141,15 @@ class Inference(IInference):
                     if accelerator is None:
                         tensor_batch = to_device(tensor_batch, device)
                     Flag.in_step = True
-                    step_outputs = self.model.step(
-                        i,
-                        tensor_batch,
-                        shallow_copy_dict(kwargs),
-                        use_grad=use_grad,
-                        get_losses=use_losses_as_metrics,
-                        use_inference_mode=use_inference_mode,
-                    )
+                    with no_sync_context(accelerator, self.model):
+                        step_outputs = self.model.step(
+                            i,
+                            tensor_batch,
+                            shallow_copy_dict(kwargs),
+                            use_grad=use_grad,
+                            get_losses=use_losses_as_metrics,
+                            use_inference_mode=use_inference_mode,
+                        )
                     Flag.in_step = False
                     tensor_outputs = step_outputs.forward_results
                     if use_losses_as_metrics:
@@ -212,9 +222,12 @@ class Inference(IInference):
                 )
             # handle accelerator stuffs
             if accelerator is not None:
-                for k, vl in loss_tensors_lists.items():
-                    loss_tensors_lists[k] = accelerator.gather_for_metrics(vl)
                 accelerator.wait_for_everyone()
+                for k, vl in loss_tensors_lists.items():
+                    vg = accelerator.gather(vl)
+                    if remainder > 0:
+                        vg[-1] = vg[-1][:remainder]
+                    loss_tensors_lists[k] = vg
 
             return InferenceOutputs(
                 stacked_np_outputs,
