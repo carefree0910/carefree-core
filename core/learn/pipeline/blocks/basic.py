@@ -47,7 +47,6 @@ from ...trainer import get_scores
 from ...trainer import get_sorted_checkpoints
 from ...trainer import Trainer
 from ...monitors import BasicMonitor
-from ...callbacks import NaNDetectorCallback
 from ...callbacks import LogMetricsMsgCallback
 from ...callbacks import UpdateArtifactsCallback
 from ...constants import PT_PREFIX
@@ -122,11 +121,14 @@ class PrepareWorkplaceBlock(InjectDefaultsMixin, Block):
             workspace = prepare_workspace_from(self.training_workspace)
             config.workspace = workspace
             self._defaults["workspace"] = workspace
-        wait_for_everyone()
-        workspaces = gather_object([config.workspace])
-        if not self.is_local_rank_0:
-            # use the workspace from local rank 0
-            config.workspace = workspaces[0]
+        # only gather workspaces when under DDP
+        # otherwise, unexpected initialization of `accelerate` states will occur
+        if get_ddp_info() is not None:
+            wait_for_everyone()
+            workspaces = gather_object([config.workspace])
+            if not self.is_local_rank_0:
+                # use the workspace from local rank 0
+                config.workspace = workspaces[0]
 
 
 @dataclass
