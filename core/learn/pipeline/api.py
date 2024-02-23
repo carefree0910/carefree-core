@@ -24,7 +24,7 @@ from collections import OrderedDict
 from .common import Block
 from .common import Pipeline
 from .blocks import SetDefaultsBlock
-from .blocks import PrepareWorkplaceBlock
+from .blocks import PrepareWorkspaceBlock
 from .blocks import ExtractStateInfoBlock
 from .blocks import BuildModelBlock
 from .blocks import BuildMetricsBlock
@@ -256,7 +256,7 @@ class TrainingPipeline(Pipeline["TrainingPipeline"], _DeviceMixin, _EvaluationMi
     def building_blocks(self) -> List[Block]:
         return [
             SetDefaultsBlock(),
-            PrepareWorkplaceBlock(),
+            PrepareWorkspaceBlock(),
             ExtractStateInfoBlock(),
             BuildModelBlock(),
             BuildMetricsBlock(),
@@ -408,7 +408,7 @@ class PipelineSerializer:
         if pack_type == PackType.TRAINING:
             swap_id = None
             focuses = None
-            excludes = [PrepareWorkplaceBlock]
+            excludes = [PrepareWorkspaceBlock]
         elif pack_type == PackType.INFERENCE:
             swap_id = InferencePipeline.__identifier__
             focuses = InferencePipeline.focuses

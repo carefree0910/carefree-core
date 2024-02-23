@@ -113,7 +113,7 @@ class SetDefaultsBlock(InjectDefaultsMixin, Block):
 
 
 @Block.register("prepare_workspace")
-class PrepareWorkplaceBlock(InjectDefaultsMixin, Block):
+class PrepareWorkspaceBlock(InjectDefaultsMixin, Block):
     def build(self, config: Config) -> None:
         if self.training_workspace is None:
             return
@@ -973,7 +973,7 @@ class SerializeScriptBlock(Block):
 
 __all__ = [
     "SetDefaultsBlock",
-    "PrepareWorkplaceBlock",
+    "PrepareWorkspaceBlock",
     "ExtractStateInfoBlock",
     "BuildModelBlock",
     "BuildMetricsBlock",
