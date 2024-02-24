@@ -117,9 +117,16 @@ class MultiLoss(ILoss):
     ) -> tensor_dict_type:
         loss = 0.0
         losses: tensor_dict_type = {}
-        for name, loss_fn in self.losses.items():
-            losses[name] = loss_fn(forward_results, batch, state)
-            loss += self.weights[name] * losses[name]
+        for k, loss_fn in self.losses.items():
+            k_losses = loss_fn(forward_results, batch, state)
+            if isinstance(k_losses, Tensor):
+                losses[k] = k_losses
+                loss += self.weights[k] * k_losses
+            else:
+                k_loss = k_losses.pop(LOSS_KEY)
+                loss += self.weights[k] * k_loss
+                for kk, vk in k_losses.items():
+                    losses[f"{k}_{kk}"] = vk
         losses[LOSS_KEY] = loss
         return losses
 
