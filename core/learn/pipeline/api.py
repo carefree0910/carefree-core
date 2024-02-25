@@ -566,8 +566,8 @@ class PipelineSerializer:
         device: device_type = None,
         states_callback: states_callback_type = None,
         verbose: bool = True,
-    ) -> InferencePipeline:
-        return cls._self_ensemble(
+    ) -> EvaluationPipeline:
+        return cls._self_ensemble(  # type: ignore
             workspace,
             PackType.EVALUATION,
             n,
@@ -724,7 +724,7 @@ class PipelineSerializer:
         device: device_type = None,
         num_picked: Optional[Union[int, float]] = None,
         states_callback: states_callback_type = None,
-    ) -> InferencePipeline:
+    ) -> Union[InferencePipeline, EvaluationPipeline]:
         if pack_type == PackType.TRAINING:
             raise ValueError("should not pack to training pipeline when fusing")
         device = get_torch_device(device)
@@ -779,7 +779,7 @@ class PipelineSerializer:
         device: device_type = None,
         states_callback: states_callback_type = None,
         verbose: bool = True,
-    ) -> InferencePipeline:
+    ) -> Union[InferencePipeline, EvaluationPipeline]:
         if pack_type == PackType.TRAINING:
             raise ValueError("should not pack to training pipeline when fusing")
         device = get_torch_device(device)
