@@ -38,6 +38,19 @@ class BCELoss(ILoss):
         return self.bce(predictions, labels.to(predictions.dtype))
 
 
+@register_loss("mae")
+class MAELoss(ILoss):
+    def forward(
+        self,
+        forward_results: tensor_dict_type,
+        batch: tensor_dict_type,
+        state: Optional[TrainerState] = None,
+    ) -> Tensor:
+        predictions = forward_results[PREDICTIONS_KEY]
+        labels = batch[LABEL_KEY]
+        return F.l1_loss(predictions, labels)
+
+
 @register_loss("mse")
 class MSELoss(ILoss):
     def forward(
@@ -133,6 +146,7 @@ class MultiLoss(ILoss):
 
 __all__ = [
     "BCELoss",
+    "MAELoss",
     "MSELoss",
     "CorrelationLoss",
     "CrossEntropyLoss",
