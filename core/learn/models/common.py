@@ -74,6 +74,18 @@ class DirectModel(CommonModel):
         return self.m(batch, **kwargs)
 
 
+@IModel.register("with_state")
+class WithStateModel(CommonModel):
+    def forward(
+        self,
+        batch_idx: int,
+        batch: tensor_dict_type,
+        state: Optional["TrainerState"] = None,
+        **kwargs: Any,
+    ) -> raw_forward_results_type:
+        return self.m(batch, state, **kwargs)
+
+
 class EnsembleFn(Protocol):
     def __call__(self, key: str, tensors: List[Tensor]) -> Tensor:
         pass
@@ -144,5 +156,6 @@ __all__ = [
     "CommonTrainStep",
     "CommonModel",
     "DirectModel",
+    "WithStateModel",
     "EnsembleModel",
 ]
