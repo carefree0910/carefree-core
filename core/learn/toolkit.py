@@ -3,7 +3,6 @@ import os
 import copy
 import torch
 import random
-import hashlib
 import argparse
 
 import numpy as np
@@ -1513,10 +1512,6 @@ class mode_context:
     ):
         self._to_train = to_train
         self._module, self._training = module, module.training
-        self._cache = {p: p.requires_grad for p in module.parameters()}
-        if use_grad is not None:
-            for p in module.parameters():
-                p.requires_grad_(use_grad)
         if use_grad is None:
             self._grad_context: Optional[ContextManager] = None
         else:
@@ -1541,9 +1536,6 @@ class mode_context:
             self._inference_context.__exit__(exc_type, exc_val, exc_tb)
         if self._grad_context is not None:
             self._grad_context.__exit__(exc_type, exc_val, exc_tb)
-        for p, v in self._cache.items():
-            if p.requires_grad != v:
-                p.requires_grad_(v)
 
 
 class train_context(mode_context):
