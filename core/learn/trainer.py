@@ -262,6 +262,7 @@ class Trainer(ITrainer):
             **(self.config.state_config or {}),
         )
         self.model = model.from_accelerator(*prepared[2:-n_optim])
+        self.inference.model = self.model
         self.optimizers = {k: prepared[-n_optim + i] for i, k in enumerate(optim_keys)}
         self.schedulers = schedulers
         for sch in schedulers.values():
