@@ -383,7 +383,7 @@ class PipelineSerializer:
         cls._save(pipeline, folder, compress=compress, verbose=verbose)
 
     @classmethod
-    def update(cls, p: Pipeline, workspace: str) -> None:
+    def update(cls, p: Pipeline, workspace: str, verbose: bool = True) -> None:
         folder = os.path.join(workspace, cls.pipeline_folder)
         if os.path.isdir(folder):
             compress = False
@@ -393,7 +393,7 @@ class PipelineSerializer:
             os.remove(f"{folder}.zip")
         else:
             raise ValueError(f"neither `{folder}` nor `{folder}.zip` exists")
-        cls._save(p, folder, compress=compress)
+        cls._save(p, folder, compress=compress, verbose=verbose)
 
     @classmethod
     def pack(
