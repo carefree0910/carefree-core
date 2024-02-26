@@ -200,7 +200,7 @@ class IDataset(Dataset):
     # optional callbacks
 
     def __getitem__(self, index: int) -> Any:
-        raise NotImplementedError("please implement the `__getitems__` method")
+        return self.__getitems__([index])
 
     def reset(self, *, for_inference: bool) -> None:
         """this will be called everytime the `DataLoader` enters `__iter__`"""
