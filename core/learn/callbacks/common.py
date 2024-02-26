@@ -26,12 +26,18 @@ from ...toolkit.types import tensor_dict_type
 
 @TrainerCallback.register("update_artifacts")
 class UpdateArtifactsCallback(TrainerCallback):
+    def before_loop(self, trainer: ITrainer) -> None:
+        self._save(trainer, update=False)
+
     def after_save_checkpoint(self, trainer: ITrainer) -> None:
+        self._save(trainer, update=True)
+
+    def _save(self, trainer: ITrainer, *, update: bool) -> None:
         if trainer.config.save_pipeline_in_realtime:
             from ..pipeline import PipelineSerializer
 
-            with trainer.pipeline.verbose_context(False):
-                PipelineSerializer.update(trainer.pipeline, trainer.workspace)  # type: ignore
+            fn = PipelineSerializer.update if update else PipelineSerializer.save
+            fn(trainer.pipeline, trainer.workspace, verbose=False)  # type: ignore
 
 
 @TrainerCallback.register("log_metrics_msg")

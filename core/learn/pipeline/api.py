@@ -312,9 +312,6 @@ class TrainingPipeline(Pipeline["TrainingPipeline"], _DeviceMixin, _EvaluationMi
                 data,
                 save_npd=False,
             )
-        # in case we want to save 'realtime' pipeline
-        if self.config.save_pipeline_in_realtime and workspace is not None:
-            PipelineSerializer.save(self, workspace, verbose=False)
         # run pipeline
         self.run(data, device=device)
         # save / update pipeline serialization
