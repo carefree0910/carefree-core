@@ -1773,6 +1773,7 @@ class ITrainer(ABC):
         folder: Optional[TPath] = None,
         *,
         no_history: bool = False,
+        check_rank_0: bool = True,
     ) -> None:
         pass
 

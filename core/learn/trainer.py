@@ -385,8 +385,9 @@ class Trainer(ITrainer):
         folder: Optional[TPath] = None,
         *,
         no_history: bool = False,
+        check_rank_0: bool = True,
     ) -> None:
-        if not self.is_local_rank_0:
+        if check_rank_0 and not self.is_local_rank_0:
             msg = "`save_checkpoint` should not be called when not `is_local_rank_0`"
             raise ValueError(msg)
         if folder is None:

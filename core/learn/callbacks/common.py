@@ -104,20 +104,20 @@ class NaNDetectorCallback(TrainerCallback):
             np_batch = tensor_batch_to_np(batch)
             nan_ratios = {k: np.isnan(v).mean().item() for k, v in np_batch.items()}
             debug_folder = Path(trainer.workspace) / "debugging"
-            debug_folder.mkdir(parents=True, exist_ok=True)
+            debug_folder.mkdir(exist_ok=True)
             ddp_info = get_ddp_info()
             appendix = "" if ddp_info is None else f"_{ddp_info.rank}"
             batch_paths = {k: debug_folder / f"{k}{appendix}.npy" for k in np_batch}
             for k, v in np_batch.items():
                 if isinstance(v, np.ndarray):
                     np.save(batch_paths[k], v)
-            ckpt_folder = debug_folder / "checkpoints"
-            ckpt_folder.mkdir(exist_ok=True)
-            trainer.save_checkpoint(0.0, ckpt_folder, no_history=True)
+            ckpt_dir = debug_folder / f"checkpoints_{trainer.accelerator.process_index}"
+            ckpt_dir.mkdir(exist_ok=True)
+            trainer.save_checkpoint(0.0, ckpt_dir, no_history=True, check_rank_0=False)
             console.error(
                 f"following losses are NaN: {sorted(is_nan)}, nan ratios of the batch "
                 f"are {nan_ratios}. Current batch / states will be saved to "
-                f"{batch_paths} / {ckpt_folder} for further investigation"
+                f"{batch_paths} / {ckpt_dir} for further investigation"
             )
         trainer.accelerator.wait_for_everyone()
         if is_nan:
