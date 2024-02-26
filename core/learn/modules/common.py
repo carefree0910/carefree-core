@@ -181,6 +181,19 @@ def avg_pool_nd(n: int, *args: Any, **kwargs: Any) -> Module:
     raise ValueError(f"unsupported dimensions: {n}")
 
 
+# shortcuts
+
+
+class BN(nn.BatchNorm1d):
+    def forward(self, net: Tensor) -> Tensor:
+        if len(net.shape) == 3:
+            net = net.transpose(1, 2)
+        net = super().forward(net)
+        if len(net.shape) == 3:
+            net = net.transpose(1, 2)
+        return net
+
+
 __all__ = [
     "module_dict",
     "register_module",
@@ -191,4 +204,5 @@ __all__ = [
     "Residual",
     "zero_module",
     "avg_pool_nd",
+    "BN",
 ]
