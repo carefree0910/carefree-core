@@ -838,15 +838,18 @@ class SerializeModelBlock(Block):
         return self.get_previous(BuildModelBlock)
 
     def save_extra(self, folder: TPath) -> None:
-        if not self.is_local_rank_0:
-            return
         folder = to_path(folder)
         folder.mkdir(parents=True, exist_ok=True)
+        verbose = self.verbose and self.is_local_rank_0
         warn_msg = "no checkpoints found at {}, current model states will be saved"
         if self.training_workspace is not None:
             ckpt_folder = os.path.join(self.training_workspace, CHECKPOINTS_FOLDER)
             sorted_ckpts = get_sorted_checkpoints(ckpt_folder)
-            if sorted_ckpts:
+            if not sorted_ckpts:
+                if verbose:
+                    console.warn(warn_msg.format(ckpt_folder))
+                self._save_current(folder)
+            elif self.is_local_rank_0:
                 best_ckpt = sorted_ckpts[0]
                 src_path = os.path.join(ckpt_folder, sorted_ckpts[0])
                 dst_path = os.path.join(folder, best_ckpt)
@@ -856,13 +859,9 @@ class SerializeModelBlock(Block):
                     json.dump({best_ckpt: scores.get(best_ckpt, 0.0)}, f)
                 if self.verbose:
                     console.debug(f"best checkpoint '{best_ckpt}' saved")
-            else:
-                if self.verbose:
-                    console.warn(warn_msg.format(ckpt_folder))
-                self._save_current(folder)
             return
         if self.ckpt_folder is None or self.ckpt_scores is None:
-            if self.verbose:
+            if verbose:
                 console.warn("current model states will be saved")
             self._save_current(folder)
         else:
@@ -872,19 +871,21 @@ class SerializeModelBlock(Block):
             for file, score in sorted_ckpt_dict.items():
                 ckpt_path = os.path.join(self.ckpt_folder, file)
                 if not os.path.isfile(ckpt_path):
-                    if self.verbose:
+                    if verbose:
                         msg = f"cannot find checkpoint at '{ckpt_path}', did you delete it?"
                         console.warn(msg)
                     continue
                 any_saved = True
                 filtered_scores[file] = score
-                shutil.copyfile(ckpt_path, os.path.join(folder, file))
+                if self.is_local_rank_0:
+                    shutil.copyfile(ckpt_path, os.path.join(folder, file))
                 break
             if any_saved:
-                with open(os.path.join(folder, SCORES_FILE), "w") as f:
-                    json.dump(filtered_scores, f)
+                if self.is_local_rank_0:
+                    with open(os.path.join(folder, SCORES_FILE), "w") as f:
+                        json.dump(filtered_scores, f)
             else:
-                if self.verbose:
+                if verbose:
                     console.warn(warn_msg.format(self.ckpt_folder))
                 self._save_current(folder)
 
@@ -908,9 +909,10 @@ class SerializeModelBlock(Block):
         latest_file = f"{PT_PREFIX}-1.pt"
         latest_path = folder / latest_file
         new_scores_path = folder / SCORES_FILE
-        self.build_model.model.save(latest_path)
-        with new_scores_path.open("w") as f:
-            json.dump({latest_file: 0.0}, f)
+        self.build_model.model.save(latest_path, do_save=self.is_local_rank_0)
+        if self.is_local_rank_0:
+            with new_scores_path.open("w") as f:
+                json.dump({latest_file: 0.0}, f)
 
 
 @Block.register("serialize_optimizer")

@@ -336,12 +336,13 @@ class Trainer(ITrainer):
                     if self.state.should_monitor:
                         for callback in self.callbacks:
                             callback.after_monitor(monitored, self)
-                    if self.is_local_rank_0 and monitored.save_checkpoint:
+                    if monitored.save_checkpoint:
                         metric_outputs = monitored.metric_outputs
                         assert metric_outputs is not None
                         self.save_checkpoint(metric_outputs.final_score)
-                        for callback in self.callbacks:
-                            callback.after_save_checkpoint(self)
+                        if self.is_local_rank_0:
+                            for callback in self.callbacks:
+                                callback.after_save_checkpoint(self)
                     terminate = monitored.terminate or self.state.should_terminate
                     if terminate:
                         break
@@ -372,7 +373,7 @@ class Trainer(ITrainer):
         loader = distributed_valid_loader or distributed_train_loader
         self.final_results = self._get_metrics(loader, self.config.valid_portion)
         self._logging(self.final_results)
-        if not has_ckpt and self.is_local_rank_0:
+        if not has_ckpt:
             self.save_checkpoint(self.final_results.final_score)
         for callback in self.callbacks:
             callback.finalize(self)
@@ -388,9 +389,11 @@ class Trainer(ITrainer):
         no_history: bool = False,
         check_rank_0: bool = True,
     ) -> None:
-        if check_rank_0 and not self.is_local_rank_0:
-            msg = "`save_checkpoint` should not be called when not `is_local_rank_0`"
-            raise ValueError(msg)
+        """
+        FSDP requires all ranks to call `state_dict()`, so we need to
+        enter this method on all ranks, but only rank 0 should `do_save`.
+        """
+
         if folder is None:
             if self.checkpoint_folder is None:
                 msg = "either `folder` or `checkpoint_folder` should be provided"
@@ -399,29 +402,32 @@ class Trainer(ITrainer):
         folder = to_path(folder)
         state: Optional[TrainerState] = getattr(self, "state", None)
         pt_file = f"{PT_PREFIX}{-1 if state is None else state.step}.pt"
+        do_save = self.is_local_rank_0 or not check_rank_0
         if state is None:
-            console.warn(
-                "`state` is not initialized, "
-                "latest model will be saved and the recorded score will always be 0"
-            )
-            self.model.save(folder / pt_file)
-            with (folder / SCORES_FILE).open("w") as f:
-                json.dump({pt_file: 0.0}, f)
+            self.model.save(folder / pt_file, do_save=do_save)
+            if self.is_local_rank_0:
+                console.warn(
+                    "`state` is not initialized, "
+                    "latest model will be saved and the recorded score will always be 0"
+                )
+                with (folder / SCORES_FILE).open("w") as f:
+                    json.dump({pt_file: 0.0}, f)
             return
         # leave top_k snapshots only
-        if state.max_snapshot_file > 0:
+        if self.is_local_rank_0 and state.max_snapshot_file > 0:
             checkpoints = get_sorted_checkpoints(folder)
             if len(checkpoints) >= state.max_snapshot_file:
                 for file in checkpoints[state.max_snapshot_file - 1 :]:
                     self.checkpoint_scores.pop(file)
                     (folder / file).unlink()
         # pt
-        self.model.save(folder / pt_file)
+        self.model.save(folder / pt_file, do_save=do_save)
         # scores
-        scores = {} if no_history else self.checkpoint_scores
-        scores[pt_file] = score
-        with (folder / SCORES_FILE).open("w") as f:
-            json.dump(sort_dict_by_value(scores, reverse=True), f)
+        if self.is_local_rank_0:
+            scores = {} if no_history else self.checkpoint_scores
+            scores[pt_file] = score
+            with (folder / SCORES_FILE).open("w") as f:
+                json.dump(sort_dict_by_value(scores, reverse=True), f)
 
     def restore_checkpoint(
         self,

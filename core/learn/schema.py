@@ -28,10 +28,12 @@ from typing import ContextManager
 from onnxsim import simplify as onnx_simplify
 from functools import partial
 from accelerate import Accelerator
+from accelerate import DistributedType
 from contextlib import nullcontext
 from dataclasses import dataclass
 from torch.optim import Optimizer
 from torch.profiler import profile
+from accelerate.state import AcceleratorState
 from accelerate.utils import extract_model_from_parallel
 from torch.cuda.amp import autocast
 from torch.optim.lr_scheduler import _LRScheduler
@@ -1262,6 +1264,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         return self
 
     def state_dict(self, **kwargs: Any) -> tensor_dict_type:
+        if AcceleratorState().distributed_type == DistributedType.FSDP:
+            return self.m.state_dict(**kwargs)
         return extract_model_from_parallel(self.m).state_dict(**kwargs)
 
     def parameters(self) -> Iterator[nn.Parameter]:
@@ -1271,7 +1275,10 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         return self.m.named_parameters()
 
     def load_state_dict(self, d: tensor_dict_type, strict: bool = True) -> None:
-        extract_model_from_parallel(self.m).load_state_dict(d, strict)
+        if AcceleratorState().distributed_type == DistributedType.FSDP:
+            self.m.load_state_dict(d, strict)
+        else:
+            extract_model_from_parallel(self.m).load_state_dict(d, strict)
 
     def run(
         self,
@@ -1385,12 +1392,13 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                 onnx.save(model_simplified, export_file)
         return self.to(device)
 
-    def save(self, path: TPath, **kwargs: Any) -> None:
+    def save(self, path: TPath, *, do_save: bool = True, **kwargs: Any) -> None:
         full = dict(
             config=self.config.asdict(),
             states=self.state_dict(**kwargs),
         )
-        torch.save(full, path)
+        if do_save:
+            torch.save(full, path)
 
 
 # trainer
