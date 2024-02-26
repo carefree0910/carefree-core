@@ -1130,7 +1130,7 @@ def summary(
             if not isinstance(inp, Tensor):
                 return
 
-            m_dict: OrderedDict[str, Any] = OrderedDict()
+            m_dict: Dict[str, Any] = OrderedDict()
             m_dict["input_shape"] = list(inp.shape)
             output_shape_res = m_dict["output_shape"] = {}
             inject_output_shape(output, output_shape_res)
@@ -1165,7 +1165,7 @@ def summary(
         for child, _, current_names in info_list:
             _inject_names(child, current_names)
 
-    module_names: OrderedDict[nn.Module, str] = OrderedDict()
+    module_names: Dict[nn.Module, str] = OrderedDict()
     existing_names: Set[str] = set()
 
     def _get_name(original: str) -> str:
@@ -1182,7 +1182,7 @@ def summary(
     _inject_names(m, [model_name])
 
     # create properties
-    raw_summary_dict: OrderedDict[str, Any] = OrderedDict()
+    raw_summary_dict: Dict[str, Any] = OrderedDict()
     hooks: List[Any] = []
 
     # register hook
@@ -1199,7 +1199,7 @@ def summary(
         h.remove()
 
     # get hierarchy
-    hierarchy: OrderedDict[str, Any] = OrderedDict()
+    hierarchy: Dict[str, Any] = OrderedDict()
     for key in raw_summary_dict:
         split = key.split(".")
         d = hierarchy
@@ -1224,7 +1224,7 @@ def summary(
                 _inject_summary(v, current_keys)
 
     hierarchy_counts: Dict[int, int] = {}
-    summary_dict: OrderedDict[str, Any] = OrderedDict()
+    summary_dict: Dict[str, Any] = OrderedDict()
     _inject_summary(hierarchy, [])
 
     line_length = 120
