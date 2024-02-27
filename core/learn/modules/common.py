@@ -8,6 +8,7 @@ from typing import Dict
 from typing import List
 from typing import Type
 from typing import Tuple
+from typing import Union
 from typing import TypeVar
 from typing import Callable
 from typing import Optional
@@ -27,6 +28,7 @@ from ...toolkit.types import tensor_dict_type
 
 
 TModule = TypeVar("TModule", bound=Type[Module])
+TParams = List[Tuple[str, Union[Tensor, nn.Parameter]]]
 
 module_dict: Dict[str, Type["Module"]] = {}
 
@@ -85,24 +87,30 @@ class Lambda(Module):
         return self.fn(*args, **kwargs)
 
 
+def get_tgt_params(named_parameters: TParams) -> List[Any]:
+    return [
+        [name.replace(".", "_"), parameter]
+        for name, parameter in named_parameters
+        if not is_int(parameter.data)
+    ]
+
+
 class EMA(Module):
     num_updates: Optional[Tensor]
 
     def __init__(
         self,
+        m: nn.Module,
         decay: float,
-        named_parameters: List[Tuple[str, nn.Parameter]],
         *,
         use_num_updates: bool = False,
     ):
         super().__init__()
         self._cache: tensor_dict_type = {}
+        self._ms = [m]
         self._decay = decay
-        self.tgt_params = [
-            (name.replace(".", "_"), parameter)
-            for name, parameter in named_parameters
-            if not is_int(parameter.data)
-        ]
+        self.tgt_params = get_tgt_params(m.state_dict().items())
+        self._initialized = False
         for name, param in self.tgt_params:
             self.register_buffer(name, param.data.clone())
         if not use_num_updates:
@@ -113,6 +121,9 @@ class EMA(Module):
     def forward(self) -> None:
         if not self.training:
             raise RuntimeError("should not update `EMA` at inference stage")
+        if not self._initialized:
+            self.tgt_params = get_tgt_params(self._ms[0].state_dict().items())
+            self._initialized = True
         if self.num_updates is None:
             decay = self._decay
         else:
@@ -129,12 +140,12 @@ class EMA(Module):
             for name, param in self.tgt_params:
                 cached = self._cache.pop(name, None)
                 if cached is not None:
-                    param.data = cached
+                    param.data.copy_(cached)
         else:
             for name, param in self.tgt_params:
                 if name not in self._cache:
-                    self._cache[name] = param.data
-                param.data = getattr(self, name).clone()
+                    self._cache[name] = param.data.clone()
+                param.data.copy_(getattr(self, name).clone())
         return self
 
     def extra_repr(self) -> str:
@@ -148,9 +159,9 @@ class EMA(Module):
             + [")"]
         )
 
-    @classmethod
-    def hook(cls, m: Module, decay: float, *, use_num_updates: bool = False) -> "EMA":
-        return cls(decay, list(m.named_parameters()), use_num_updates=use_num_updates)
+    def rehook(self, m: Module) -> None:
+        self._ms = [m]
+        self._initialized = False
 
 
 # common structures
