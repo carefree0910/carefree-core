@@ -110,7 +110,7 @@ class Inference(IInference):
                 tensors = accelerator.gather_for_metrics(tensors)
             return tensor_batch_to_np(tensors)
 
-        def run() -> InferenceOutputs:
+        def _run() -> InferenceOutputs:
             all_np_outputs: TArrays = {}
             all_labels: TArrays = {}
             all_metrics_requires: TArrays = {}
@@ -146,9 +146,7 @@ class Inference(IInference):
                             i,
                             tensor_batch,
                             shallow_copy_dict(kwargs),
-                            use_grad=use_grad,
                             get_losses=use_losses_as_metrics,
-                            use_inference_mode=use_inference_mode,
                         )
                     Flag.in_step = False
                     tensor_outputs = step_outputs.forward_results
@@ -242,6 +240,16 @@ class Inference(IInference):
                     }
                 ),
             )
+
+        def run() -> InferenceOutputs:
+            ctx: ContextManager
+            if self.model is None:
+                ctx = nullcontext()
+            else:
+                ctx_kw = dict(use_grad=use_grad, use_inference=use_inference_mode)
+                ctx = self.model.eval_context(**ctx_kw)
+            with ctx:
+                return _run()
 
         class Flag:
             in_step = False

@@ -1075,29 +1075,26 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         batch: tensor_dict_type,
         forward_kwargs: Optional[Dict[str, Any]] = None,
         *,
-        use_grad: bool = False,
         get_losses: bool = False,
         loss_kwargs: Optional[Dict[str, Any]] = None,
-        use_inference_mode: Optional[bool] = None,
     ) -> StepOutputs:
-        with self.eval_context(use_grad=use_grad, use_inference=use_inference_mode):
-            loss_tensors = {}
-            loss_kwargs = loss_kwargs or {}
-            forward_kwargs = forward_kwargs or {}
-            get_fw = lambda: self.run(batch_idx, batch, None, **forward_kwargs)
-            train_steps = self.train_steps
-            if not train_steps:
-                return StepOutputs(get_fw(), {})
-            for i, train_step in enumerate(self.train_steps):
-                if train_step.should_skip(self, None):
-                    continue
-                if i == 0 or train_step.requires_new_forward:
-                    fw = get_fw()
-                if get_losses:
-                    loss_res = train_step.loss_fn(self, None, batch, fw, **loss_kwargs)
-                    i_losses = {k: v.detach() for k, v in loss_res.loss_tensors.items()}
-                    loss_tensors.update(i_losses)
-            return StepOutputs(fw, loss_tensors)
+        loss_tensors = {}
+        loss_kwargs = loss_kwargs or {}
+        forward_kwargs = forward_kwargs or {}
+        get_fw = lambda: self.run(batch_idx, batch, None, **forward_kwargs)
+        train_steps = self.train_steps
+        if not train_steps:
+            return StepOutputs(get_fw(), {})
+        for i, train_step in enumerate(self.train_steps):
+            if train_step.should_skip(self, None):
+                continue
+            if i == 0 or train_step.requires_new_forward:
+                fw = get_fw()
+            if get_losses:
+                loss_res = train_step.loss_fn(self, None, batch, fw, **loss_kwargs)
+                i_losses = {k: v.detach() for k, v in loss_res.loss_tensors.items()}
+                loss_tensors.update(i_losses)
+        return StepOutputs(fw, loss_tensors)
 
     def train(
         self,
