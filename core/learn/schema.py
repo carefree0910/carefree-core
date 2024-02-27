@@ -202,6 +202,9 @@ class IDataset(Dataset):
     def __getitem__(self, index: int) -> Any:
         return self.__getitems__([index])
 
+    def pseudo_batch(self, device: device_type = None) -> Optional[tensor_dict_type]:
+        return None
+
     def reset(self, *, for_inference: bool) -> None:
         """this will be called everytime the `DataLoader` enters `__iter__`"""
 
@@ -239,15 +242,17 @@ class DataLoader(TorchDataLoader):
         return concat
 
     def get_input_sample(self, device: device_type = None) -> tensor_dict_type:
-        sample = self.get_one_batch(device)
-        for k, v in sample.items():
+        pseudo_batch = self.dataset.pseudo_batch(device)
+        if pseudo_batch is None:
+            pseudo_batch = self.get_one_batch(device)
+        for k, v in pseudo_batch.items():
             if isinstance(v, Tensor):
-                sample[k] = v[:1]
+                pseudo_batch[k] = v[:1]
             elif isinstance(v, list):
-                sample[k] = [vv[:1] if isinstance(vv, Tensor) else vv for vv in v]
+                pseudo_batch[k] = [vv[:1] if isinstance(vv, Tensor) else vv for vv in v]
             else:
-                sample[k] = v
-        return sample
+                pseudo_batch[k] = v
+        return pseudo_batch
 
 
 @dataclass
