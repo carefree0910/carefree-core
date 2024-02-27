@@ -186,14 +186,15 @@ class TestModules(unittest.TestCase):
             y1 = model.m(x)
         torch.testing.assert_close(y0, y1)
 
-        # p = cflearn.TrainingPipeline.init(config).fit(data)
-        # model = p.build_model.model
-        # x = torch.from_numpy(data.bundle.x_train)
-        # y0 = model.m(x)
-        # with model.eval_context():
-        #     y1 = model.m(x)
-        # with self.assertRaises(AssertionError):
-        #     torch.testing.assert_close(y0, y1)
+        config.ema_decay = 0.9
+        p = cflearn.TrainingPipeline.init(config).fit(data)
+        model = p.build_model.model
+        x = torch.from_numpy(data.bundle.x_train)
+        y0 = model.m(x)
+        with model.eval_context():
+            y1 = model.m(x)
+        with self.assertRaises(AssertionError):
+            torch.testing.assert_close(y0, y1)
 
     def test_residual(self) -> None:
         dim = 11

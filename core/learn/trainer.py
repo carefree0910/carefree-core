@@ -164,9 +164,10 @@ class Trainer(ITrainer):
                 )
 
     def ema_step(self) -> None:
-        for module in self.model.m.modules():
-            if isinstance(module, EMA):
-                module()
+        for module in self.model.all_modules:
+            unwrapped = self.accelerator.unwrap_model(module)
+            if isinstance(unwrapped, EMA):
+                unwrapped()
 
     def scheduler_step(self) -> None:
         if self.config.update_scheduler_per_epoch:
