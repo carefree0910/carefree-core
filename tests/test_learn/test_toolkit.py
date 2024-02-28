@@ -291,6 +291,16 @@ class TestToolkit(unittest.TestCase):
         self.assertFalse(m.weight.requires_grad)
         self.assertFalse(m.bias.requires_grad)
 
+    def test_eval_context(self) -> None:
+        x = torch.tensor([[1.0, 2.0, 3.0]], requires_grad=True)
+        linear = nn.Linear(3, 1)
+        y = linear(x)
+        with eval_context(linear):
+            z = linear(x)
+        self.assertTrue(x.requires_grad)
+        self.assertTrue(y.requires_grad)
+        self.assertFalse(z.requires_grad)
+
 
 class TestCheckIsCI(unittest.TestCase):
     def test_check_is_ci_default(self) -> None:
