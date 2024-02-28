@@ -233,4 +233,4 @@ class TestModules(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    TestModules().test_ema_training()
+    unittest.main()
