@@ -1027,15 +1027,10 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
     # optional callbacks
 
     def from_accelerator(self, *args: nn.Module) -> "IModel":
-        from .modules import EMA
-
         cloned = IModel.make(self.config.model, {})
         cloned.config = self.config.copy()
         for i, k in enumerate(self.all_module_names):
             setattr(cloned, k, args[i])
-        for module in cloned.m.modules():
-            if isinstance(module, EMA):
-                module.rehook(cloned.state_dict().items())
         return cloned
 
     def params_groups(self) -> List[Dict[str, Any]]:

@@ -144,10 +144,6 @@ class EMA(Module):
                 param.data.copy_(getattr(self, name).clone())
         return self
 
-    def rehook(self, named_parameters: TParams) -> None:
-        states = {k: v for k, v in get_tgt_params(named_parameters)}
-        self.tgt_params = [[k, states[k]] for k, _ in self.tgt_params]
-
     def extra_repr(self) -> str:
         max_str_len = max(len(name) for name, _ in self.tgt_params)
         return "\n".join(
@@ -161,7 +157,7 @@ class EMA(Module):
 
     @classmethod
     def hook(cls, m: Module, decay: float, *, use_num_updates: bool = False) -> "EMA":
-        return cls(decay, m.state_dict().items(), use_num_updates=use_num_updates)
+        return cls(decay, m.named_parameters(), use_num_updates=use_num_updates)
 
 
 # common structures
