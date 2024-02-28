@@ -100,17 +100,15 @@ class EMA(Module):
 
     def __init__(
         self,
-        m: nn.Module,
         decay: float,
+        named_parameters: TParams,
         *,
         use_num_updates: bool = False,
     ):
         super().__init__()
         self._cache: tensor_dict_type = {}
-        self._ms = [m]
         self._decay = decay
-        self.tgt_params = get_tgt_params(m.state_dict().items())
-        self._initialized = False
+        self.tgt_params = get_tgt_params(named_parameters)
         for name, param in self.tgt_params:
             self.register_buffer(name, param.data.clone())
         if not use_num_updates:
@@ -121,9 +119,6 @@ class EMA(Module):
     def forward(self) -> None:
         if not self.training:
             raise RuntimeError("should not update `EMA` at inference stage")
-        if not self._initialized:
-            self.tgt_params = get_tgt_params(self._ms[0].state_dict().items())
-            self._initialized = True
         if self.num_updates is None:
             decay = self._decay
         else:
@@ -148,6 +143,10 @@ class EMA(Module):
                 param.data.copy_(getattr(self, name).clone())
         return self
 
+    def rehook(self, m: Module) -> None:
+        states = {k: v for k, v in get_tgt_params(m.state_dict().items())}
+        self.tgt_params = [[k, states[k]] for k, _ in self.tgt_params]
+
     def extra_repr(self) -> str:
         max_str_len = max(len(name) for name, _ in self.tgt_params)
         return "\n".join(
@@ -159,9 +158,9 @@ class EMA(Module):
             + [")"]
         )
 
-    def rehook(self, m: Module) -> None:
-        self._ms = [m]
-        self._initialized = False
+    @classmethod
+    def hook(cls, m: Module, decay: float, *, use_num_updates: bool = False) -> "EMA":
+        return cls(decay, m.state_dict().items(), use_num_updates=use_num_updates)
 
 
 # common structures

@@ -116,11 +116,6 @@ class TestModules(unittest.TestCase):
         self.assertIsNone(foo.get("C"))
 
     def test_ema(self) -> None:
-        class _(nn.Module):
-            def __init__(self, p: nn.Parameter):
-                super().__init__()
-                self.p = p
-
         decay = 0.9
         p1 = nn.Parameter(torch.randn(2, 3, 4, 5))
         p2 = nn.Parameter(torch.randn(2, 3, 4, 5))
@@ -128,10 +123,10 @@ class TestModules(unittest.TestCase):
         gt = p1.data
         gt = decay * gt + (1.0 - decay) * p2.data
         gt = decay * gt + (1.0 - decay) * p3.data
-        ema = cflearn.EMA(_(p1), decay)
-        p1.data.copy_(p2.data.clone())
+        ema = cflearn.EMA(decay, [("test", p1)])
+        p1.data = p2.data
         ema()
-        p1.data.copy_(p3.data.clone())
+        p1.data = p3.data
         ema()
         ema.eval()
         ema.train()
@@ -163,7 +158,7 @@ class TestModules(unittest.TestCase):
             torch.testing.assert_close(p1.data, gt.data)
         torch.testing.assert_close(p1.data, p3.data)
         str(ema)
-        ema = cflearn.EMA(_(p1), decay, use_num_updates=True)
+        ema = cflearn.EMA(decay, [("test", p1)], use_num_updates=True)
         ema()
         with cflearn.eval_context(ema):
             with self.assertRaises(RuntimeError):
@@ -186,7 +181,13 @@ class TestModules(unittest.TestCase):
             y1 = model.m(x)
         torch.testing.assert_close(y0, y1)
 
-        config.ema_decay = 0.9
+        @cflearn.register_module("linear_ema")
+        class _(cflearn.Linear):
+            def __init__(self) -> None:
+                super().__init__(**config.module_config)
+                self.ema = cflearn.EMA.hook(self, 0.9)
+
+        config.module_name = "linear_ema"
         p = cflearn.TrainingPipeline.init(config).fit(data)
         model = p.build_model.model
         x = torch.from_numpy(data.bundle.x_train)
@@ -227,4 +228,4 @@ class TestModules(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    TestModules().test_ema_training()

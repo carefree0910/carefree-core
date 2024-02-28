@@ -1033,10 +1033,9 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         cloned.config = self.config.copy()
         for i, k in enumerate(self.all_module_names):
             setattr(cloned, k, args[i])
-        for m in cloned.all_modules:
-            extracted = extract_model_from_parallel(m)
-            if isinstance(extracted, EMA):
-                extracted.rehook(cloned.m)
+        for module in cloned.m.modules():
+            if isinstance(module, EMA):
+                module.rehook(cloned.m)
         return cloned
 
     def params_groups(self) -> List[Dict[str, Any]]:
@@ -1868,7 +1867,6 @@ class DLSettings:
     module_name: str = ""
     module_config: Optional[Dict[str, Any]] = None
     num_repeat: Optional[int] = None
-    ema_decay: Optional[float] = None
     loss_name: Optional[str] = None
     loss_config: Optional[Dict[str, Any]] = None
     in_loading: bool = False

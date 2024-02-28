@@ -18,7 +18,6 @@ from ..schema import TrainStep
 from ..schema import TrainerState
 from ..schema import TrainStepLoss
 from ..modules import build_module
-from ..modules import EMA
 from ..toolkit import get_clones
 from ..constants import LOSS_KEY
 from ...toolkit.misc import safe_execute
@@ -54,19 +53,13 @@ class CommonModel(IModel):
 
     @property
     def all_modules(self) -> List[nn.Module]:
-        if self.config.ema_decay is None:
-            return [self.m, self.loss]
-        return [self.m, self.ema, self.loss]
+        return [self.m, self.loss]
 
     def build(self, config: Config) -> None:
         if config.loss_name is None:
             raise ValueError("`loss_name` should be specified for `CommonModel`")
         self.m = build_module(config.module_name, config=config.module_config)
         self.loss = build_loss(config.loss_name, config=config.loss_config)
-        if config.ema_decay is None:
-            self.ema = None
-        else:
-            self.ema = EMA(self.m, config.ema_decay)
 
 
 @IModel.register("direct")
