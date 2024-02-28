@@ -226,7 +226,10 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
         loader: DataLoader,
         *,
         portion: float = 1.0,
+        return_outputs: bool = False,
+        use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
+        pad_dim: Optional[int] = None,
         **kwargs: Any,
     ) -> InferenceOutputs:
         return self.build_model.model.evaluate(
@@ -235,8 +238,11 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
             self.build_inference.inference,
             loader,
             portion=portion,
+            return_outputs=return_outputs,
+            use_inference_mode=use_inference_mode,
             accelerator=accelerator,
-            forward_kwargs=kwargs,
+            pad_dim=pad_dim,
+            **kwargs,
         )
 
 

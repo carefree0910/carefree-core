@@ -1220,19 +1220,22 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         *,
         portion: float = 1.0,
         state: Optional["TrainerState"] = None,
+        return_outputs: bool = False,
+        use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
-        forward_kwargs: Optional[Dict[str, Any]] = None,
         pad_dim: Optional[int] = None,
+        **kwargs: Any,
     ) -> InferenceOutputs:
         outputs = inference.get_outputs(
             loader,
             portion=portion,
             metrics=metrics,
             use_losses_as_metrics=config.use_losses_as_metrics,  # type: ignore
-            return_outputs=False,
+            return_outputs=return_outputs,
+            use_inference_mode=use_inference_mode,
             accelerator=accelerator,
             pad_dim=pad_dim,
-            **(forward_kwargs or {}),
+            **kwargs,
         )
         metric_values = {}
         is_positive = {}

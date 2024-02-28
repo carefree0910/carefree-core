@@ -520,7 +520,7 @@ class Trainer(ITrainer):
             portion=portion,
             state=self.state,
             accelerator=self.accelerator,
-            forward_kwargs=self.config.metric_forward_kwargs,
+            **(self.config.metric_forward_kwargs or {}),
         )
         return outputs.metric_outputs  # type: ignore
 
