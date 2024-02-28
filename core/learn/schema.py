@@ -1035,7 +1035,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             setattr(cloned, k, args[i])
         for module in cloned.m.modules():
             if isinstance(module, EMA):
-                module.rehook(cloned.m)
+                module.rehook(cloned.state_dict().items())
         return cloned
 
     def params_groups(self) -> List[Dict[str, Any]]:

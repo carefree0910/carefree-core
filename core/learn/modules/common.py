@@ -143,8 +143,8 @@ class EMA(Module):
                 param.data.copy_(getattr(self, name).clone())
         return self
 
-    def rehook(self, m: Module) -> None:
-        states = {k: v for k, v in get_tgt_params(m.state_dict().items())}
+    def rehook(self, named_parameters: TParams) -> None:
+        states = {k: v for k, v in get_tgt_params(named_parameters)}
         self.tgt_params = [[k, states[k]] for k, _ in self.tgt_params]
 
     def extra_repr(self) -> str:
