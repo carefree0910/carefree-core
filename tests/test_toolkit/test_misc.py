@@ -224,12 +224,12 @@ class TestMisc(unittest.TestCase):
             date_dir_2 = os.path.join(tmp_dir, datetime.now().strftime(TIME_FORMAT))
             os.makedirs(date_dir_1)
             os.makedirs(date_dir_2)
-            self.assertEqual(get_latest_workspace(tmp_dir), date_dir_2)
+            self.assertEqual(str(get_latest_workspace(tmp_dir)), date_dir_2)
 
             # test when root directory contains directories with names that cannot be parsed as dates
             non_date_dir = os.path.join(tmp_dir, "non_date")
             os.makedirs(non_date_dir)
-            self.assertEqual(get_latest_workspace(tmp_dir), date_dir_2)
+            self.assertEqual(str(get_latest_workspace(tmp_dir)), date_dir_2)
 
     def test_sort_dict_by_value(self) -> None:
         d = {"a": 2.0, "b": 1.0, "c": 3.0}

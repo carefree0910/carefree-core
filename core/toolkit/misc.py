@@ -191,21 +191,32 @@ def prepare_workspace_from(
     return workspace
 
 
-def get_latest_workspace(root: str) -> Optional[str]:
-    if not os.path.isdir(root):
-        return None
+def get_sub_workspaces(root: TPath) -> List[Path]:
+    root = to_path(root)
+    if not root.is_dir():
+        return []
     all_workspaces = []
-    for stuff in os.listdir(root):
-        if not os.path.isdir(os.path.join(root, stuff)):
+    for stuff in root.iterdir():
+        if not stuff.is_dir():
             continue
         try:
-            datetime.strptime(stuff, TIME_FORMAT)
+            datetime.strptime(stuff.name, TIME_FORMAT)
             all_workspaces.append(stuff)
         except:
             pass
-    if not all_workspaces:
+    return all_workspaces
+
+
+def get_sorted_workspaces(root: TPath) -> List[Path]:
+    sub_workspaces = get_sub_workspaces(root)
+    return sorted(sub_workspaces, key=lambda x: datetime.strptime(x.name, TIME_FORMAT))
+
+
+def get_latest_workspace(root: TPath) -> Optional[Path]:
+    sorted_workspaces = get_sorted_workspaces(root)
+    if not sorted_workspaces:
         return None
-    return os.path.join(root, sorted(all_workspaces)[-1])
+    return sorted_workspaces[-1]
 
 
 def sort_dict_by_value(d: Dict[Any, Any], *, reverse: bool = False) -> OrderedDict:
