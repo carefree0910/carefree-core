@@ -512,7 +512,7 @@ class Trainer(ITrainer):
                 + int(self.tqdm_settings.use_step_tqdm),
                 leave=False,
             )
-        return self.model.evaluate(
+        outputs = self.model.evaluate(
             self.config,
             self.metrics,
             self.inference,
@@ -522,6 +522,7 @@ class Trainer(ITrainer):
             accelerator=self.accelerator,
             forward_kwargs=self.config.metric_forward_kwargs,
         )
+        return outputs.metric_outputs  # type: ignore
 
     def _get_scheduler_settings(
         self,

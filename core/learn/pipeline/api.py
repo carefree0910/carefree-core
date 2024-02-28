@@ -47,7 +47,7 @@ from ..schema import sample_weights_type
 from ..schema import IData
 from ..schema import Config
 from ..schema import DataLoader
-from ..schema import MetricsOutputs
+from ..schema import InferenceOutputs
 from ..toolkit import get_device
 from ..toolkit import is_local_rank_0
 from ..toolkit import get_torch_device
@@ -228,7 +228,7 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
         portion: float = 1.0,
         accelerator: Optional[Accelerator] = None,
         **kwargs: Any,
-    ) -> MetricsOutputs:
+    ) -> InferenceOutputs:
         return self.build_model.model.evaluate(
             self.config,
             self.build_metrics.metrics,

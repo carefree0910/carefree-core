@@ -287,7 +287,7 @@ class TestThirdParty(unittest.TestCase):
         p = cflearn.GeneralEvaluationPipeline(config, predictor)
         x, y = data.bundle.x_train, data.bundle.y_train
         test_loader = data.build_loader(x, y)
-        metrics = p.evaluate(test_loader).metric_values
+        metrics = p.evaluate(test_loader).metric_outputs.metric_values
         self.assertIn("mse", metrics)
         self.assertAlmostEqual(metrics["mse"], 0.0)
 

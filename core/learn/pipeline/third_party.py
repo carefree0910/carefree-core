@@ -7,9 +7,10 @@ from .schema import IEvaluationPipeline
 from .blocks import BuildMetricsBlock
 from ..schema import Config
 from ..schema import DataLoader
-from ..schema import MetricsOutputs
+from ..schema import InferenceOutputs
 from ..toolkit import tensor_batch_to_np
 from ..constants import INPUT_KEY
+from ..constants import LABEL_KEY
 from ..constants import PREDICTIONS_KEY
 
 
@@ -31,10 +32,17 @@ class GeneralEvaluationPipeline(IEvaluationPipeline):
         self.m = predictor
         self.metrics = b_metrics.metrics
 
-    def evaluate(self, loader: DataLoader) -> MetricsOutputs:
+    def evaluate(self, loader: DataLoader) -> InferenceOutputs:
         full_batch = tensor_batch_to_np(loader.get_full_batch())
         predictions = self.m.predict(full_batch[INPUT_KEY])
-        return self.metrics.evaluate(full_batch, {PREDICTIONS_KEY: predictions}, loader)
+        forward_results = {PREDICTIONS_KEY: predictions}
+        metric_outputs = self.metrics.evaluate(full_batch, forward_results, loader)
+        return InferenceOutputs(
+            forward_results,
+            {LABEL_KEY: full_batch[LABEL_KEY]},
+            metric_outputs,
+            loss_items=None,
+        )
 
 
 __all__ = [

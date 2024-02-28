@@ -24,13 +24,15 @@ class TestLinear(unittest.TestCase):
         pipeline = cflearn.TrainingPipeline.init(config).fit(data)
 
         learned_w = pipeline.build_model.model.m.net.weight.view(-1).detach().numpy()
-        console.log(f"> evaluation {pipeline.evaluate(data.build_loaders()[0])}")
+        evaluations = pipeline.evaluate(data.build_loaders()[0]).metric_outputs
+        console.log(f"> evaluation {evaluations}")
         console.log(f"> learned weights {learned_w}")
         console.log(f"> ground truth weights {w.ravel()}")
 
         loaded = cflearn.PipelineSerializer.load_evaluation(pipeline.config.workspace)
         loaded_w = loaded.build_model.model.m.net.weight.view(-1).detach().numpy()
-        console.log(f"> loaded evaluation {loaded.evaluate(data.build_loaders()[0])}")
+        evaluations = pipeline.evaluate(data.build_loaders()[0]).metric_outputs
+        console.log(f"> evaluation {evaluations}")
         console.log(f"> loaded weights {loaded_w}")
 
     def test_linear_custom(self) -> None:
@@ -51,13 +53,15 @@ class TestLinear(unittest.TestCase):
         pipeline = cflearn.TrainingPipeline.init(config).fit(data)
 
         learned_w = pipeline.build_model.model.m.net.weight.view(-1).detach().numpy()
-        console.log(f"> evaluation {pipeline.evaluate(data.build_loaders()[0])}")
+        evaluations = pipeline.evaluate(data.build_loaders()[0]).metric_outputs
+        console.log(f"> evaluation {evaluations}")
         console.log(f"> learned weights {learned_w}")
         console.log(f"> ground truth weights {w.ravel()}")
 
         loaded = cflearn.PipelineSerializer.load_evaluation(pipeline.config.workspace)
         loaded_w = loaded.build_model.model.m.net.weight.view(-1).detach().numpy()
-        console.log(f"> loaded evaluation {loaded.evaluate(data.build_loaders()[0])}")
+        evaluations = loaded.evaluate(data.build_loaders()[0]).metric_outputs
+        console.log(f"> evaluation {evaluations}")
         console.log(f"> loaded weights {loaded_w}")
 
     def test_linear_ddp(self) -> None:

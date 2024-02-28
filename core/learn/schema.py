@@ -837,7 +837,8 @@ class MultipleMetrics(IMetric):
 # inference
 
 
-class InferenceOutputs(NamedTuple):
+@dataclass
+class InferenceOutputs:
     forward_results: np_dict_type
     labels: np_dict_type
     metric_outputs: Optional[MetricsOutputs]
@@ -1222,7 +1223,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         accelerator: Optional[Accelerator] = None,
         forward_kwargs: Optional[Dict[str, Any]] = None,
         pad_dim: Optional[int] = None,
-    ) -> MetricsOutputs:
+    ) -> InferenceOutputs:
         outputs = inference.get_outputs(
             loader,
             portion=portion,
@@ -1247,7 +1248,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             is_positive.update(metric_outputs.is_positive)
             final_scores.append(metric_outputs.final_score)
         final_score = sum(final_scores) / len(final_scores)
-        return MetricsOutputs(final_score, metric_values, is_positive)
+        outputs.metric_outputs = MetricsOutputs(final_score, metric_values, is_positive)
+        return outputs
 
     # api
 
