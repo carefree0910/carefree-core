@@ -10,7 +10,6 @@ from typing import Any
 from typing import Dict
 from typing import List
 from typing import Type
-from typing import Tuple
 from typing import Union
 from typing import TypeVar
 from typing import Callable
@@ -42,6 +41,7 @@ from .blocks import SerializeModelBlock
 from .blocks import SerializeOptimizerBlock
 from .blocks import SerializeScriptBlock
 from .schema import IEvaluationPipeline
+from ..models import EnsembleModel
 from ..schema import device_type
 from ..schema import sample_weights_type
 from ..schema import IData
@@ -763,6 +763,8 @@ class PipelineSerializer:
         merged_states = cls._get_merged_states(p, device, ckpt_paths, states_callback)
         # load state dict
         model = p.build_model.model
+        if isinstance(model, EnsembleModel):
+            model.trim_ema(merged_states)
         model.to(device)
         model.load_state_dict(merged_states)
         return p
@@ -799,6 +801,8 @@ class PipelineSerializer:
             if not ensemble_weights:
                 p = cls._build_ensemble_pipeline(p_folder, pack_type, num_ensemble)
                 merged_states = cls._get_merged_states(p, device, ckpts, states_callback)  # type: ignore
+                if isinstance(p.build_model.model, EnsembleModel):
+                    p.build_model.model.trim_ema(merged_states)
             else:
                 fn = (
                     cls._load_inference

@@ -18,6 +18,7 @@ from ..schema import TrainStep
 from ..schema import TrainerState
 from ..schema import TrainStepLoss
 from ..modules import build_module
+from ..modules import EMA
 from ..toolkit import get_clones
 from ..constants import LOSS_KEY
 from ...toolkit.misc import safe_execute
@@ -102,7 +103,8 @@ class EnsembleModel(CommonModel):
 
     def __init__(self, m: IModel, num_repeat: int) -> None:
         super().__init__()
-        self.m = EnsembleModule(get_clones(m.m, num_repeat))
+        module = m.m.eval()
+        self.m = EnsembleModule(get_clones(module, num_repeat))
         self.model = m
         self.t_model = m.__class__
         self.config = m.config.copy()
@@ -119,6 +121,21 @@ class EnsembleModel(CommonModel):
 
     def build(self, config: Config) -> None:
         raise RuntimeError("`build` should not be called for `EnsembleModel`")
+
+    def trim_ema(self, states: tensor_dict_type) -> None:
+        def _trim(m: nn.Module) -> None:
+            for k, child in list(m.named_children()):
+                if isinstance(child, EMA):
+                    delattr(m, k)
+                else:
+                    _trim(child)
+
+        current_states = self.state_dict()
+        _trim(self.m)
+        trimmed_states = self.state_dict()
+        trimmed_keys = set(current_states) - set(trimmed_states)
+        for k in trimmed_keys:
+            states.pop(k)
 
     def forward(
         self,
