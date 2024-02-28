@@ -11,6 +11,7 @@ from typing import Tuple
 from typing import Union
 from typing import TypeVar
 from typing import Callable
+from typing import Iterable
 from typing import Optional
 from torch.nn import Module
 
@@ -28,7 +29,7 @@ from ...toolkit.types import tensor_dict_type
 
 
 TModule = TypeVar("TModule", bound=Type[Module])
-TParams = List[Tuple[str, Union[Tensor, nn.Parameter]]]
+TParams = Iterable[Tuple[str, Union[Tensor, nn.Parameter]]]
 
 module_dict: Dict[str, Type["Module"]] = {}
 
