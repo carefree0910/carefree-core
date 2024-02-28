@@ -1377,6 +1377,10 @@ def get_world_size() -> int:
     return 1 if ddp_info is None else ddp_info.world_size
 
 
+def is_fsdp() -> bool:
+    return os.environ.get("ACCELERATE_USE_FSDP", "false") == "true"
+
+
 class toggle_optimizer:
     """
     A context manager for only enabling the gradients of a module for a specific optimizer,

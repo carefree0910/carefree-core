@@ -28,12 +28,10 @@ from typing import ContextManager
 from onnxsim import simplify as onnx_simplify
 from functools import partial
 from accelerate import Accelerator
-from accelerate import DistributedType
 from contextlib import nullcontext
 from dataclasses import dataclass
 from torch.optim import Optimizer
 from torch.profiler import profile
-from accelerate.state import AcceleratorState
 from accelerate.utils import extract_model_from_parallel
 from torch.cuda.amp import autocast
 from torch.optim.lr_scheduler import _LRScheduler
@@ -43,6 +41,7 @@ from torch.utils.data import DataLoader as TorchDataLoader
 from torch.utils.data.dataloader import _BaseDataLoaderIter
 
 from .toolkit import device_type
+from .toolkit import is_fsdp
 from .toolkit import get_device
 from .toolkit import get_world_size
 from .toolkit import is_local_rank_0
@@ -1271,7 +1270,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         return self
 
     def state_dict(self, **kwargs: Any) -> tensor_dict_type:
-        if AcceleratorState().distributed_type == DistributedType.FSDP:
+        if is_fsdp():
             return self.m.state_dict(**kwargs)
         return extract_model_from_parallel(self.m).state_dict(**kwargs)
 
@@ -1282,7 +1281,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         return self.m.named_parameters()
 
     def load_state_dict(self, d: tensor_dict_type, strict: bool = True) -> None:
-        if AcceleratorState().distributed_type == DistributedType.FSDP:
+        if is_fsdp():
             self.m.load_state_dict(d, strict)
         else:
             extract_model_from_parallel(self.m).load_state_dict(d, strict)
