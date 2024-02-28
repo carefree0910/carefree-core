@@ -24,6 +24,7 @@ from typing import Optional
 from typing import NamedTuple
 from typing import ContextManager
 from pathlib import Path
+from contextlib import nullcontext
 from collections import defaultdict
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -1517,29 +1518,25 @@ class mode_context:
         self._to_train = to_train
         self._module, self._training = module, module.training
         if use_grad is None:
-            self._grad_context: Optional[ContextManager] = None
+            self._grad_context = nullcontext()
         else:
             self._grad_context = torch.enable_grad() if use_grad else torch.no_grad()
-        if use_inference is None:
-            self._inference_context: Optional[ContextManager] = None
+        if use_inference is None or not use_inference:
+            self._inference_context = nullcontext()
         else:
-            self._inference_context = torch.inference_mode(use_inference)
+            self._inference_context = torch.inference_mode()
 
     def __enter__(self) -> None:
         if self._to_train is not None:
             self._module.train(mode=self._to_train)
-        if self._grad_context is not None:
-            self._grad_context.__enter__()
-        if self._inference_context is not None:
-            self._inference_context.__enter__()
+        self._grad_context.__enter__()
+        self._inference_context.__enter__()
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         if self._to_train is not None:
             self._module.train(mode=self._training)
-        if self._inference_context is not None:
-            self._inference_context.__exit__(exc_type, exc_val, exc_tb)
-        if self._grad_context is not None:
-            self._grad_context.__exit__(exc_type, exc_val, exc_tb)
+        self._inference_context.__exit__(exc_type, exc_val, exc_tb)
+        self._grad_context.__exit__(exc_type, exc_val, exc_tb)
 
 
 class train_context(mode_context):

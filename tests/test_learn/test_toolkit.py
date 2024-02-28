@@ -295,7 +295,7 @@ class TestToolkit(unittest.TestCase):
         x = torch.tensor([[1.0, 2.0, 3.0]], requires_grad=True)
         linear = nn.Linear(3, 1)
         y = linear(x)
-        with eval_context(linear):
+        with eval_context(linear, use_inference=False):
             z = linear(x)
         self.assertTrue(x.requires_grad)
         self.assertTrue(y.requires_grad)
