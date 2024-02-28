@@ -212,6 +212,10 @@ class _InferenceMixin:
         self.build_model.model.from_accelerator(*ms)
         return accelerator, loader
 
+    def prepare_distributed_with(self, accelerator: Accelerator) -> None:
+        ms = accelerator.prepare(*self.build_model.model.all_modules)
+        self.build_model.model.from_accelerator(*ms)
+
 
 class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
     config: Config
