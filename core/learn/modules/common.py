@@ -145,8 +145,8 @@ class EMA(Module):
         return self
 
     def rehook(self, named_parameters: TParams) -> None:
-        states = {k: v for k, v in get_tgt_params(named_parameters)}
-        self.tgt_params = [[k, states[k]] for k, _ in self.tgt_params]
+        new_params = get_tgt_params(named_parameters)
+        self.tgt_params = [[a[0], b[1]] for a, b in zip(self.tgt_params, new_params)]
 
     def extra_repr(self) -> str:
         max_str_len = max(len(name) for name, _ in self.tgt_params)
