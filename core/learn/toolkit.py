@@ -22,7 +22,6 @@ from typing import TypeVar
 from typing import Callable
 from typing import Optional
 from typing import NamedTuple
-from typing import ContextManager
 from pathlib import Path
 from contextlib import nullcontext
 from collections import defaultdict
