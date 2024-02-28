@@ -123,46 +123,51 @@ class TestModules(unittest.TestCase):
         gt = p1.data
         gt = decay * gt + (1.0 - decay) * p2.data
         gt = decay * gt + (1.0 - decay) * p3.data
-        ema = cflearn.EMA(decay, [("test", p1)])
-        p1.data = p2.data
-        ema()
-        p1.data = p3.data
-        ema()
-        ema.eval()
-        ema.train()
-        ema.eval()
-        ema.train()
-        ema.eval()
-        torch.testing.assert_close(p1.data, gt.data)
-        ema.train()
-        ema.eval()
-        ema.train()
-        ema.eval()
-        ema.train()
-        torch.testing.assert_close(p1.data, p3.data)
-        ema.eval()
-        ema.eval()
-        ema.train()
-        ema.train()
-        ema.eval()
-        ema.eval()
-        torch.testing.assert_close(p1.data, gt.data)
-        ema.train()
-        ema.train()
-        ema.eval()
-        ema.eval()
-        ema.train()
-        ema.train()
-        torch.testing.assert_close(p1.data, p3.data)
-        with cflearn.eval_context(ema):
-            torch.testing.assert_close(p1.data, gt.data)
-        torch.testing.assert_close(p1.data, p3.data)
-        str(ema)
-        ema = cflearn.EMA(decay, [("test", p1)], use_num_updates=True)
-        ema()
-        with cflearn.eval_context(ema):
-            with self.assertRaises(RuntimeError):
-                ema()
+        for p in [p1, p1.data]:
+            if not isinstance(p, nn.Parameter):
+                p = p.clone()
+            else:
+                p = nn.Parameter(p.data.clone())
+            ema = cflearn.EMA(decay, [("test", p)])
+            p.data = p2.data
+            ema()
+            p.data = p3.data
+            ema()
+            ema.eval()
+            ema.train()
+            ema.eval()
+            ema.train()
+            ema.eval()
+            torch.testing.assert_close(p.data, gt.data)
+            ema.train()
+            ema.eval()
+            ema.train()
+            ema.eval()
+            ema.train()
+            torch.testing.assert_close(p.data, p3.data)
+            ema.eval()
+            ema.eval()
+            ema.train()
+            ema.train()
+            ema.eval()
+            ema.eval()
+            torch.testing.assert_close(p.data, gt.data)
+            ema.train()
+            ema.train()
+            ema.eval()
+            ema.eval()
+            ema.train()
+            ema.train()
+            torch.testing.assert_close(p.data, p3.data)
+            with cflearn.eval_context(ema):
+                torch.testing.assert_close(p.data, gt.data)
+            torch.testing.assert_close(p.data, p3.data)
+            str(ema)
+            ema = cflearn.EMA(decay, [("test", p)], use_num_updates=True)
+            ema()
+            with cflearn.eval_context(ema):
+                with self.assertRaises(RuntimeError):
+                    ema()
 
     def test_ema_training(self) -> None:
         dim = 11
