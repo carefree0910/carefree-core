@@ -206,14 +206,11 @@ class _InferenceMixin:
         # return
         return results
 
-    def prepare_distributed(self, loader: DataLoader) -> Tuple[Accelerator, DataLoader]:
-        accelerator = Accelerator()
-        loader, *ms = accelerator.prepare(loader, *self.build_model.model.all_modules)
-        self.build_model.model.from_accelerator(*ms)
-        return accelerator, loader
-
     def prepare_distributed_with(self, accelerator: Accelerator) -> None:
-        ms = accelerator.prepare(*self.build_model.model.all_modules)
+        all_modules = self.build_model.model.all_modules
+        ms = accelerator.prepare(*all_modules)
+        if len(all_modules) == 1:
+            ms = [ms]
         self.build_model.model.from_accelerator(*ms)
 
 
