@@ -1445,7 +1445,7 @@ class TrainerState:
         self.num_step_per_snapshot = num_step_per_snapshot
         self.max_step_per_snapshot = max_step_per_snapshot
         self.min_snapshot_epoch_gap = min_snapshot_epoch_gap
-        self._last_step = None
+        self._last_step: Optional[int] = None
         self._previous_snapshot_epoch = 0
 
     def set_terminate(self) -> None:
