@@ -5,7 +5,7 @@ from typing import Optional
 from ..schema import IData
 from ..schema import IDataset
 from ..schema import DataBundle
-from ..schema import TDatasets
+from ..schema import TDs
 from ..toolkit import np_batch_to_tensor
 from ..constants import INPUT_KEY
 from ..constants import LABEL_KEY
@@ -56,7 +56,7 @@ class ArrayDictDataset(IDataset):
 
 @IData.register("array")
 class ArrayData(IData["ArrayData", ArrayDataset]):
-    def to_datasets(self, bundle: DataBundle) -> TDatasets:
+    def to_datasets(self, bundle: DataBundle, *, for_inference: Optional[bool]) -> TDs:
         train_dataset = ArrayDataset(bundle.x_train, bundle.y_train)
         if bundle.x_valid is None:
             valid_dataset = None
@@ -67,7 +67,7 @@ class ArrayData(IData["ArrayData", ArrayDataset]):
 
 @IData.register("array_dict")
 class ArrayDictData(IData["ArrayDictData", ArrayDictDataset]):
-    def to_datasets(self, bundle: DataBundle) -> TDatasets:
+    def to_datasets(self, bundle: DataBundle, *, for_inference: Optional[bool]) -> TDs:
         if not isinstance(bundle.x_train, dict):
             msg = f"`bundle.x_train` must be a `dict`, got {type(bundle.x_train)}"
             raise ValueError(msg)

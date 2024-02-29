@@ -88,7 +88,7 @@ T_d = TypeVar("T_d", bound="IData", covariant=True)
 TData = TypeVar("TData", bound="IData", covariant=True)
 TDataset = TypeVar("TDataset", bound="IDataset", covariant=True)
 TSplitSW = Tuple[Optional[np.ndarray], Optional[np.ndarray]]
-TDatasets = Tuple["IDataset", Optional["IDataset"]]
+TDs = Tuple["IDataset", Optional["IDataset"]]
 TDataLoaders = Tuple["DataLoader", Optional["DataLoader"]]
 T_db = TypeVar("T_db", bound="IDataBlock", covariant=True)
 TDataBlock = TypeVar("TDataBlock", bound="IDataBlock", covariant=True)
@@ -462,7 +462,7 @@ class IData(  # type: ignore
     # abstract
 
     @abstractmethod
-    def to_datasets(self, bundle: DataBundle) -> TDatasets:
+    def to_datasets(self, bundle: DataBundle, *, for_inference: Optional[bool]) -> TDs:
         pass
 
     # inheritance
@@ -605,7 +605,7 @@ class IData(  # type: ignore
     ) -> DataLoader:
         self._check_ready("build_loader")
         bundle = self.transform(x, y)
-        dataset = self.to_datasets(bundle)[0]
+        dataset = self.to_datasets(bundle, for_inference=for_inference)[0]
         loader = self.to_loader(
             dataset,
             shuffle=shuffle,
@@ -625,7 +625,8 @@ class IData(  # type: ignore
                 "`bundle` property is not initialized, "
                 "did you forget to call the `fit` method first?"
             )
-        self.train_dataset, self.valid_dataset = self.to_datasets(self.bundle)
+        datasets = self.to_datasets(self.bundle, for_inference=for_inference)
+        self.train_dataset, self.valid_dataset = datasets
         train_loader = self.to_loader(
             self.train_dataset,
             shuffle=self.config.shuffle_train,
