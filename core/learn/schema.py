@@ -1445,9 +1445,11 @@ class TrainerState:
         self.num_step_per_snapshot = num_step_per_snapshot
         self.max_step_per_snapshot = max_step_per_snapshot
         self.min_snapshot_epoch_gap = min_snapshot_epoch_gap
+        self._last_step = None
         self._previous_snapshot_epoch = 0
 
     def set_terminate(self) -> None:
+        self._last_step = self.step
         self.step = self.epoch = -1
 
     def update_snapshot_epoch(self) -> None:
@@ -1466,6 +1468,10 @@ class TrainerState:
             "num_step_per_snapshot": self.num_step_per_snapshot,
             "max_step_per_snapshot": self.max_step_per_snapshot,
         }
+
+    @property
+    def last_step(self) -> int:
+        return self.step if self._last_step is None else self._last_step
 
     @property
     def is_terminate(self) -> bool:
