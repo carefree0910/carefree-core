@@ -537,14 +537,12 @@ class IData(  # type: ignore
         loader.data = self
         loader.for_inference = for_inference
         if self.config.bypass_collate_fn:
+            # this is useful when collation is already done in the `__getitems__` method
             collate_fn = lambda x: x
         else:
             collate_fn = loader.collate_fn
         process_fn = partial(self.process_batch, for_inference=for_inference)
         loader.collate_fn = lambda x: process_fn(collate_fn(x))
-        # this is useful when collation is already done in the `__getitems__` method
-        if self.config.bypass_collate_fn:
-            loader.collate_fn = lambda x: x
         return loader
 
     def get_bundle(
