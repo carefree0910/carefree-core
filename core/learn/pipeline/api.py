@@ -646,6 +646,11 @@ class PipelineSerializer:
             for block in pipeline.blocks:
                 block.load_from(folder_path / block.__identifier__)
             pipeline.after_load()
+            # hijacks
+            serialize_model = pipeline.try_get_block(SerializeModelBlock)
+            if serialize_model is not None:
+                serialize_model.ckpt_folder = None
+                serialize_model.ckpt_scores = None
         return pipeline
 
     @classmethod
