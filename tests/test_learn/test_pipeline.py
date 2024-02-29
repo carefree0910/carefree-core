@@ -124,6 +124,31 @@ class TestPipeline(unittest.TestCase):
         with self.assertRaises(ValueError):
             cflearn.PipelineSerializer._fuse_multiple(ws, cflearn.PackType.TRAINING)
 
+    def test_fuse_ema(self):
+        @cflearn.register_module("fcnn_ema")
+        class _(cflearn.FCNN):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.ema = cflearn.EMA.hook(self, 0.71)
+
+        data, in_dim, out_dim, _ = cflearn.testing.linear_data()
+        config = cflearn.Config(
+            module_name="fcnn_ema",
+            module_config=dict(input_dim=in_dim, output_dim=out_dim),
+            loss_name="mse",
+        )
+        config.to_debug().num_steps = 5
+        p0 = cflearn.TrainingPipeline.init(config).fit(data)
+        p1 = cflearn.TrainingPipeline.init(config).fit(data)
+        x, y = data.bundle.x_train, data.bundle.y_train
+        test_loader = data.build_loader(x, y)
+        r0 = p0.predict(test_loader)[cflearn.PREDICTIONS_KEY]
+        r1 = p1.predict(test_loader)[cflearn.PREDICTIONS_KEY]
+        ws = [p0.config.workspace, p1.config.workspace]
+        pf = cflearn.PipelineSerializer.fuse_inference(ws)
+        rf = pf.predict(test_loader)[cflearn.PREDICTIONS_KEY]
+        np.testing.assert_array_almost_equal(0.5 * (r0 + r1), rf)
+
     def test_self_ensemble(self):
         self_ensemble = cflearn.PipelineSerializer.self_ensemble_inference
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()

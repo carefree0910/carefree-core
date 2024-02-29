@@ -21,6 +21,7 @@ from ..modules import build_module
 from ..modules import EMA
 from ..toolkit import get_clones
 from ..constants import LOSS_KEY
+from ..modules.common import get_tgt_params
 from ...toolkit.misc import safe_execute
 from ...toolkit.types import tensor_dict_type
 
@@ -103,8 +104,7 @@ class EnsembleModel(CommonModel):
 
     def __init__(self, m: IModel, num_repeat: int) -> None:
         super().__init__()
-        module = m.m.eval()
-        self.m = EnsembleModule(get_clones(module, num_repeat))
+        self.m = EnsembleModule(get_clones(m.m, num_repeat))
         self.model = m
         self.t_model = m.__class__
         self.config = m.config.copy()
@@ -122,20 +122,21 @@ class EnsembleModel(CommonModel):
     def build(self, config: Config) -> None:
         raise RuntimeError("`build` should not be called for `EnsembleModel`")
 
-    def trim_ema(self, states: tensor_dict_type) -> None:
-        def _trim(m: nn.Module) -> None:
+    def rehook_ema(self) -> None:
+        def _fetch(m: nn.Module, prefix: str) -> None:
             for k, child in list(m.named_children()):
-                if isinstance(child, EMA):
-                    delattr(m, k)
+                if not isinstance(child, EMA):
+                    _fetch(child, f"{prefix}.{k}" if prefix else k)
                 else:
-                    _trim(child)
+                    emas[f"{prefix}.{k}"] = child
 
-        current_states = self.state_dict()
-        _trim(self.m)
-        trimmed_states = self.state_dict()
-        trimmed_keys = set(current_states) - set(trimmed_states)
-        for k in trimmed_keys:
-            states.pop(k)
+        emas: Dict[str, EMA] = {}
+        _fetch(self.m, "")
+        for k, ema in emas.items():
+            idx = int(k.split(".")[0])
+            idx_module = self.m[idx]
+            idx_named_parameters = idx_module.named_parameters()
+            ema.tgt_params = get_tgt_params(idx_named_parameters)
 
     def forward(
         self,

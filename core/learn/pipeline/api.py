@@ -775,7 +775,7 @@ class PipelineSerializer:
         # load state dict
         model = p.build_model.model
         if isinstance(model, EnsembleModel):
-            model.trim_ema(merged_states)
+            model.rehook_ema()
         model.to(device)
         model.load_state_dict(merged_states)
         return p
@@ -813,7 +813,7 @@ class PipelineSerializer:
                 p = cls._build_ensemble_pipeline(p_folder, pack_type, num_ensemble)
                 merged_states = cls._get_merged_states(p, device, ckpts, states_callback)  # type: ignore
                 if isinstance(p.build_model.model, EnsembleModel):
-                    p.build_model.model.trim_ema(merged_states)
+                    p.build_model.model.rehook_ema()
             else:
                 fn = (
                     cls._load_inference
