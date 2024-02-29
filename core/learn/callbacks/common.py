@@ -171,15 +171,18 @@ class WandBCallback(TrainerCallback):
             wandb.login(anonymous=self._anonymous, relogin=self._relogin)
             wandb.init(**self.init_kwargs)
 
-    def _wandb_step(self, step: Optional[int]) -> Optional[int]:
-        return None if step == -1 else step
+    def _wandb_step(self, state: TrainerState) -> int:
+        step = state.last_step
+        if state.is_terminate:
+            step += 1
+        return step
 
     def before_loop(self, trainer: ITrainer) -> None:
         if self.is_local_rank_0:
             self.log_artifacts(trainer)
 
     def log_lr(self, key: str, lr: float, state: TrainerState) -> None:
-        wandb.log({key: lr}, step=self._wandb_step(state.step))
+        wandb.log({key: lr}, step=self._wandb_step(state))
 
     def log_train_step(self, step_outputs: StepOutputs, state: TrainerState) -> None:
         if state.should_log_losses:
@@ -188,7 +191,7 @@ class WandBCallback(TrainerCallback):
     def log_metrics(self, metric_outputs: MetricsOutputs, state: TrainerState) -> None:
         metrics = shallow_copy_dict(metric_outputs.metric_values)
         metrics["score"] = metric_outputs.final_score
-        wandb.log(metrics, step=self._wandb_step(state.step))
+        wandb.log(metrics, step=self._wandb_step(state))
 
     def log_artifacts(self, trainer: ITrainer) -> None:
         if self._log_histograms:
@@ -199,8 +202,7 @@ class WandBCallback(TrainerCallback):
             }
             for k, v in m.named_buffers():
                 hists[k] = wandb.Histogram(v.detach().cpu().numpy())
-            step = None if trainer.state is None else trainer.state.step
-            wandb.log(hists, step=self._wandb_step(step))
+            wandb.log(hists, step=self._wandb_step(trainer.state))
         if self._log_artifacts:
             wandb.log_artifact(trainer.workspace)
 
