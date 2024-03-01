@@ -962,15 +962,19 @@ class SerializeScriptBlock(Block):
         pass
 
     def save_extra(self, folder: TPath) -> None:
-        folder = to_path(folder)
-        folder.mkdir(parents=True, exist_ok=True)
         frame = inspect.currentframe()
         if frame is None:
             return None
         while frame.f_back is not None:
             frame = frame.f_back
-        with (folder / self.script_file).open("w") as f:
-            f.write(inspect.getsource(frame))
+        try:
+            source = inspect.getsource(frame)
+            folder = to_path(folder)
+            folder.mkdir(parents=True, exist_ok=True)
+            with (folder / self.script_file).open("w") as f:
+                f.write(source)
+        except Exception as err:
+            console.warn(f"failed to save source script: {err}")
 
 
 __all__ = [
