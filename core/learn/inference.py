@@ -72,24 +72,32 @@ class Inference(IInference):
         use_tqdm: bool = False,
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
-        pad_dim: Optional[int] = None,
+        pad_dim: Optional[Union[int, Dict[str, int]]] = None,
         **kwargs: Any,
     ) -> InferenceOutputs:
+        def get_pad_dim(k: str) -> Optional[int]:
+            return (
+                None
+                if pad_dim is None
+                else pad_dim if isinstance(pad_dim, int) else pad_dim.get(k)
+            )
+
         def pad(k: str, arrays: List[np.ndarray]) -> List[np.ndarray]:
-            if pad_dim is None:
+            k_pad_dim = get_pad_dim(k)
+            if k_pad_dim is None:
                 return arrays
             padded = []
-            max_shape = max([array.shape[pad_dim] for array in arrays])
-            if all(array.shape[pad_dim] == max_shape for array in arrays):
+            max_shape = max([array.shape[k_pad_dim] for array in arrays])
+            if all(array.shape[k_pad_dim] == max_shape for array in arrays):
                 return arrays
             if is_local_rank_0():
                 console.warn(
-                    f"padding '{k}' at dim {pad_dim} to {max_shape}, please perform "
+                    f"padding '{k}' at dim {k_pad_dim} to {max_shape}, please perform "
                     "post-processing to remove the paddings if necessary."
                 )
             for array in arrays:
                 i_paddings = [[0, 0] for _ in range(array.ndim)]
-                i_paddings[pad_dim][1] = max_shape - array.shape[pad_dim]
+                i_paddings[k_pad_dim][1] = max_shape - array.shape[k_pad_dim]
                 padded.append(np.pad(array, i_paddings))
             return padded
 
@@ -105,8 +113,17 @@ class Inference(IInference):
 
         def to_np_batch(tensors: tensor_dict_type) -> np_dict_type:
             if accelerator is not None:
-                if pad_dim is not None:
+                if isinstance(pad_dim, int):
                     tensors = accelerator.pad_across_processes(tensors, dim=pad_dim)
+                elif isinstance(pad_dim, dict):
+                    new = {}
+                    for k, v in tensors.items():
+                        k_pad_dim = pad_dim.get(k)
+                        if k_pad_dim is None:
+                            new[k] = v
+                        else:
+                            new[k] = accelerator.pad_across_processes(v, dim=k_pad_dim)
+                    tensors = new
                 tensors = accelerator.gather_for_metrics(tensors)
             return tensor_batch_to_np(tensors)
 
