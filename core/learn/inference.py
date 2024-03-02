@@ -193,10 +193,17 @@ class Inference(IInference):
                         if v is not None and k.endswith(LABEL_KEY):
                             all_labels.setdefault(k, []).append(v)
                 if metrics is not None and metrics.requires_all:
-                    if np_batch is None:
-                        np_batch = to_np_batch(tensor_batch)
-                    for k, v in np_batch.items():
-                        if v is not None and metrics.requires(k):
+                    if np_batch is not None:
+                        for k, v in np_batch.items():
+                            if v is not None and metrics.requires(k):
+                                all_metrics_requires.setdefault(k, []).append(v)
+                    else:
+                        required_tensor_batch = {}
+                        for k, v in tensor_batch.items():
+                            if v is not None and metrics.requires(k):
+                                required_tensor_batch[k] = v
+                        required_np_batch = to_np_batch(required_tensor_batch)
+                        for k, v in required_np_batch.items():
                             all_metrics_requires.setdefault(k, []).append(v)
 
             # stack
