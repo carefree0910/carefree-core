@@ -76,6 +76,7 @@ class Inference(IInference):
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
+        verbose: bool = True,
         **kwargs: Any,
     ) -> InferenceOutputs:
         def get_pad_dim(k: str) -> Optional[int]:
@@ -93,7 +94,7 @@ class Inference(IInference):
             max_shape = max([array.shape[k_pad_dim] for array in arrays])
             if all(array.shape[k_pad_dim] == max_shape for array in arrays):
                 return arrays
-            if is_local_rank_0():
+            if verbose and is_local_rank_0():
                 console.warn(
                     f"padding '{k}' at dim {k_pad_dim} to {max_shape}, please perform "
                     "post-processing to remove the paddings if necessary."
