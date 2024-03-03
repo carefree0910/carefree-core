@@ -23,6 +23,8 @@ from typing import Callable
 from typing import Optional
 from typing import NamedTuple
 from pathlib import Path
+from accelerate import PartialState
+from accelerate import DistributedType
 from contextlib import nullcontext
 from collections import defaultdict
 from collections import OrderedDict
@@ -1378,7 +1380,7 @@ def get_world_size() -> int:
 
 
 def is_fsdp() -> bool:
-    return os.environ.get("ACCELERATE_USE_FSDP", "false") == "true"
+    return PartialState().distributed_type == DistributedType.FSDP
 
 
 class toggle_optimizer:
