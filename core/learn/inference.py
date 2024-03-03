@@ -25,6 +25,7 @@ from .toolkit import is_local_rank_0
 from .toolkit import tensor_batch_to_np
 from .toolkit import ONNX
 from .constants import LABEL_KEY
+from .constants import PREDICTIONS_KEY
 from ..toolkit import console
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.array import to_device
@@ -67,6 +68,7 @@ class Inference(IInference):
         metrics: Optional[IMetric] = None,
         use_losses_as_metrics: bool = False,
         return_outputs: bool = True,
+        target_outputs: Union[str, List[str]] = PREDICTIONS_KEY,
         return_labels: bool = False,
         stack_outputs: bool = True,
         use_tqdm: bool = False,
@@ -182,7 +184,12 @@ class Inference(IInference):
                 # gather
                 if gather_np:
                     if np_outputs is None:
-                        np_outputs = to_np_batch(tensor_outputs)  # type: ignore
+                        target_tensor_outputs = {
+                            k: v
+                            for k, v in tensor_outputs.items()  # type: ignore
+                            if k in target_outputs
+                        }
+                        np_outputs = to_np_batch(target_tensor_outputs)
                     for k, v in np_outputs.items():
                         if v is not None:
                             all_np_outputs.setdefault(k, []).append(v)
@@ -279,6 +286,8 @@ class Inference(IInference):
             in_step = False
 
         use_grad = kwargs.pop("use_grad", self.use_grad_in_predict)
+        if isinstance(target_outputs, str):
+            target_outputs = [target_outputs]
         try:
             return run()
         except KeyboardInterrupt:
