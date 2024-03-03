@@ -194,7 +194,7 @@ class Inference(IInference):
                 # gather
                 if gather_np:
                     if np_outputs is not None:
-                        np_outputs = {
+                        target_np_outputs = {
                             key: array
                             for key, array in np_outputs.items()
                             if key in target_outputs
@@ -205,8 +205,8 @@ class Inference(IInference):
                             for k, v in tensor_outputs.items()  # type: ignore
                             if k in target_outputs
                         }
-                        np_outputs = to_np_batch(target_tensor_outputs)
-                    for k, v in np_outputs.items():
+                        target_np_outputs = to_np_batch(target_tensor_outputs)
+                    for k, v in target_np_outputs.items():
                         if v is not None:
                             all_np_outputs.setdefault(k, []).append(v)
                 if return_labels:
