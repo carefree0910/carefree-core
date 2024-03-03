@@ -152,7 +152,7 @@ class _InferenceMixin:
         return_classes: bool = False,
         binary_threshold: float = 0.5,
         return_probabilities: bool = False,
-        recover_labels: Optional[bool] = None,
+        recover_labels: bool = True,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[int] = None,
         **kwargs: Any,
@@ -165,6 +165,7 @@ class _InferenceMixin:
             )
         kw = shallow_copy_dict(kwargs)
         kw["loader"] = loader
+        kw["recover_labels"] = recover_labels
         kw["accelerator"] = accelerator
         kw["pad_dim"] = pad_dim
         outputs = safe_execute(self.build_inference.inference.get_outputs, kw)
@@ -192,15 +193,6 @@ class _InferenceMixin:
                 else:
                     classes = (probabilities[..., [1]] >= binary_threshold).astype(int)
                     results[PREDICTIONS_KEY] = classes
-        # handle recover labels
-        if recover_labels is None:
-            recover_labels = self.data is not None
-        if recover_labels:
-            if self.data is None:
-                msg = "`recover_labels` is set to `True` but `data` is not provided"
-                raise RuntimeError(msg)
-            y = results[PREDICTIONS_KEY]
-            results[PREDICTIONS_KEY] = self.data.recover_labels(y)
         # optional callback
         results = self.predict_callback(results)
         # return
@@ -226,6 +218,7 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
         loader: DataLoader,
         *,
         portion: float = 1.0,
+        recover_labels: bool = True,
         return_outputs: bool = False,
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
@@ -239,6 +232,7 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
             self.build_inference.inference,
             loader,
             portion=portion,
+            recover_labels=recover_labels,
             return_outputs=return_outputs,
             use_inference_mode=use_inference_mode,
             accelerator=accelerator,

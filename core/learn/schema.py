@@ -218,6 +218,7 @@ class DataLoader(TorchDataLoader):
     data: "IData"
     dataset: IDataset
     for_inference: bool
+    recover_labels: Callable[[Tensor], Tensor]
 
     def __iter__(self) -> _BaseDataLoaderIter:
         self.dataset.reset(for_inference=self.for_inference)
@@ -420,7 +421,7 @@ class IDataBlock(  # type: ignore
         return batch
 
     ## changes can happen inplace
-    def recover_labels(self, y: np.ndarray) -> np.ndarray:
+    def recover_labels(self, y: Tensor) -> Tensor:
         return y
 
 
@@ -543,6 +544,7 @@ class IData(  # type: ignore
             collate_fn = loader.collate_fn
         process_fn = partial(self.process_batch, for_inference=for_inference)
         loader.collate_fn = lambda x: process_fn(collate_fn(x))
+        loader.recover_labels = self.recover_labels
         return loader
 
     def get_bundle(
@@ -655,7 +657,7 @@ class IData(  # type: ignore
         return batch
 
     ## changes can happen inplace
-    def recover_labels(self, y: np.ndarray) -> np.ndarray:
+    def recover_labels(self, y: Tensor) -> Tensor:
         for block in self.blocks[::-1]:
             y = block.recover_labels(y)
         return y
@@ -872,6 +874,7 @@ class IInference(ABC):
         portion: float = 1.0,
         metrics: Optional[IMetric] = None,
         use_losses_as_metrics: bool = False,
+        recover_labels: bool = True,
         return_outputs: bool = True,
         stack_outputs: bool = True,
         use_tqdm: bool = False,
@@ -1230,6 +1233,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         *,
         portion: float = 1.0,
         state: Optional["TrainerState"] = None,
+        recover_labels: bool = True,
         return_outputs: bool = False,
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
@@ -1242,6 +1246,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             portion=portion,
             metrics=metrics,
             use_losses_as_metrics=config.use_losses_as_metrics,  # type: ignore
+            recover_labels=recover_labels,
             return_outputs=return_outputs,
             use_inference_mode=use_inference_mode,
             accelerator=accelerator,

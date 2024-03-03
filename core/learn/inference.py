@@ -70,6 +70,7 @@ class Inference(IInference):
         use_losses_as_metrics: bool = False,
         return_outputs: bool = True,
         target_outputs: Union[str, List[str]] = PREDICTIONS_KEY,
+        recover_labels: bool = True,
         return_labels: bool = False,
         target_labels: Union[str, List[str]] = LABEL_KEY,
         stack_outputs: bool = True,
@@ -172,6 +173,11 @@ class Inference(IInference):
                         )
                     Flag.in_step = False
                     tensor_outputs = step_outputs.forward_results
+                    if recover_labels:
+                        for k, v in tensor_outputs.items():
+                            if v is not None and k in need_recover:
+                                v = loader.recover_labels(v)
+                                tensor_outputs[k] = v
                     if use_losses_as_metrics:
                         for k, v in step_outputs.loss_tensors.items():
                             loss_tensors_lists.setdefault(k, []).append(v)
@@ -300,6 +306,7 @@ class Inference(IInference):
             target_outputs = [target_outputs]
         if isinstance(target_labels, str):
             target_labels = [target_labels]
+        need_recover = target_outputs + target_labels
         try:
             return run()
         except KeyboardInterrupt:
