@@ -75,6 +75,7 @@ class Inference(IInference):
         target_labels: Union[str, List[str]] = LABEL_KEY,
         stack_outputs: bool = True,
         use_tqdm: bool = False,
+        tqdm_kwargs: Optional[Dict[str, Any]] = None,
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
@@ -143,8 +144,7 @@ class Inference(IInference):
             device = None if self.model is None else get_device(self.model)
             iterator = enumerate(loader)
             if use_tqdm:
-                total = math.floor(len(loader) * portion)
-                iterator = tqdm(iterator, "inference", total)
+                iterator = tqdm(iterator, **tqdm_kwargs)
             gather_np = return_outputs or (metrics is not None and metrics.requires_all)
             remainder = -1
             for i, tensor_batch in iterator:
@@ -307,6 +307,11 @@ class Inference(IInference):
         if isinstance(target_labels, str):
             target_labels = [target_labels]
         need_recover = target_outputs + target_labels
+        if tqdm_kwargs is None:
+            tqdm_kwargs = {}
+        tqdm_kwargs = shallow_copy_dict(tqdm_kwargs)
+        tqdm_kwargs.setdefault("desc", "inference")
+        tqdm_kwargs.setdefault("total", math.floor(len(loader) * portion))
         try:
             return run()
         except KeyboardInterrupt:

@@ -503,9 +503,12 @@ class Trainer(ITrainer):
 
     # `loader` is distributed loader
     def _get_metrics(self, loader: DataLoader, portion: float = 1.0) -> MetricsOutputs:
-        if self.use_tqdm_in_validation:
-            loader = tqdm(
-                loader,
+        if not self.use_tqdm_in_validation:
+            use_tqdm = False
+            tqdm_kwargs = None
+        else:
+            use_tqdm = True
+            tqdm_kwargs = dict(
                 total=math.ceil(len(loader) * portion),
                 position=self.tqdm_settings.position
                 + int(self.tqdm_settings.use_tqdm)
@@ -519,6 +522,8 @@ class Trainer(ITrainer):
             loader,
             portion=portion,
             state=self.state,
+            use_tqdm=use_tqdm,
+            tqdm_kwargs=tqdm_kwargs,
             accelerator=self.accelerator,
             **(self.config.metric_forward_kwargs or {}),
         )
