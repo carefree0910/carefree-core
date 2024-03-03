@@ -14,12 +14,14 @@ from typing import Callable
 from typing import Optional
 from typing import NamedTuple
 from collections import Counter
+from accelerate.utils import wait_for_everyone
 from multiprocessing.shared_memory import SharedMemory
 from numpy.lib.stride_tricks import as_strided
 
 from .misc import to_path
 from .misc import random_hash
 from .misc import get_file_size
+from .misc import only_execute_on_rank0
 from .misc import timeit
 from .types import TPath
 from .types import TArray
@@ -667,6 +669,7 @@ class NpSafeSerializer:
     array_file = "array.npy"
 
     @classmethod
+    @only_execute_on_rank0
     def save(cls, folder: TPath, data: np.ndarray, *, verbose: bool = True) -> None:
         folder = to_path(folder)
         folder.mkdir(parents=True, exist_ok=True)
@@ -686,11 +689,14 @@ class NpSafeSerializer:
         folder: TPath,
         *,
         mmap_mode: Optional[str] = None,
+        should_wait: bool = False,
         no_load: bool = False,
         **kwargs: Any,
     ) -> Optional[np.ndarray]:
         folder = to_path(folder)
         array_path = folder / cls.array_file
+        if should_wait:
+            wait_for_everyone()
         if not array_path.exists():
             return None
         size_path = folder / cls.size_file
@@ -714,17 +720,35 @@ class NpSafeSerializer:
         init_fn: Callable[[], np.ndarray],
         *,
         mmap_mode: Optional[str] = None,
+        should_wait: bool = False,
         no_load: bool = False,
         verbose: bool = True,
         **kwargs: Any,
     ) -> np.ndarray:
-        array = cls.try_load(folder, mmap_mode=mmap_mode, no_load=no_load, **kwargs)
+        array = cls.try_load(
+            folder,
+            mmap_mode=mmap_mode,
+            should_wait=should_wait,
+            no_load=no_load,
+            **kwargs,
+        )
+        if should_wait:
+            wait_for_everyone()
         if array is None:
+            if not should_wait:
+                raise RuntimeError(
+                    "`should_wait` is set to False but the array is not found "
+                    f"under '{folder}', which is dangerous. Please either set "
+                    "`should_wait` to True (and make sure all ranks will call "
+                    "this function), or use `save` method (on all ranks) to save "
+                    "the array first, then call this function again."
+                )
             array = init_fn()
             cls.save(folder, array, verbose=verbose)
         return array
 
     @classmethod
+    @only_execute_on_rank0
     def cleanup(cls, folder: TPath) -> None:
         folder = to_path(folder)
         (folder / cls.array_file).unlink(missing_ok=True)
