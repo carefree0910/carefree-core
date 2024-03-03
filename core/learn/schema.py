@@ -218,11 +218,13 @@ class DataLoader(TorchDataLoader):
     data: "IData"
     dataset: IDataset
     for_inference: bool
-    recover_labels: Callable[[Tensor], Tensor]
 
     def __iter__(self) -> _BaseDataLoaderIter:
         self.dataset.reset(for_inference=self.for_inference)
         return super().__iter__()
+
+    def recover_labels(self, y: Tensor) -> Tensor:
+        return self.data.recover_labels(y)
 
     def get_one_batch(self, device: device_type = None) -> tensor_dict_type:
         batch = next(iter(self))
@@ -544,7 +546,6 @@ class IData(  # type: ignore
             collate_fn = loader.collate_fn
         process_fn = partial(self.process_batch, for_inference=for_inference)
         loader.collate_fn = lambda x: process_fn(collate_fn(x))
-        loader.recover_labels = self.recover_labels
         return loader
 
     def get_bundle(
