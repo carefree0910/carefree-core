@@ -732,6 +732,16 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
     # optional callbacks
 
     @property
+    def not_include_in_score(self) -> bool:
+        """
+        Sometimes we may want to get some statistics from the predictions, but
+        don't want to include them in the final score. In this case, we can
+        set this property to `True`.
+        """
+
+        return False
+
+    @property
     def requires_all(self) -> bool:
         """
         Specify whether this Metric needs 'all' data.
@@ -825,12 +835,17 @@ class MultipleMetrics(IMetric):
         is_positive: Dict[str, bool] = {}
         for metric in self.metrics:
             metric_outputs = metric.evaluate(np_batch, np_outputs, loader)
-            w = self.weights.get(metric.__identifier__, 1.0)
-            weights.append(w)
-            scores.append(metric_outputs.final_score * w)
             metrics_values.update(metric_outputs.metric_values)
             is_positive.update(metric_outputs.is_positive)
-        return MetricsOutputs(sum(scores) / sum(weights), metrics_values, is_positive)
+            if not metric.not_include_in_score:
+                w = self.weights.get(metric.__identifier__, 1.0)
+                weights.append(w)
+                scores.append(metric_outputs.final_score * w)
+        if not scores:
+            final_score = 0.0
+        else:
+            final_score = sum(scores) / sum(weights)
+        return MetricsOutputs(final_score, metrics_values, is_positive)
 
 
 # inference
