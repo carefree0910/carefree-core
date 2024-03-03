@@ -863,6 +863,7 @@ class IInference(ABC):
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[int] = None,
+        verbose: bool = True,
         **kwargs: Any,
     ) -> InferenceOutputs:
         pass
@@ -1218,6 +1219,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[int] = None,
+        verbose: bool = True,
         **kwargs: Any,
     ) -> InferenceOutputs:
         outputs = inference.get_outputs(
@@ -1229,6 +1231,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             use_inference_mode=use_inference_mode,
             accelerator=accelerator,
             pad_dim=pad_dim,
+            verbose=verbose,
             **kwargs,
         )
         metric_values = {}

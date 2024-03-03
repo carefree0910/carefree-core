@@ -230,6 +230,7 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[int] = None,
+        verbose: bool = True,
         **kwargs: Any,
     ) -> InferenceOutputs:
         return self.build_model.model.evaluate(
@@ -242,6 +243,7 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
             use_inference_mode=use_inference_mode,
             accelerator=accelerator,
             pad_dim=pad_dim,
+            verbose=verbose,
             **kwargs,
         )
 
