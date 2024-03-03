@@ -224,8 +224,8 @@ class DataLoader(TorchDataLoader):
         self.dataset.reset(for_inference=self.for_inference)
         return super().__iter__()
 
-    def recover_labels(self, y: Tensor) -> Tensor:
-        return self.data.recover_labels(y)
+    def recover_labels(self, key: str, y: Tensor) -> Tensor:
+        return self.data.recover_labels(key, y)
 
     def get_one_batch(self, device: device_type = None) -> tensor_dict_type:
         batch = next(iter(self))
@@ -443,7 +443,7 @@ class IDataBlock(  # type: ignore
         return batch
 
     ## changes can happen inplace
-    def recover_labels(self, y: Tensor) -> Tensor:
+    def recover_labels(self, key: str, y: Tensor) -> Tensor:
         return y
 
 
@@ -678,9 +678,9 @@ class IData(  # type: ignore
         return batch
 
     ## changes can happen inplace
-    def recover_labels(self, y: Tensor) -> Tensor:
+    def recover_labels(self, key: str, y: Tensor) -> Tensor:
         for block in self.blocks[::-1]:
-            y = block.recover_labels(y)
+            y = block.recover_labels(key, y)
         return y
 
     # internal

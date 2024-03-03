@@ -176,7 +176,7 @@ class Inference(IInference):
                     if recover_labels:
                         for k, v in tensor_outputs.items():
                             if v is not None and k in need_recover:
-                                v = loader.recover_labels(v)
+                                v = loader.recover_labels(k, v)
                                 tensor_outputs[k] = v
                     if use_losses_as_metrics:
                         for k, v in step_outputs.loss_tensors.items():
