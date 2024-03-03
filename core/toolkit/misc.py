@@ -40,6 +40,7 @@ from argparse import Namespace
 from datetime import datetime
 from datetime import timedelta
 from functools import reduce
+from accelerate import PartialState
 from collections import OrderedDict
 from dataclasses import asdict
 from dataclasses import fields
@@ -65,6 +66,7 @@ dill._dill._reverse_typemap["ClassType"] = type
 
 T = TypeVar("T")
 FAny = TypeVar("FAny", bound=Callable[..., Any])
+FNone = TypeVar("FNone", bound=Callable[..., None])
 T_co = TypeVar("T_co", covariant=True)
 TDict = TypeVar("TDict", bound="dict")
 TRetryResponse = TypeVar("TRetryResponse")
@@ -619,6 +621,15 @@ def wait_for_everyone_at_end(fn: FAny) -> FAny:
         result = fn(*args, **kwargs)
         wait_for_everyone()
         return result
+
+    return _wrapper  # type: ignore
+
+
+def only_execute_on_rank0(fn: FNone) -> FNone:
+    @wait_for_everyone_at_end
+    def _wrapper(*args: Any, **kwargs: Any) -> None:
+        if PartialState().is_main_process:
+            fn(*args, **kwargs)
 
     return _wrapper  # type: ignore
 
