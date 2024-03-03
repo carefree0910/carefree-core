@@ -193,7 +193,13 @@ class Inference(IInference):
                     metric_outputs_list.append(metric_outputs)
                 # gather
                 if gather_np:
-                    if np_outputs is None:
+                    if np_outputs is not None:
+                        np_outputs = {
+                            key: array
+                            for key, array in np_outputs.items()
+                            if key in target_outputs
+                        }
+                    else:
                         target_tensor_outputs = {
                             k: v
                             for k, v in tensor_outputs.items()  # type: ignore
