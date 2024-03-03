@@ -71,6 +71,7 @@ class Inference(IInference):
         return_outputs: bool = True,
         target_outputs: Union[str, List[str]] = PREDICTIONS_KEY,
         return_labels: bool = False,
+        target_labels: Union[str, List[str]] = LABEL_KEY,
         stack_outputs: bool = True,
         use_tqdm: bool = False,
         use_inference_mode: Optional[bool] = None,
@@ -199,7 +200,7 @@ class Inference(IInference):
                     if np_batch is None:
                         np_batch = to_np_batch(tensor_batch)
                     for k, v in np_batch.items():
-                        if v is not None and k.endswith(LABEL_KEY):
+                        if v is not None and k in target_labels:
                             all_labels.setdefault(k, []).append(v)
                 if metrics is not None and metrics.requires_all:
                     if np_batch is not None:
@@ -297,6 +298,8 @@ class Inference(IInference):
         use_grad = kwargs.pop("use_grad", self.use_grad_in_predict)
         if isinstance(target_outputs, str):
             target_outputs = [target_outputs]
+        if isinstance(target_labels, str):
+            target_labels = [target_labels]
         try:
             return run()
         except KeyboardInterrupt:
