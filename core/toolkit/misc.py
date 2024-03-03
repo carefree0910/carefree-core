@@ -46,6 +46,7 @@ from dataclasses import fields
 from dataclasses import dataclass
 from dataclasses import is_dataclass
 from dataclasses import Field
+from accelerate.utils import wait_for_everyone
 from concurrent.futures import ThreadPoolExecutor
 
 from . import console
@@ -63,6 +64,7 @@ dill._dill._reverse_typemap["ClassType"] = type
 
 
 T = TypeVar("T")
+FAny = TypeVar("FAny", bound=Callable[..., Any])
 T_co = TypeVar("T_co", covariant=True)
 TDict = TypeVar("TDict", bound="dict")
 TRetryResponse = TypeVar("TRetryResponse")
@@ -610,6 +612,15 @@ def to_set(inp: Any) -> Set:
     if isinstance(inp, (list, tuple, dict)):
         return set(inp)
     return {inp}
+
+
+def wait_for_everyone_at_end(fn: FAny) -> FAny:
+    def _wrapper(*args: Any, **kwargs: Any) -> Any:
+        result = fn(*args, **kwargs)
+        wait_for_everyone()
+        return result
+
+    return _wrapper  # type: ignore
 
 
 # util modules
