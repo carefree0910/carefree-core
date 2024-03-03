@@ -89,6 +89,7 @@ TData = TypeVar("TData", bound="IData", covariant=True)
 TDataset = TypeVar("TDataset", bound="IDataset", covariant=True)
 TSplitSW = Tuple[Optional[np.ndarray], Optional[np.ndarray]]
 TDs = Tuple["IDataset", Optional["IDataset"]]
+TLs = List[Optional["DataLoader"]]
 TDataLoaders = Tuple["DataLoader", Optional["DataLoader"]]
 T_db = TypeVar("T_db", bound="IDataBlock", covariant=True)
 TDataBlock = TypeVar("TDataBlock", bound="IDataBlock", covariant=True)
@@ -255,6 +256,25 @@ class DataLoader(TorchDataLoader):
             else:
                 pseudo_batch[k] = v
         return pseudo_batch
+
+
+def prepare_dataloaders(accelerator: Accelerator, loaders: TLs) -> TLs:
+    prepared_loaders = accelerator.prepare(*loaders)
+    for loader, prepared in zip(loaders, prepared_loaders):
+        if loader is not None:
+
+            def _begin_factory(original_begin: Callable) -> Callable:
+                def _begin(self: DataLoader) -> _BaseDataLoaderIter:
+                    self.dataset.reset(for_inference=self.for_inference)
+                    return original_begin(self)
+
+                return _begin
+
+            prepared.data = loader.data
+            prepared.for_inference = loader.for_inference
+            prepared.recover_labels = loader.recover_labels
+            prepared.__class__.begin = _begin_factory(prepared.__class__.begin)
+    return prepared_loaders
 
 
 @dataclass

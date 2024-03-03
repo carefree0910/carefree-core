@@ -20,6 +20,7 @@ from torch.profiler import profile
 from torch.optim.lr_scheduler import _LRScheduler
 
 from .schema import device_type
+from .schema import prepare_dataloaders
 from .schema import weighted_loss_score
 from .schema import IData
 from .schema import IModel
@@ -246,14 +247,14 @@ class Trainer(ITrainer):
         n_optim = len(optimizers)
         optim_keys = sorted(optimizers)
         train_loader, valid_loader = data.build_loaders()
+        prepared = prepare_dataloaders(self.accelerator, [train_loader, valid_loader])
+        distributed_train_loader = prepared[0]
+        distributed_valid_loader = prepared[1]
+        assert distributed_train_loader is not None
         prepared = self.accelerator.prepare(
-            train_loader,
-            valid_loader,
             *model.all_modules,
             *[optimizers[k] for k in optim_keys],
         )
-        distributed_train_loader = prepared[0]
-        distributed_valid_loader = prepared[1]
         self.state = TrainerState(
             num_epoch=self.config.num_epoch,
             num_steps=self.config.num_steps,
@@ -261,7 +262,7 @@ class Trainer(ITrainer):
             loader_length=len(distributed_train_loader),
             **(self.config.state_config or {}),
         )
-        self.model = model.from_accelerator(*prepared[2:-n_optim])
+        self.model = model.from_accelerator(*prepared[:-n_optim])
         self.inference.model = self.model
         self.optimizers = {k: prepared[-n_optim + i] for i, k in enumerate(optim_keys)}
         self.schedulers = schedulers
