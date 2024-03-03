@@ -689,10 +689,12 @@ class NpSafeSerializer:
         folder: TPath,
         *,
         mmap_mode: Optional[str] = None,
-        should_wait: bool = False,
+        should_wait: bool = True,
         no_load: bool = False,
         **kwargs: Any,
     ) -> Optional[np.ndarray]:
+        """This method should be called by all ranks if `should_wait` is `True`."""
+
         folder = to_path(folder)
         array_path = folder / cls.array_file
         if should_wait:
@@ -720,11 +722,13 @@ class NpSafeSerializer:
         init_fn: Callable[[], np.ndarray],
         *,
         mmap_mode: Optional[str] = None,
-        should_wait: bool = False,
+        should_wait: bool = True,
         no_load: bool = False,
         verbose: bool = True,
         **kwargs: Any,
     ) -> np.ndarray:
+        """This method should be called by all ranks if `should_wait` is `True`."""
+
         array = cls.try_load(
             folder,
             mmap_mode=mmap_mode,
