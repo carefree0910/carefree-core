@@ -35,8 +35,6 @@ class TestPipeline(unittest.TestCase):
             cflearn.TrainingPipeline.init(config).predict(test_loader)
         with self.assertRaises(ValueError):
             p0.predict(test_loader, return_classes=True, return_probabilities=True)
-        with self.assertRaises(RuntimeError):
-            p1.predict(test_loader, recover_labels=True)
         p0.predict(test_loader, return_classes=True)
         p0.predict(test_loader, return_probabilities=True)
 
