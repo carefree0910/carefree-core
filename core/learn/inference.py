@@ -13,6 +13,7 @@ from typing import Optional
 from typing import ContextManager
 from accelerate import Accelerator
 from contextlib import nullcontext
+from accelerate.utils import broadcast_object_list
 
 from .schema import IModel
 from .schema import IMetric
@@ -220,11 +221,18 @@ class Inference(IInference):
             if metrics is None:
                 final_metric_outputs = None
             elif metrics.requires_all:
-                final_metric_outputs = metrics.evaluate(
-                    stack(all_metrics_requires, True, True),
-                    stacked_np_outputs,
-                    loader,
-                )
+                to_be_broadcasted: List[Optional[MetricsOutputs]]
+                if accelerator is not None and not accelerator.is_main_process:
+                    to_be_broadcasted = [None]
+                else:
+                    final_metric_outputs = metrics.evaluate(
+                        stack(all_metrics_requires, True, True),
+                        stacked_np_outputs,
+                        loader,
+                    )
+                    to_be_broadcasted = [final_metric_outputs]
+                to_be_broadcasted = broadcast_object_list(to_be_broadcasted)
+                final_metric_outputs = to_be_broadcasted[0]
             else:
                 scores = []
                 metric_values: Dict[str, List[float]] = {}
