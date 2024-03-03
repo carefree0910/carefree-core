@@ -119,6 +119,12 @@ class Inference(IInference):
             }
 
         def to_np_batch(tensors: tensor_dict_type) -> np_dict_type:
+            tensors = shallow_copy_dict(tensors)
+            if recover_labels:
+                for k, v in tensors.items():
+                    if v is not None and k in need_recover:
+                        v = loader.recover_labels(k, v)
+                        tensors[k] = v
             if accelerator is not None:
                 if isinstance(pad_dim, int):
                     tensors = accelerator.pad_across_processes(tensors, dim=pad_dim)
@@ -173,11 +179,6 @@ class Inference(IInference):
                         )
                     Flag.in_step = False
                     tensor_outputs = step_outputs.forward_results
-                    if recover_labels:
-                        for k, v in tensor_outputs.items():
-                            if v is not None and k in need_recover:
-                                v = loader.recover_labels(k, v)
-                                tensor_outputs[k] = v
                     if use_losses_as_metrics:
                         for k, v in step_outputs.loss_tensors.items():
                             loss_tensors_lists.setdefault(k, []).append(v)
