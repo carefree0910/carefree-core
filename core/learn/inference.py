@@ -118,13 +118,15 @@ class Inference(IInference):
                 for k, v in arrays.items()
             }
 
-        def to_np_batch(tensors: tensor_dict_type) -> np_dict_type:
-            tensors = shallow_copy_dict(tensors)
+        def recover_labels_of(tensors: tensor_dict_type) -> tensor_dict_type:
             if recover_labels:
+                tensors = shallow_copy_dict(tensors)
                 for k, v in tensors.items():
                     if v is not None and k in need_recover:
-                        v = loader.recover_labels(k, v)
-                        tensors[k] = v
+                        tensors[k] = loader.recover_labels(k, v)
+            return tensors
+
+        def to_np_batch(tensors: tensor_dict_type) -> np_dict_type:
             if accelerator is not None:
                 if isinstance(pad_dim, int):
                     tensors = accelerator.pad_across_processes(tensors, dim=pad_dim)
@@ -169,6 +171,7 @@ class Inference(IInference):
                     # accelerator will handle the device stuffs
                     if accelerator is None:
                         tensor_batch = to_device(tensor_batch, device)
+                    tensor_batch = recover_labels_of(tensor_batch)
                     Flag.in_step = True
                     with no_sync_context(accelerator, self.model):
                         step_outputs = self.model.step(
@@ -176,6 +179,7 @@ class Inference(IInference):
                             tensor_batch,
                             shallow_copy_dict(kwargs),
                             get_losses=use_losses_as_metrics,
+                            recover_labels_fn=recover_labels_of,
                         )
                     Flag.in_step = False
                     tensor_outputs = step_outputs.forward_results

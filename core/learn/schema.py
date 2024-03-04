@@ -1116,6 +1116,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         *,
         get_losses: bool = False,
         loss_kwargs: Optional[Dict[str, Any]] = None,
+        recover_labels_fn: Optional[Callable[[td_type], td_type]] = None,
     ) -> StepOutputs:
         loss_tensors = {}
         loss_kwargs = loss_kwargs or {}
@@ -1129,6 +1130,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                 continue
             if i == 0 or train_step.requires_new_forward:
                 fw = get_fw()
+                if recover_labels_fn is not None:
+                    fw = recover_labels_fn(fw)
             if get_losses:
                 loss_res = train_step.loss_fn(self, None, batch, fw, **loss_kwargs)
                 i_losses = {k: v.detach() for k, v in loss_res.loss_tensors.items()}
