@@ -247,7 +247,7 @@ class Trainer(ITrainer):
         n_optim = len(optimizers)
         optim_keys = sorted(optimizers)
         train_loader, valid_loader = data.build_loaders()
-        prepared = prepare_dataloaders(self.accelerator, [train_loader, valid_loader])
+        prepared = prepare_dataloaders(self.accelerator, train_loader, valid_loader)
         distributed_train_loader = prepared[0]
         distributed_valid_loader = prepared[1]
         assert distributed_train_loader is not None
