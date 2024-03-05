@@ -803,7 +803,9 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
     ) -> "IMetric":
         metrics = IMetric.make_multiple(names, configs)
         if isinstance(metrics, IMetric):
-            return metrics
+            if metric_weights is None:
+                return metrics
+            metrics = [metrics]
         return MultipleMetrics(metrics, weights=metric_weights)
 
     def evaluate(
