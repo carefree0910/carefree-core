@@ -121,7 +121,7 @@ class TestInference(unittest.TestCase):
         self.assertEqual(metric_values["foo"], 0.12)
         self.assertEqual(metric_values["bar"], 3.45)
         final_score = model_outputs.metric_outputs.final_score
-        self.assertEqual(final_score, 0.5 * (0.12 - 3.45))
+        self.assertAlmostEqual(final_score, 0.5 * (0.12 - 3.45))
 
     def test_pad(self) -> None:
         @cflearn.register_module("identity", allow_duplicate=True)
