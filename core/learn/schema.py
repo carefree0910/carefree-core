@@ -872,7 +872,7 @@ class MultipleMetrics(IMetric):
         if not scores:
             final_score = 0.0
         else:
-            final_score = sum(scores) / sum(weights)
+            final_score = sum(scores) / (sum(weights) + 1.0e-12)
         return MetricsOutputs(final_score, metrics_values, is_positive)
 
 
