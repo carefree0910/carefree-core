@@ -1300,7 +1300,11 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         if metric_outputs is not None:
             metric_values.update(metric_outputs.metric_values)
             is_positive.update(metric_outputs.is_positive)
-            final_scores.append(metric_outputs.final_score)
+            final_score = metric_outputs.final_score
+            # `0` often means that user wants to skip this metric
+            # but if no other scores are available, we should still use it
+            if final_scores and final_score != 0:
+                final_scores.append(final_score)
         final_score = sum(final_scores) / len(final_scores)
         outputs.metric_outputs = MetricsOutputs(final_score, metric_values, is_positive)
         return outputs
