@@ -634,6 +634,46 @@ def only_execute_on_rank0(fn: FNone) -> FNone:
     return _wrapper  # type: ignore
 
 
+def get_memory_size(obj: Any, seen: Optional[Set] = None) -> int:
+    try:
+        from pandas import Index
+        from pandas import DataFrame
+    except ImportError:
+        Index = DataFrame = None
+
+    if seen is None:
+        seen = set()
+    obj_id = id(obj)
+    if obj_id in seen:
+        return 0
+
+    if isinstance(obj, np.ndarray):
+        return obj.nbytes
+    if Index is not None and isinstance(obj, Index):
+        return obj.memory_usage(deep=True)
+    if DataFrame is not None and isinstance(obj, DataFrame):
+        return obj.memory_usage(deep=True).sum()
+
+    size = sys.getsizeof(obj)
+    seen.add(obj_id)
+
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            size += get_memory_size(k, seen)
+            size += get_memory_size(v, seen)
+    elif hasattr(obj, "__dict__"):
+        size += get_memory_size(obj.__dict__, seen)
+    elif hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes, bytearray)):
+        for i_obj in obj:
+            size += get_memory_size(i_obj, seen)
+
+    return size
+
+
+def get_memory_mb(obj: Any) -> float:
+    return get_memory_size(obj) / 1024 / 1024
+
+
 # util modules
 
 
