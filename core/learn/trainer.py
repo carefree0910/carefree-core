@@ -583,7 +583,10 @@ class Trainer(ITrainer):
                 extension = max(extension, monitor.handle_extension(self.state))
         if extension:
             self.state.num_epoch += extension
-        if self.config.use_incrementer_for_train_losses_in_eval:
+        if (
+            valid_loader is None
+            and self.config.use_incrementer_for_train_losses_in_eval
+        ):
             window = max(3, self.state.num_step_per_snapshot)
             for k, v in step_outputs.loss_tensors.items():
                 k_inc = self.loss_incrementers.setdefault(k, Incrementer(window))
