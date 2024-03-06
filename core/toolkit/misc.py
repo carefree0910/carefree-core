@@ -309,6 +309,21 @@ def hash_dict(d: Dict[str, Any]) -> str:
     return _hash(d)
 
 
+def hash_str_dict(
+    d: Dict[str, str],
+    *,
+    key_order: Optional[List[str]] = None,
+    static_keys: bool = False,
+) -> str:
+    """A specific fast path for `hash_dict` when all values are strings."""
+
+    if key_order is None:
+        key_order = sorted(d)
+    if static_keys:
+        return hash_code("$?^^?$".join([d[k] for k in key_order]))
+    return hash_code("$?^^?$".join([f"{k}$?%%?${d[k]}" for k in key_order]))
+
+
 def random_hash() -> str:
     return hash_code(str(random.random()))
 

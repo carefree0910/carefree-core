@@ -286,6 +286,15 @@ class TestMisc(unittest.TestCase):
         d2 = dict(a=1, b=2, c=4)
         self.assertEqual(hash_dict(d0), hash_dict(d1))
         self.assertNotEqual(hash_dict(d0), hash_dict(d2))
+        d3 = dict(a="a", b="b", c="c")
+        d4 = dict(c="c", b="b", a="a")
+        d5 = dict(a="a", b="b", c="d")
+        key_order0 = ["a", "b", "c"]
+        key_order1 = ["c", "b", "a"]
+        self.assertEqual(hash_str_dict(d3), hash_str_dict(d4))
+        self.assertEqual(hash_str_dict(d3), hash_str_dict(d3, key_order=key_order0))
+        self.assertNotEqual(hash_str_dict(d3), hash_str_dict(d3, key_order=key_order1))
+        self.assertNotEqual(hash_str_dict(d3), hash_str_dict(d5))
 
     def test_prefix_dict(self):
         prefix = "^_^"
