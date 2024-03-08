@@ -160,7 +160,7 @@ class _InferenceMixin:
         if not self.is_built:
             raise RuntimeError(
                 f"`{self.__class__.__name__}` should be built beforehand, please use "
-                "`DLPipelineSerializer.load_inference/evaluation` or `build_with` "
+                "`PipelineSerializer.load_inference/evaluation` or `build_with` "
                 "to get a built one!"
             )
         kw = shallow_copy_dict(kwargs)
