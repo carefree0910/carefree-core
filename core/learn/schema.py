@@ -907,7 +907,7 @@ class IInference(ABC):
         tqdm_kwargs: Optional[Dict[str, Any]] = None,
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
-        pad_dim: Optional[int] = None,
+        pad_dim: Optional[Union[int, Dict[str, int]]] = None,
         verbose: bool = True,
         **kwargs: Any,
     ) -> InferenceOutputs:
@@ -1269,7 +1269,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         tqdm_kwargs: Optional[Dict[str, Any]] = None,
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
-        pad_dim: Optional[int] = None,
+        pad_dim: Optional[Union[int, Dict[str, int]]] = None,
         verbose: bool = True,
         **kwargs: Any,
     ) -> InferenceOutputs:

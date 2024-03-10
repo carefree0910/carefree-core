@@ -154,7 +154,7 @@ class _InferenceMixin:
         return_probabilities: bool = False,
         recover_labels: bool = True,
         accelerator: Optional[Accelerator] = None,
-        pad_dim: Optional[int] = None,
+        pad_dim: Optional[Union[int, Dict[str, int]]] = None,
         **kwargs: Any,
     ) -> np_dict_type:
         if not self.is_built:
@@ -224,7 +224,7 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
         tqdm_kwargs: Optional[Dict[str, Any]] = None,
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
-        pad_dim: Optional[int] = None,
+        pad_dim: Optional[Union[int, Dict[str, int]]] = None,
         verbose: bool = True,
         **kwargs: Any,
     ) -> InferenceOutputs:
