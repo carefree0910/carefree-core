@@ -152,6 +152,7 @@ class _InferenceMixin:
         return_classes: bool = False,
         binary_threshold: float = 0.5,
         return_probabilities: bool = False,
+        target_outputs: Union[str, List[str]] = PREDICTIONS_KEY,
         recover_labels: bool = True,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
@@ -165,6 +166,7 @@ class _InferenceMixin:
             )
         kw = shallow_copy_dict(kwargs)
         kw["loader"] = loader
+        kw["target_outputs"] = target_outputs
         kw["recover_labels"] = recover_labels
         kw["accelerator"] = accelerator
         kw["pad_dim"] = pad_dim
