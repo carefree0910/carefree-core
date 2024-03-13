@@ -53,6 +53,7 @@ from ..toolkit import is_local_rank_0
 from ..toolkit import get_torch_device
 from ..trainer import get_scores
 from ..trainer import get_sorted_checkpoints
+from ..constants import LABEL_KEY
 from ..constants import PREDICTIONS_KEY
 from ..constants import CHECKPOINTS_FOLDER
 from ...toolkit import console
@@ -220,8 +221,11 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
         loader: DataLoader,
         *,
         portion: float = 1.0,
+        return_outputs: bool = True,
+        target_outputs: Union[str, List[str]] = PREDICTIONS_KEY,
         recover_labels: bool = True,
-        return_outputs: bool = False,
+        return_labels: bool = False,
+        target_labels: Union[str, List[str]] = LABEL_KEY,
         use_tqdm: bool = False,
         tqdm_kwargs: Optional[Dict[str, Any]] = None,
         use_inference_mode: Optional[bool] = None,
@@ -236,8 +240,11 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
             self.build_inference.inference,
             loader,
             portion=portion,
-            recover_labels=recover_labels,
             return_outputs=return_outputs,
+            target_outputs=target_outputs,
+            recover_labels=recover_labels,
+            return_labels=return_labels,
+            target_labels=target_labels,
             use_tqdm=use_tqdm,
             tqdm_kwargs=tqdm_kwargs,
             use_inference_mode=use_inference_mode,
