@@ -516,6 +516,8 @@ class Trainer(ITrainer):
                 + int(self.tqdm_settings.use_step_tqdm),
                 leave=False,
             )
+        kw = shallow_copy_dict(self.config.metric_forward_kwargs or {})
+        kw["return_outputs"] = False
         outputs = self.model.evaluate(
             self.config,
             self.metrics,
@@ -526,7 +528,7 @@ class Trainer(ITrainer):
             use_tqdm=use_tqdm,
             tqdm_kwargs=tqdm_kwargs,
             accelerator=self.accelerator,
-            **(self.config.metric_forward_kwargs or {}),
+            **kw,
         )
         return outputs.metric_outputs  # type: ignore
 

@@ -1267,7 +1267,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         *,
         portion: float = 1.0,
         state: Optional["TrainerState"] = None,
-        return_outputs: bool = True,
+        return_outputs: bool = False,
         target_outputs: Union[str, List[str]] = PREDICTIONS_KEY,
         recover_labels: bool = True,
         return_labels: bool = False,

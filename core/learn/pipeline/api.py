@@ -221,7 +221,7 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
         loader: DataLoader,
         *,
         portion: float = 1.0,
-        return_outputs: bool = True,
+        return_outputs: bool = False,
         target_outputs: Union[str, List[str]] = PREDICTIONS_KEY,
         recover_labels: bool = True,
         return_labels: bool = False,
