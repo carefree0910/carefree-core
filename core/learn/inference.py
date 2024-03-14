@@ -153,7 +153,8 @@ class Inference(IInference):
             iterator = enumerate(loader)
             if use_tqdm:
                 iterator = tqdm(iterator, **tqdm_kwargs)
-            gather_np = return_outputs or (metrics is not None and metrics.requires_all)
+            metrics_requires_all = metrics is not None and metrics.requires_all
+            gather_np_outputs = return_outputs or metrics_requires_all
             remainder = -1
             for i, tensor_batch in iterator:
                 if i / len(loader) >= portion:
@@ -196,18 +197,20 @@ class Inference(IInference):
                     metric_outputs = metrics.evaluate(np_batch, np_outputs)
                     metric_outputs_list.append(metric_outputs)
                 # gather
-                if gather_np:
+                if gather_np_outputs:
                     if np_outputs is not None:
                         target_np_outputs = {
                             key: array
                             for key, array in np_outputs.items()
                             if key in target_outputs
+                            or (metrics_requires_all and metrics.requires(key))  # type: ignore
                         }
                     else:
                         target_tensor_outputs = {
-                            k: v
-                            for k, v in tensor_outputs.items()  # type: ignore
-                            if k in target_outputs
+                            key: tensor
+                            for key, tensor in tensor_outputs.items()  # type: ignore
+                            if key in target_outputs
+                            or (metrics_requires_all and metrics.requires(key))  # type: ignore
                         }
                         target_np_outputs = to_np_batch(target_tensor_outputs)
                     for k, v in target_np_outputs.items():
@@ -247,7 +250,7 @@ class Inference(IInference):
                             all_metrics_requires.setdefault(k, []).append(v)
 
             # stack
-            stacked_np_outputs = stack(all_np_outputs, gather_np, stack_outputs)
+            stacked_np_outputs = stack(all_np_outputs, gather_np_outputs, stack_outputs)
             stacked_labels = stack(all_labels, return_labels, stack_outputs)
             # gather metric outputs
             if metrics is None:

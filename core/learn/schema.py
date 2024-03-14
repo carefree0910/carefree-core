@@ -783,7 +783,8 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
     def requires(self, key: str) -> bool:
         """
         This method is only useful when `requires_all` returns `True`, and should tell
-        the inference stage whether this metric needs a specific data key.
+        the inference stage whether this metric needs a specific data key from either
+        the `np_batch` or the `np_outputs`.
 
         > For instance, most of the metrics only needs the labels - which is often the
         value of `LABEL_KEY`, so it should return `False` when other keys are passed in.
