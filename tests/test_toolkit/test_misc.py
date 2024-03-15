@@ -284,8 +284,14 @@ class TestMisc(unittest.TestCase):
         d0 = dict(a=1, b=2, c=3)
         d1 = dict(c=3, b=2, a=1)
         d2 = dict(a=1, b=2, c=4)
+        d3 = dict(a=1, b=2, d=3)
         self.assertEqual(hash_dict(d0), hash_dict(d1))
         self.assertNotEqual(hash_dict(d0), hash_dict(d2))
+        self.assertNotEqual(hash_dict(d0), hash_dict(d3))
+        self.assertEqual(
+            hash_dict(d0, static_keys=True),
+            hash_dict(d3, static_keys=True),
+        )
         d3 = dict(a="a", b="b", c="c")
         d4 = dict(c="c", b="b", a="a")
         d5 = dict(a="a", b="b", c="d")

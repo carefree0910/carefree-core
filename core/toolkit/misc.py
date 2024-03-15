@@ -290,14 +290,21 @@ def hash_code(code: str) -> str:
     return hashlib.md5(code.encode()).hexdigest()
 
 
-def hash_dict(d: Dict[str, Any]) -> str:
-    """Return a consistent hash code for an arbitrary dict."""
+def hash_dict(d: Dict[str, Any], *, static_keys: bool = False) -> str:
+    """
+    Return a consistent hash code for an arbitrary dict.
+    * `static_keys` is used to control whether to include dict keys in the hash code.
+    Default is False, which means the hash code will be consistent even if the dict
+    has different keys but same values.
+    """
 
     def _hash(_d: Dict[str, Any]) -> str:
         sorted_keys = sorted(_d)
         hashes = []
         for k in sorted_keys:
             v = _d[k]
+            if not static_keys:
+                hashes.append(str(k))
             if isinstance(v, dict):
                 hashes.append(_hash(v))
             elif isinstance(v, set):
