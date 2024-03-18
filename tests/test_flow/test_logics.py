@@ -318,8 +318,8 @@ class TestLogics(unittest.TestCase):
         self.assertIsNone(results[EXCEPTION_MESSAGE_KEY])
 
     def test_download_images(self):
-        node_0 = DownloadImageNode("0", dict(url="https://placekitten.com/g/240/320"))
-        node_1 = DownloadImageNode("1", dict(url="https://placekitten.com/g/320/240"))
+        node_0 = DownloadImageNode("0", dict(url="https://picsum.photos/240/320"))
+        node_1 = DownloadImageNode("1", dict(url="https://picsum.photos/320/240"))
         flow = Flow().push(node_0).push(node_1)
         gathered = flow.gather("0", "1")
         results = asyncio.run(flow.execute(gathered))
