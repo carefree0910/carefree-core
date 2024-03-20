@@ -121,7 +121,7 @@ class MultiLoss(ILoss):
                 for loss in loss_items
             }
         )
-        self.weights = {loss.name: loss.weight for loss in loss_items}
+        self.weights = {loss.tag or loss.name: loss.weight for loss in loss_items}
 
     def forward(
         self,
