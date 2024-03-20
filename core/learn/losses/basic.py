@@ -107,6 +107,7 @@ class LossItem:
     name: str
     config: Optional[Dict[str, Any]] = None
     weight: float = 1.0
+    tag: Optional[str] = None
 
 
 @register_loss("multi_loss")
@@ -116,7 +117,7 @@ class MultiLoss(ILoss):
         loss_items = [LossItem(**loss) for loss in losses]
         self.losses = nn.ModuleDict(
             {
-                loss.name: build_loss(loss.name, config=loss.config)
+                loss.tag or loss.name: build_loss(loss.name, config=loss.config)
                 for loss in loss_items
             }
         )
