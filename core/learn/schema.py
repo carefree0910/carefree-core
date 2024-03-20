@@ -1496,6 +1496,8 @@ class TrainerState:
         num_step_per_snapshot: Optional[int] = None,
         max_step_per_snapshot: int = 1000,
         min_snapshot_epoch_gap: int = 0,
+        manual_snapshot_steps: Optional[List[int]] = None,
+        manual_snapshot_epochs: Optional[List[int]] = None,
     ):
         self.step = self.epoch = 0
         self.batch_size = batch_size * get_world_size()
@@ -1516,6 +1518,10 @@ class TrainerState:
         self.num_step_per_snapshot = num_step_per_snapshot
         self.max_step_per_snapshot = max_step_per_snapshot
         self.min_snapshot_epoch_gap = min_snapshot_epoch_gap
+        self.manual_snapshot_steps = set(manual_snapshot_steps or [])
+        if manual_snapshot_epochs is not None:
+            snapshot_steps = [e * loader_length for e in manual_snapshot_epochs]
+            self.manual_snapshot_steps.update(snapshot_steps)
         self._last_step: Optional[int] = None
         self._previous_snapshot_epoch = 0
 
@@ -1562,7 +1568,10 @@ class TrainerState:
 
     @property
     def should_monitor(self) -> bool:
-        return self.step % self.num_step_per_snapshot == 0
+        return (
+            self.step % self.num_step_per_snapshot == 0
+            or self.step in self.manual_snapshot_steps
+        )
 
     @property
     def should_log_lr(self) -> bool:
