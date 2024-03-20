@@ -1595,7 +1595,7 @@ class TrainerState:
             return False
         if self.is_terminate:
             return True
-        return self.step % self.num_step_per_snapshot == 0
+        return self.should_monitor
 
     @property
     def can_snapshot(self) -> bool:
