@@ -742,6 +742,34 @@ class DataClassBase:
 
         return {k: _to_item(v) for k, v in zip(self.field_names, self.attributes)}
 
+    def as_modified_dict(
+        self,
+        *,
+        focuses: Optional[Union[str, List[str]]] = None,
+        excludes: Optional[Union[str, List[str]]] = None,
+    ) -> Dict[str, Any]:
+        cls = self.__class__
+        requirements = set(get_requirements(cls))
+        d = {k: getattr(self, k) for k in requirements}
+        defaults = cls(**d)
+        excludes_set = to_set(excludes)
+        if focuses is not None:
+            focus_set = to_set(focuses)
+            for k in self.field_names:
+                if k not in focus_set:
+                    excludes_set.add(k)
+        modified_dict = {
+            k: getattr(self, k)
+            for k in self.field_names
+            if k not in excludes_set
+            and (k in requirements or getattr(self, k) != getattr(defaults, k))
+        }
+        modified_dict = {
+            k: v.as_modified_dict() if isinstance(v, DataClassBase) else v
+            for k, v in modified_dict.items()
+        }
+        return modified_dict
+
     def copy(self: TDataClass) -> TDataClass:
         return self.__class__.construct(self.asdict())
 
@@ -758,24 +786,7 @@ class DataClassBase:
         focuses: Optional[Union[str, List[str]]] = None,
         excludes: Optional[Union[str, List[str]]] = None,
     ) -> str:
-        cls = self.__class__
-        requirements = set(get_requirements(cls))
-        d = {k: getattr(self, k) for k in requirements}
-        defaults = cls(**d)
-        excludes_set = to_set(excludes)
-        if focuses is not None:
-            focus_set = to_set(focuses)
-            for k in self.field_names:
-                if k not in focus_set:
-                    excludes_set.add(k)
-        return hash_dict(
-            {
-                k: getattr(self, k)
-                for k in self.field_names
-                if k not in excludes_set
-                and (k in requirements or getattr(self, k) != getattr(defaults, k))
-            }
-        )
+        return hash_dict(self.as_modified_dict(focuses=focuses, excludes=excludes))
 
     @classmethod
     def construct(cls: Type[TDataClass], d: Dict[str, Any]) -> TDataClass:

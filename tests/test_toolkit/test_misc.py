@@ -525,6 +525,22 @@ class TestMisc(unittest.TestCase):
         self.assertNotEqual(Foo().to_hash(), Foo(1).to_hash())
         self.assertEqual(Foo().to_hash(), Foo(1).to_hash(excludes="bar"))
 
+        @dataclass
+        class FooComplex(DataClassBase):
+            foo: FooExtended = field(default_factory=FooExtended)
+            bar: int = 0
+
+        self.assertEqual(FooComplex().asdict(), {"foo": {"bar": 0, "baz": 1}, "bar": 0})
+        self.assertEqual(FooComplex().as_modified_dict(), {})
+        foo_complex = FooComplex()
+        foo_complex.bar = 1
+        self.assertEqual(foo_complex.as_modified_dict(), {"bar": 1})
+        foo_complex = FooComplex()
+        foo_complex.foo.bar = 1
+        self.assertEqual(foo_complex.as_modified_dict(), {"foo": {"bar": 1}})
+        foo_complex.bar = 2
+        self.assertEqual(foo_complex.as_modified_dict(), {"foo": {"bar": 1}, "bar": 2})
+
     def test_with_register(self):
         class Foo(WithRegister):
             d = {}
