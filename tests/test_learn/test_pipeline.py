@@ -19,6 +19,7 @@ class TestPipeline(unittest.TestCase):
             module_config=dict(input_dim=in_dim, output_dim=out_dim),
             loss_name="mse",
         )
+        cflearn.TrainingPipeline.init(config).fit(data, only_touch=True)
         config.to_debug()
         p0 = cflearn.TrainingPipeline.init(config).fit(data)
         self.assertEqual(p0.device.type, "cpu")

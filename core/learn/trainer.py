@@ -208,6 +208,7 @@ class Trainer(ITrainer):
         *,
         config_export_file: Optional[str] = None,
         show_summary: bool = True,
+        only_touch: bool = False,
         device: device_type = None,
         p: Optional[profile] = None,
     ) -> "Trainer":
@@ -279,7 +280,7 @@ class Trainer(ITrainer):
         summary_msg = summary(
             self.model.m,
             input_sample,
-            return_only=not show_summary or not self.is_local_rank_0,
+            return_only=not show_summary or not self.is_local_rank_0 or only_touch,
             summary_forward=self.model.summary_forward,
         )
         if self.is_local_rank_0:
@@ -306,7 +307,7 @@ class Trainer(ITrainer):
         self.accelerator.wait_for_everyone()
         if self.is_local_rank_0 and self.epoch_tqdm is None:
             console.debug("entered training loop")
-        while self.state.should_train:
+        while self.state.should_train and not only_touch:
             try:
                 self.state.epoch += 1
                 if not self.is_local_rank_0 or not self.tqdm_settings.use_step_tqdm:
@@ -365,17 +366,18 @@ class Trainer(ITrainer):
             self.epoch_tqdm.close()
         # restore
         self.accelerator.wait_for_everyone()
-        if self.has_checkpoint_folder:
+        if self.has_checkpoint_folder and not only_touch:
             if self.is_local_rank_0:
                 console.debug("rolling back to the best checkpoint")
             has_ckpt = self.restore_checkpoint()
         # finalize
         self.state.set_terminate()
-        loader = distributed_valid_loader or distributed_train_loader
-        self.final_results = self._get_metrics(loader, self.config.valid_portion)
-        self._logging(self.final_results)
-        if not has_ckpt:
-            self.save_checkpoint(self.final_results.final_score)
+        if not only_touch:
+            loader = distributed_valid_loader or distributed_train_loader
+            self.final_results = self._get_metrics(loader, self.config.valid_portion)
+            self._logging(self.final_results)
+            if not has_ckpt:
+                self.save_checkpoint(self.final_results.final_score)
         for callback in self.callbacks:
             callback.finalize(self)
         return self

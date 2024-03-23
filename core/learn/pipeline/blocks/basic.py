@@ -733,6 +733,7 @@ class TrainingBlock(Block):
         data: IData,
         _defaults: OrderedDictType,
         *,
+        only_touch: bool = False,
         device: device_type = None,
         **kwargs: Any,
     ) -> None:
@@ -748,6 +749,7 @@ class TrainingBlock(Block):
                 self.build_callbacks.callbacks,
                 self.build_optimizers.schedulers_requires_metric,
                 config_export_file=self.trainer_config_file,
+                only_touch=only_touch,
                 device=device,
                 p=p,
             )

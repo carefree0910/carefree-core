@@ -1864,6 +1864,7 @@ class ITrainer(ABC):
         *,
         config_export_file: Optional[str] = None,
         show_summary: bool = True,
+        only_touch: bool = False,
         device: device_type = None,
         p: Optional[profile] = None,
     ) -> "ITrainer":
