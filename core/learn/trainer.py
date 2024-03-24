@@ -372,12 +372,18 @@ class Trainer(ITrainer):
             has_ckpt = self.restore_checkpoint()
         # finalize
         self.state.set_terminate()
-        if not only_touch:
+        if only_touch:
+            self.final_results = self.intermediate
+        else:
             loader = distributed_valid_loader or distributed_train_loader
             self.final_results = self._get_metrics(loader, self.config.valid_portion)
             self._logging(self.final_results)
-            if not has_ckpt:
-                self.save_checkpoint(self.final_results.final_score)
+        if not has_ckpt:
+            if self.final_results is None:
+                final_score = 0.0
+            else:
+                final_score = self.final_results.final_score
+            self.save_checkpoint(final_score)
         for callback in self.callbacks:
             callback.finalize(self)
         return self
