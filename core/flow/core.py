@@ -323,8 +323,10 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
 
     def check_inputs(self) -> None:
         if not isinstance(self.data, dict):
-            msg = f"input `data` ({self.data}) of node '{self.key}' should be a `dict`"
-            raise ValueError(msg)
+            raise ValueError(
+                f"input `data` ({self.data}) of node "
+                f"'{self.key}' ({self.__class__.__name__}) should be a `dict`"
+            )
         schema = self.get_schema()
         if schema is None:
             return
@@ -420,8 +422,10 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
 
     def check_results(self, results: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(results, dict):
-            msg = f"output results ({results}) of node '{self.key}' should be a `dict`"
-            raise ValueError(msg)
+            raise ValueError(
+                f"output results ({results}) of "
+                f"node '{self.key}' ({self.__class__.__name__}) should be a `dict`"
+            )
         schema = self.get_schema()
         if schema is None:
             return results
