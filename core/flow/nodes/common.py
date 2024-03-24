@@ -8,6 +8,7 @@ from typing import Dict
 from typing import List
 from typing import Union
 from typing import Optional
+from pathlib import Path
 from pydantic import Field
 from pydantic import BaseModel
 from dataclasses import dataclass
@@ -258,6 +259,13 @@ class DownloadImageNode(IImageNode):
 
 class SaveImageInput(ImageModel):
     path: str = Field("debug.png", description="The path to save the image.")
+    parent: Optional[str] = Field(None, description="The parent directory for saving.")
+
+
+def pad_parent(path: str, parent: Optional[str]) -> Path:
+    if parent is None:
+        return Path(path)
+    return Path(parent) / path
 
 
 @Node.register("debug.save_image")
@@ -272,13 +280,14 @@ class SaveImageNode(IWithImageNode):
 
     async def execute(self) -> dict:
         image = await self.get_image_from("url")
-        image.save(self.data["path"])
+        image.save(pad_parent(self.data["path"], self.data["parent"]))
         return {}
 
 
 class SaveImagesInput(BaseModel):
     urls: List[TImage] = Field(..., description="The urls of the images.")
     prefix: str = Field("debug", description="The prefix to save the images.")
+    parent: Optional[str] = Field(None, description="The parent directory for saving.")
 
 
 @Node.register("debug.save_images")
@@ -296,7 +305,7 @@ class SaveImagesNode(IWithImageNode):
         images = await asyncio.gather(*tasks)
         prefix = self.data["prefix"]
         for i, image in enumerate(images):
-            image.save(f"{prefix}_{i}.png")
+            image.save(pad_parent(f"{prefix}_{i}.png", self.data["parent"]))
         return {}
 
 
