@@ -99,7 +99,7 @@ def register_api(app: FastAPI, t_node: Type[Node], focus: str) -> None:
 
 
 def register_nodes_api(app: FastAPI) -> None:
-    focus = OPT.flow_opt.focus
+    focus = OPT.flow_opt["focus"]
     for t_node in use_all_t_nodes():
         register_api(app, t_node, focus)
 
