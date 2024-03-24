@@ -315,6 +315,7 @@ class TrainingPipeline(Pipeline["TrainingPipeline"], _DeviceMixin, _EvaluationMi
         data: IData,
         *,
         sample_weights: sample_weights_type = None,
+        skip_final_evaluation: bool = False,
         only_touch: bool = False,
         device: device_type = None,
     ) -> "TrainingPipeline":
@@ -330,7 +331,12 @@ class TrainingPipeline(Pipeline["TrainingPipeline"], _DeviceMixin, _EvaluationMi
                 save_npd=False,
             )
         # run pipeline
-        self.run(data, only_touch=only_touch, device=device)
+        self.run(
+            data,
+            skip_final_evaluation=skip_final_evaluation,
+            only_touch=only_touch,
+            device=device,
+        )
         # save / update pipeline serialization
         if workspace is not None:
             if not self.config.save_pipeline_in_realtime:

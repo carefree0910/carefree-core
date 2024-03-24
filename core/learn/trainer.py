@@ -208,6 +208,7 @@ class Trainer(ITrainer):
         *,
         config_export_file: Optional[str] = None,
         show_summary: bool = True,
+        skip_final_evaluation: bool = False,
         only_touch: bool = False,
         device: device_type = None,
         p: Optional[profile] = None,
@@ -372,7 +373,7 @@ class Trainer(ITrainer):
             has_ckpt = self.restore_checkpoint()
         # finalize
         self.state.set_terminate()
-        if only_touch:
+        if only_touch or skip_final_evaluation:
             self.final_results = self.intermediate
         else:
             loader = distributed_valid_loader or distributed_train_loader

@@ -1863,6 +1863,7 @@ class ITrainer(ABC):
         schedulers_requires_metric: Set[str],
         *,
         config_export_file: Optional[str] = None,
+        skip_final_evaluation: bool = False,
         show_summary: bool = True,
         only_touch: bool = False,
         device: device_type = None,
