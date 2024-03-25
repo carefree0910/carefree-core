@@ -1,5 +1,6 @@
 # Common Nodes
 
+import json
 import shutil
 import asyncio
 
@@ -276,6 +277,30 @@ class CopyNode(Node):
         return {"dst": str(dst)}
 
 
+class SaveJsonInput(BaseModel):
+    data: Any = Field(..., description="The data to be saved.")
+    path: str = Field(..., description="The path to save the data.")
+    parent: Optional[str] = Field(None, description="The parent directory for saving.")
+
+
+@Node.register("common.save_json")
+class SaveJsonNode(Node):
+    @classmethod
+    def get_schema(cls) -> Schema:
+        return Schema(
+            SaveJsonInput,
+            output_model=CopyOutput,
+            description="Save the given data to a JSON file.",
+        )
+
+    async def execute(self) -> dict:
+        path = pad_parent(self.data["path"], self.data["parent"])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w") as f:
+            json.dump(self.data["data"], f)
+        return {"dst": str(path)}
+
+
 @dataclass
 @Node.register("common.download_image")
 class DownloadImageNode(IImageNode):
@@ -353,6 +378,7 @@ __all__ = [
     "ParametersNode",
     "EchoNode",
     "CopyNode",
+    "SaveJsonNode",
     "DownloadImageNode",
     "SaveImageNode",
     "SaveImagesNode",
