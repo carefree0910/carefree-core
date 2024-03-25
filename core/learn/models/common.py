@@ -105,6 +105,7 @@ class EnsembleModel(CommonModel):
     def __init__(self, m: IModel, num_repeat: int) -> None:
         super().__init__()
         self.m = EnsembleModule(get_clones(m.m, num_repeat))
+        self.loss = m.loss if isinstance(m, CommonModel) else None
         self.model = m
         self.t_model = m.__class__
         self.config = m.config.copy()
@@ -117,7 +118,9 @@ class EnsembleModel(CommonModel):
 
     @property
     def all_modules(self) -> List[nn.Module]:
-        return [self.m]
+        if self.loss is None:
+            return [self.m]
+        return [self.m, self.loss]
 
     def build(self, config: Config) -> None:
         raise RuntimeError("`build` should not be called for `EnsembleModel`")
