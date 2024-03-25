@@ -1,5 +1,6 @@
 # Common Nodes
 
+import shutil
 import asyncio
 
 from PIL import Image
@@ -241,6 +242,40 @@ class EchoNode(Node):
         return self.data
 
 
+def pad_parent(path: str, parent: Optional[str]) -> Path:
+    if parent is None:
+        return Path(path)
+    return Path(parent) / path
+
+
+class CopyInput(BaseModel):
+    src: str = Field(..., description="The source path.")
+    dst: str = Field(..., description="The destination path.")
+    parent: Optional[str] = Field(None, description="The parent directory of `dst`.")
+
+
+class CopyOutput(BaseModel):
+    dst: str = Field(..., description="The destination path with parent directory.")
+
+
+@Node.register("common.copy")
+class CopyNode(Node):
+    @classmethod
+    def get_schema(cls) -> Schema:
+        return Schema(
+            CopyInput,
+            CopyOutput,
+            description="Copy a file from `src` to `dst`.",
+        )
+
+    async def execute(self) -> Dict[str, str]:
+        src = Path(self.data["src"])
+        dst = pad_parent(self.data["dst"], self.data["parent"])
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
+        return {"dst": str(dst)}
+
+
 @dataclass
 @Node.register("common.download_image")
 class DownloadImageNode(IImageNode):
@@ -260,12 +295,6 @@ class DownloadImageNode(IImageNode):
 class SaveImageInput(ImageModel):
     path: str = Field("debug.png", description="The path to save the image.")
     parent: Optional[str] = Field(None, description="The parent directory for saving.")
-
-
-def pad_parent(path: str, parent: Optional[str]) -> Path:
-    if parent is None:
-        return Path(path)
-    return Path(parent) / path
 
 
 @Node.register("debug.save_image")
@@ -323,6 +352,7 @@ __all__ = [
     "GatherNode",
     "ParametersNode",
     "EchoNode",
+    "CopyNode",
     "DownloadImageNode",
     "SaveImageNode",
     "SaveImagesNode",
