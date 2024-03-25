@@ -14,6 +14,7 @@ from typing import Tuple
 from typing import Callable
 from typing import Optional
 from accelerate import Accelerator
+from accelerate import DataLoaderConfiguration
 from tqdm.autonotebook import tqdm
 from torch.optim import Optimizer
 from torch.profiler import profile
@@ -223,10 +224,12 @@ class Trainer(ITrainer):
                 torch.cuda.set_device(device)
         self.accelerator = Accelerator(
             cpu=cpu,
-            split_batches=self.config.split_batches,
             mixed_precision=self.config.mixed_precision,
-            dispatch_batches=self.config.dispatch_batches,
-            even_batches=self.config.even_batches,
+            dataloader_config=DataLoaderConfiguration(
+                split_batches=self.config.split_batches,
+                dispatch_batches=self.config.dispatch_batches,
+                even_batches=self.config.even_batches,
+            ),
         )
         self.accelerator.wait_for_everyone()
         # initialize artifact structure
