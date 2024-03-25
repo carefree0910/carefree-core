@@ -365,6 +365,25 @@ class TestLogics(unittest.TestCase):
             loaded = Flow.load(path)
             self.assertEqual(flow, loaded)
 
+    def test_manual_depend(self):
+        @Node.register("append", allow_duplicate=True)
+        class _(Node):
+            async def execute(self) -> dict:
+                data.append(self.data["value"])
+                return {}
+
+        data = []
+        append0 = Node.make("append", dict(key="append0", data=dict(value=0)))
+        append1 = Node.make("append", dict(key="append1", data=dict(value=1)))
+        flow = Flow().push(append1).push(append0)
+        target = flow.gather("append0", "append1")
+        asyncio.run(flow.execute(target))
+        self.assertListEqual(data, [1, 0])
+        data = []
+        append1.depend_on("append0")
+        asyncio.run(flow.execute("append1"))
+        self.assertListEqual(data, [0, 1])
+
 
 if __name__ == "__main__":
     unittest.main()

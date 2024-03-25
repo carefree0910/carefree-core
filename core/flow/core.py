@@ -267,6 +267,17 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
         for hook in self.get_hooks():
             await hook.cleanup(_shared_pool)
 
+    # api
+
+    def depend_on(self, src_key: str) -> None:
+        """
+        This can be used if this Node does not directly depend on `src_key` Node,
+        but you want this Node to wait for `src_key` Node to finish before starting.
+        """
+
+        tag = random_hash()[:4]
+        self.injections.append(Injection(src_key, None, f"$depend_{tag}"))
+
     # abstract
 
     @abstractmethod
