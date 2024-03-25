@@ -100,6 +100,7 @@ class EnsembleModule(nn.ModuleList):
 
 class EnsembleModel(CommonModel):
     m: EnsembleModule
+    loss: Optional[ILoss]  # type: ignore
     ensemble_fn: Optional[EnsembleFn]
 
     def __init__(self, m: IModel, num_repeat: int) -> None:
