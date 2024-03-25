@@ -9,11 +9,9 @@ from typing import Set
 from typing import Dict
 from typing import List
 from typing import Type
-from typing import Union
 from typing import TypeVar
 from typing import Callable
 from typing import Optional
-from pathlib import Path
 from pydantic import BaseModel
 from dataclasses import field
 from dataclasses import asdict
@@ -275,8 +273,8 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
         but you want this Node to wait for `src_key` Node to finish before starting.
         """
 
-        tag = random_hash()[:4]
-        self.injections.append(Injection(src_key, None, f"$depend_{tag}"))
+        tag = f"$depend_{random_hash()[:4]}"
+        self.injections.append(Injection(src_key, None, tag))
 
     # abstract
 
