@@ -23,6 +23,7 @@ from .schema import IWithImageNode
 from ..core import LOOP_NODE
 from ..core import GATHER_NODE
 from ..core import extract_from
+from ..core import inject_leaf_data
 from ..core import Node
 from ..core import Flow
 from ..core import Schema
@@ -122,10 +123,12 @@ class LoopNode(Node):
             )
         n = lengths[0]
         flow = Flow()
+        verbose = self.data["verbose"]
         for i in range(n):
             i_data = shallow_copy_dict(base_data)
             for k in loop_keys:
-                i_data[k] = loop_values[k][i]
+                v = loop_values[k][i]
+                inject_leaf_data(i_data, k.split("."), v, verbose=verbose)
             if loop_back_injections is None or i == 0:
                 i_injections = []
             else:

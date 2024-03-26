@@ -357,6 +357,15 @@ class TestLogics(unittest.TestCase):
         targets = list(range(1, num_loop + 1))
         self.assertSequenceEqual(results[looped]["results"], targets)
 
+        flow = Flow()
+        looped = flow.loop(
+            AddOneNode("add_one"),
+            {"a.b": list(range(num_loop))},
+            extract_hierarchy="a.b",
+        )
+        results = asyncio.run(flow.execute(looped))
+        self.assertSequenceEqual(results[looped]["results"], targets)
+
     def test_serialization(self):
         flow = Flow().push(ParametersNode("p", dict(params=dict(a=0))))
         with tempfile.TemporaryDirectory() as tmpdir:
