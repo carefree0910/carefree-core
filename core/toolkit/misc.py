@@ -49,7 +49,7 @@ from dataclasses import fields
 from dataclasses import dataclass
 from dataclasses import is_dataclass
 from dataclasses import Field
-from accelerate.utils import wait_for_everyone
+from accelerate.utils import wait_for_everyone as accelerate_wait
 from concurrent.futures import ThreadPoolExecutor
 
 from . import console
@@ -182,6 +182,11 @@ def is_fsdp() -> bool:
     if not is_dist_initialized():
         return False
     return PartialState().distributed_type == DistributedType.FSDP
+
+
+def wait_for_everyone() -> None:
+    if is_dist_initialized():
+        accelerate_wait()
 
 
 # util functions

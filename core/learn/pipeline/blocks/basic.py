@@ -21,7 +21,6 @@ from torch.optim import Optimizer
 from torch.profiler import profile
 from torch.profiler import schedule
 from accelerate.utils import gather_object
-from accelerate.utils import wait_for_everyone
 from torch.optim.lr_scheduler import _LRScheduler
 
 from .utils import TryLoadBlock
@@ -56,13 +55,14 @@ from ...optimizers import optimizer_dict
 from ...schedulers import scheduler_dict
 from ...schedulers import WarmupScheduler
 from ....toolkit import console
-from ....toolkit.misc import is_ddp
 from ....toolkit.misc import to_path
 from ....toolkit.misc import filter_kw
 from ....toolkit.misc import update_dict
 from ....toolkit.misc import get_ddp_info
+from ....toolkit.misc import wait_for_everyone
 from ....toolkit.misc import shallow_copy_dict
 from ....toolkit.misc import sort_dict_by_value
+from ....toolkit.misc import is_dist_initialized
 from ....toolkit.misc import prepare_workspace_from
 from ....toolkit.misc import truncate_string_to_length
 from ....toolkit.misc import Serializer
@@ -124,7 +124,7 @@ class PrepareWorkspaceBlock(InjectDefaultsMixin, Block):
             self._defaults["workspace"] = workspace
         # only gather workspaces when under DDP
         # otherwise, unexpected initialization of `accelerate` states will occur
-        if is_ddp():
+        if is_dist_initialized():
             wait_for_everyone()
             workspaces = gather_object([config.workspace])
             if not self.is_local_rank_0:

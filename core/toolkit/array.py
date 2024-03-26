@@ -14,13 +14,13 @@ from typing import Callable
 from typing import Optional
 from typing import NamedTuple
 from collections import Counter
-from accelerate.utils import wait_for_everyone
 from multiprocessing.shared_memory import SharedMemory
 from numpy.lib.stride_tricks import as_strided
 
 from .misc import to_path
 from .misc import random_hash
 from .misc import get_file_size
+from .misc import wait_for_everyone
 from .misc import only_execute_on_rank0
 from .misc import timeit
 from .types import TPath
