@@ -1948,6 +1948,7 @@ class TrainerConfig:
     mixed_precision: str = "no"
     dispatch_batches: Optional[str] = None
     even_batches: bool = True
+    timeout: int = 1800
 
 
 @dataclass

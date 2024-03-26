@@ -13,7 +13,9 @@ from typing import List
 from typing import Tuple
 from typing import Callable
 from typing import Optional
+from datetime import timedelta
 from accelerate import Accelerator
+from accelerate import InitProcessGroupKwargs
 from accelerate import DataLoaderConfiguration
 from tqdm.autonotebook import tqdm
 from torch.optim import Optimizer
@@ -222,6 +224,7 @@ class Trainer(ITrainer):
                 cpu = True
             else:
                 torch.cuda.set_device(device)
+        timeout = timedelta(seconds=self.config.timeout)
         self.accelerator = Accelerator(
             cpu=cpu,
             mixed_precision=self.config.mixed_precision,
@@ -230,6 +233,7 @@ class Trainer(ITrainer):
                 dispatch_batches=self.config.dispatch_batches,
                 even_batches=self.config.even_batches,
             ),
+            kwargs_handlers=[InitProcessGroupKwargs(timeout=timeout)],
         )
         self.accelerator.wait_for_everyone()
         # initialize artifact structure
