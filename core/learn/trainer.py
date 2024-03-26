@@ -15,6 +15,7 @@ from datetime import timedelta
 from accelerate import Accelerator
 from accelerate import InitProcessGroupKwargs
 from accelerate import DataLoaderConfiguration
+from dataclasses import asdict
 from tqdm.autonotebook import tqdm
 from torch.optim import Optimizer
 from torch.profiler import profile
@@ -101,7 +102,7 @@ class Trainer(ITrainer):
     @property
     def export_config(self) -> Dict[str, Any]:
         ddp_info = get_ddp_info()
-        ddp_d = None if ddp_info is None else ddp_info.asdict()
+        ddp_d = None if ddp_info is None else asdict(ddp_info)
         return {
             "state_config": self.state.config,
             "valid_portion": self.config.valid_portion,
