@@ -538,9 +538,9 @@ class Flow(Bundle[Node]):
 
     def loop(
         self,
-        n: int,
         node: Node,
-        loop_back_injections: Optional[List[LoopBackInjection]],
+        loop_values: Dict[str, List[Any]],
+        loop_back_injections: Optional[List[LoopBackInjection]] = None,
         *,
         extract_hierarchy: Optional[str] = None,
         verbose: bool = False,
@@ -563,7 +563,7 @@ class Flow(Bundle[Node]):
                     data=dict(
                         base_node=node.__identifier__,
                         base_data=shallow_copy_dict(node.data),
-                        loop_values=dict(loop_idx=list(range(n))),
+                        loop_values=loop_values,
                         loop_back_injections=(
                             None
                             if loop_back_injections is None

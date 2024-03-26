@@ -343,15 +343,15 @@ class TestLogics(unittest.TestCase):
         @Node.register("add_one")
         class AddOneNode(Node):
             async def execute(self) -> dict:
-                return dict(a=self.data["a"] + 1)
+                return dict(a=dict(b=self.data["a"]["b"] + 1))
 
-        flow = Flow().push(ParametersNode("p", dict(params=dict(a=0))))
+        flow = Flow().push(ParametersNode("p", dict(params=dict(a=dict(b=0)))))
         num_loop = 7
         looped = flow.loop(
-            num_loop,
-            AddOneNode("add_one", injections=[Injection("p", "params.a", "a")]),
-            [LoopBackInjection("a", "a")],
-            extract_hierarchy="a",
+            AddOneNode("add_one", injections=[Injection("p", "params.a.b", "a.b")]),
+            {"loop_idx": list(range(num_loop))},
+            [LoopBackInjection("a.b", "a.b")],
+            extract_hierarchy="a.b",
         )
         results = asyncio.run(flow.execute(looped))
         targets = list(range(1, num_loop + 1))
@@ -386,4 +386,4 @@ class TestLogics(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    TestLogics().test_loop()
