@@ -27,7 +27,6 @@ from typing import NamedTuple
 from typing import ContextManager
 from onnxsim import simplify as onnx_simplify
 from datetime import timedelta
-from functools import partial
 from accelerate import Accelerator
 from accelerate import InitProcessGroupKwargs
 from contextlib import nullcontext
@@ -40,7 +39,6 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import Dataset
 from torch.utils.data import WeightedRandomSampler
 from torch.utils.data import DataLoader as TorchDataLoader
-from torch.utils.data.dataloader import _BaseDataLoaderIter
 
 from .toolkit import device_type
 from .toolkit import get_device
