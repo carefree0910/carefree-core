@@ -4,8 +4,6 @@ import json
 import math
 import torch
 
-import torch.distributed as dist
-
 from typing import Any
 from typing import Set
 from typing import Dict
@@ -54,6 +52,7 @@ from ..toolkit.misc import get_ddp_info
 from ..toolkit.misc import safe_execute
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.misc import sort_dict_by_value
+from ..toolkit.misc import is_dist_initialized
 from ..toolkit.misc import Incrementer
 from ..toolkit.types import TPath
 from ..toolkit.types import tensor_dict_type
@@ -360,7 +359,7 @@ class Trainer(ITrainer):
                     if p is not None and self.is_local_rank_0:
                         p.step()
             except KeyboardInterrupt:
-                if dist.is_initialized():
+                if is_dist_initialized():
                     raise
                 console.error("keyboard interrupted")
                 terminate = True

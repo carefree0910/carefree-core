@@ -14,6 +14,7 @@ import operator
 import unicodedata
 
 import numpy as np
+import torch.distributed as dist
 
 from abc import abstractmethod
 from abc import ABC
@@ -173,8 +174,12 @@ def get_world_size() -> int:
     return 1 if ddp_info is None else ddp_info.world_size
 
 
+def is_dist_initialized() -> bool:
+    return dist.is_initialized()
+
+
 def is_fsdp() -> bool:
-    if not is_ddp():
+    if not is_dist_initialized():
         return False
     return PartialState().distributed_type == DistributedType.FSDP
 
