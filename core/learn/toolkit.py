@@ -23,12 +23,9 @@ from typing import Callable
 from typing import Optional
 from typing import NamedTuple
 from pathlib import Path
-from accelerate import PartialState
-from accelerate import DistributedType
 from contextlib import nullcontext
 from collections import defaultdict
 from collections import OrderedDict
-from dataclasses import dataclass
 from onnxruntime import InferenceSession
 from torch.optim import Optimizer
 from matplotlib.pyplot import figure as Figure
@@ -41,7 +38,6 @@ from ..toolkit.misc import prod
 from ..toolkit.misc import check_requires
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.misc import truncate_string_to_length
-from ..toolkit.misc import DataClassBase
 from ..toolkit.array import to_standard
 from ..toolkit.array import is_real_numeric
 from ..toolkit.types import TPath
