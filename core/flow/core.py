@@ -558,6 +558,7 @@ class Flow(Bundle[Node]):
         loop_key = f"$loop_{node.key}_{random_hash()[:4]}"
         modified_injections: List[Injection] = []
         for injection in node.injections:
+            modified_dst_hierarchy: Union[str, List[str]]
             if isinstance(injection.dst_hierarchy, str):
                 modified_dst_hierarchy = f"base_data.{injection.dst_hierarchy}"
             else:
