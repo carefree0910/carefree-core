@@ -379,6 +379,15 @@ class TestLogics(unittest.TestCase):
         results = asyncio.run(flow.execute(looped))
         self.assertSequenceEqual(results[looped]["results"], targets)
 
+        flow = Flow().push(ParametersNode("p", dict(params=dict(a=dict(b=list_range)))))
+        looped = flow.loop(
+            AddOneNode("add_one"),
+            loop_injections=[Injection("p", "params.a.b", ["loop_values", "a.b"])],
+            extract_hierarchy="a.b",
+        )
+        results = asyncio.run(flow.execute(looped))
+        self.assertSequenceEqual(results[looped]["results"], targets)
+
     def test_serialization(self):
         flow = Flow().push(ParametersNode("p", dict(params=dict(a=0))))
         with tempfile.TemporaryDirectory() as tmpdir:

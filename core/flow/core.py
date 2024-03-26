@@ -548,9 +548,10 @@ class Flow(Bundle[Node]):
     def loop(
         self,
         node: Node,
-        loop_values: Dict[str, List[Any]],
+        loop_values: Optional[Dict[str, List[Any]]] = None,
         loop_back_injections: Optional[List[LoopBackInjection]] = None,
         *,
+        loop_injections: Optional[List[Injection]] = None,
         extract_hierarchy: Optional[str] = None,
         verbose: bool = False,
     ) -> str:
@@ -568,6 +569,8 @@ class Flow(Bundle[Node]):
                     modified_dst_hierarchy,
                 )
             )
+        if loop_injections is not None:
+            modified_injections.extend(loop_injections)
         self.push(
             Node.make(
                 LOOP_NODE,
@@ -576,7 +579,7 @@ class Flow(Bundle[Node]):
                     data=dict(
                         base_node=node.__identifier__,
                         base_data=shallow_copy_dict(node.data),
-                        loop_values=loop_values,
+                        loop_values=shallow_copy_dict(loop_values or {}),
                         loop_back_injections=(
                             None
                             if loop_back_injections is None
