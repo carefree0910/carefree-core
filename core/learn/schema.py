@@ -224,9 +224,10 @@ class DataLoader(TorchDataLoader):
     dataset: IDataset
     for_inference: bool
 
-    def __iter__(self) -> _BaseDataLoaderIter:
+    def __iter__(self) -> Iterator[tensor_dict_type]:
         self.dataset.reset(for_inference=self.for_inference)
-        return super().__iter__()
+        for batch in super().__iter__():
+            yield self.data.process_batch(batch, for_inference=self.for_inference)
 
     def recover_labels(self, key: str, y: Tensor) -> Tensor:
         return self.data.recover_labels(key, y)
@@ -269,17 +270,22 @@ def prepare_dataloaders(accelerator: Accelerator, *loaders: TL) -> TLs:
     for loader, prepared in zip(loaders, prepared_loaders):
         if loader is not None:
 
-            def _begin_factory(original_begin: Callable) -> Callable:
-                def _begin(self: DataLoader) -> _BaseDataLoaderIter:
+            def _iter_factory(original_iter: Callable) -> Callable:
+                def _iter(self: DataLoader) -> Iterator[tensor_dict_type]:
+                    process_fn = self.data.process_batch
                     self.dataset.reset(for_inference=self.for_inference)
-                    return original_begin(self)
+                    for batch in original_iter(self):
+                        yield process_fn(batch, for_inference=self.for_inference)
 
-                return _begin
+                return _iter
 
             prepared.data = loader.data
             prepared.for_inference = loader.for_inference
             prepared.recover_labels = loader.recover_labels
-            prepared.__class__.begin = _begin_factory(prepared.__class__.begin)
+            cls_prepared = getattr(prepared.__class__, "_prepared_iter_", False)
+            if not cls_prepared:
+                prepared.__class__._prepared_iter_ = True
+                prepared.__class__.__iter__ = _iter_factory(prepared.__class__.__iter__)
     return prepared_loaders
 
 
@@ -567,11 +573,7 @@ class IData(  # type: ignore
         loader.for_inference = for_inference
         if self.config.bypass_collate_fn:
             # this is useful when collation is already done in the `__getitems__` method
-            collate_fn = lambda x: x
-        else:
-            collate_fn = loader.collate_fn
-        process_fn = partial(self.process_batch, for_inference=for_inference)
-        loader.collate_fn = lambda x: process_fn(collate_fn(x))
+            loader.collate_fn = lambda x: x
         return loader
 
     def get_bundle(

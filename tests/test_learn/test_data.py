@@ -58,6 +58,49 @@ class TestData(unittest.TestCase):
         with self.assertRaises(ValueError):
             cflearn.ArrayDictData.init().fit(d, x_valid=x).build_loaders()
 
+    def test_process_batch(self) -> None:
+        @cflearn.IDataBlock.register("foo", allow_duplicate=True)
+        class FooBlock(cflearn.IDataBlock):
+            def to_info(self) -> dict:
+                return {}
+
+            def transform(self, bundle, for_inference) -> cflearn.DataBundle:
+                return bundle
+
+            def fit_transform(self, bundle: cflearn.DataBundle) -> cflearn.DataBundle:
+                return bundle
+
+            def process_batch(self, batch, *, for_inference) -> tensor_dict_type:
+                batch[cflearn.INPUT_KEY] -= 1
+                return batch
+
+        input_dim = 11
+        num_samples = 23
+        batch_size = 17
+
+        x = np.random.randn(num_samples, input_dim)
+
+        data_config = cflearn.DataConfig()
+        data_config.add_blocks(FooBlock)
+        data = cflearn.ArrayData.init(data_config).fit(x)
+        data.config.batch_size = batch_size
+        loader = data.build_loader(x)
+        for i, batch in enumerate(loader):
+            x_batch = batch[cflearn.INPUT_KEY]
+            np.testing.assert_allclose(
+                x_batch,
+                x[i * batch_size : (i + 1) * batch_size] - 1,
+            )
+
+        accelerator = Accelerator()
+        loader = cflearn.prepare_dataloaders(accelerator, loader)[0]
+        for i, batch in enumerate(loader):
+            x_batch = batch[cflearn.INPUT_KEY]
+            np.testing.assert_allclose(
+                x_batch,
+                x[i * batch_size : (i + 1) * batch_size] - 1,
+            )
+
     def test_recover(self) -> None:
         @cflearn.IDataBlock.register("foo", allow_duplicate=True)
         class FooBlock(cflearn.IDataBlock):
