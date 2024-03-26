@@ -41,7 +41,7 @@ def toposort(workflow: Flow) -> ToposortResult:
                 visited.add(injection.src_key)
                 out_degrees[dst_key] += 1
             label_key = (dst_key, injection.src_key)
-            edge_label = injection.dst_hierarchy
+            edge_label = str(injection.dst_hierarchy)
             existing_label = edge_labels.get(label_key)
             if existing_label is None:
                 edge_labels[label_key] = edge_label
