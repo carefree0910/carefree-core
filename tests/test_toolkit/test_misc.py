@@ -852,5 +852,33 @@ class TestBatchManager(unittest.TestCase):
         self.assertEqual(len(self.batch_manager), 3)
 
 
+class TestGetDDPInfo(unittest.TestCase):
+    def setUp(self) -> None:
+        self.original_environ = os.environ.copy()
+
+    def tearDown(self) -> None:
+        os.environ = self.original_environ
+
+    def test_get_ddp_info_with_environment_variables_set(self) -> None:
+        os.environ["RANK"] = "1"
+        os.environ["WORLD_SIZE"] = "2"
+        os.environ["LOCAL_RANK"] = "3"
+        result = get_ddp_info()
+        self.assertIsInstance(result, DDPInfo)
+        self.assertEqual(result.rank, 1)
+        self.assertEqual(result.world_size, 2)
+        self.assertEqual(result.local_rank, 3)
+
+    def test_get_ddp_info_with_no_environment_variables_set(self) -> None:
+        if "RANK" in os.environ:
+            del os.environ["RANK"]
+        if "WORLD_SIZE" in os.environ:
+            del os.environ["WORLD_SIZE"]
+        if "LOCAL_RANK" in os.environ:
+            del os.environ["LOCAL_RANK"]
+        result = get_ddp_info()
+        self.assertIsNone(result)
+
+
 if __name__ == "__main__":
     unittest.main()

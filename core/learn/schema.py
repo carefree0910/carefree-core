@@ -41,10 +41,7 @@ from torch.utils.data import DataLoader as TorchDataLoader
 from torch.utils.data.dataloader import _BaseDataLoaderIter
 
 from .toolkit import device_type
-from .toolkit import is_fsdp
 from .toolkit import get_device
-from .toolkit import get_world_size
-from .toolkit import is_local_rank_0
 from .toolkit import get_torch_device
 from .toolkit import fix_denormal_states
 from .toolkit import ONNX
@@ -56,8 +53,11 @@ from .constants import INPUT_KEY
 from .constants import LABEL_KEY
 from .constants import PREDICTIONS_KEY
 from ..toolkit import console
+from ..toolkit.misc import is_fsdp
 from ..toolkit.misc import update_dict
 from ..toolkit.misc import safe_execute
+from ..toolkit.misc import get_world_size
+from ..toolkit.misc import is_local_rank_0
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.misc import WithRegister
 from ..toolkit.misc import DataClassBase

@@ -40,7 +40,6 @@ from ...schema import TrainerMonitor
 from ...schema import TrainerCallback
 from ...losses import losses
 from ...models import EnsembleModel
-from ...toolkit import get_ddp_info
 from ...toolkit import _get_environ_workspace
 from ...toolkit import scheduler_requires_metric
 from ...trainer import get_scores
@@ -57,9 +56,11 @@ from ...optimizers import optimizer_dict
 from ...schedulers import scheduler_dict
 from ...schedulers import WarmupScheduler
 from ....toolkit import console
+from ....toolkit.misc import is_ddp
 from ....toolkit.misc import to_path
 from ....toolkit.misc import filter_kw
 from ....toolkit.misc import update_dict
+from ....toolkit.misc import get_ddp_info
 from ....toolkit.misc import shallow_copy_dict
 from ....toolkit.misc import sort_dict_by_value
 from ....toolkit.misc import prepare_workspace_from
@@ -123,7 +124,7 @@ class PrepareWorkspaceBlock(InjectDefaultsMixin, Block):
             self._defaults["workspace"] = workspace
         # only gather workspaces when under DDP
         # otherwise, unexpected initialization of `accelerate` states will occur
-        if get_ddp_info() is not None:
+        if is_ddp():
             wait_for_everyone()
             workspaces = gather_object([config.workspace])
             if not self.is_local_rank_0:

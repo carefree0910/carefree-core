@@ -41,7 +41,6 @@ from .schema import TrainerMonitor
 from .schema import MultipleMetrics
 from .schema import TrainerCallback
 from .toolkit import summary
-from .toolkit import get_ddp_info
 from .toolkit import get_torch_device
 from .constants import PT_PREFIX
 from .constants import SCORES_FILE
@@ -49,7 +48,9 @@ from .constants import CHECKPOINTS_FOLDER
 from .schedulers import WarmupScheduler
 from .modules.common import EMA
 from ..toolkit import console
+from ..toolkit.misc import is_ddp
 from ..toolkit.misc import to_path
+from ..toolkit.misc import get_ddp_info
 from ..toolkit.misc import safe_execute
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.misc import sort_dict_by_value
@@ -218,7 +219,7 @@ class Trainer(ITrainer):
     ) -> "Trainer":
         # accelerator
         cpu = False
-        if get_ddp_info() is None:
+        if not is_ddp():
             device = get_torch_device(device)
             if device.type == "cpu":
                 cpu = True
@@ -642,7 +643,7 @@ class Trainer(ITrainer):
                         self.state.update_snapshot_epoch()
                         save_checkpoint = True
                 # should not terminate if DDP is enabled, otherwise the processes may hang
-                if get_ddp_info() is None:
+                if not is_ddp():
                     if any(m.should_terminate(score) for m in self.monitors):
                         terminate = True
         return MonitorResults(terminate, save_checkpoint, self.intermediate)

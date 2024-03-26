@@ -49,7 +49,6 @@ from ..schema import Config
 from ..schema import DataLoader
 from ..schema import InferenceOutputs
 from ..toolkit import get_device
-from ..toolkit import is_local_rank_0
 from ..toolkit import get_torch_device
 from ..trainer import get_scores
 from ..trainer import get_sorted_checkpoints
@@ -60,6 +59,7 @@ from ...toolkit import console
 from ...toolkit.misc import compress as compress_folder
 from ...toolkit.misc import to_path
 from ...toolkit.misc import safe_execute
+from ...toolkit.misc import is_local_rank_0
 from ...toolkit.misc import shallow_copy_dict
 from ...toolkit.misc import prepare_workspace_from
 from ...toolkit.misc import Serializer

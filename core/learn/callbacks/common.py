@@ -15,10 +15,10 @@ from ..schema import StepOutputs
 from ..schema import TrainerState
 from ..schema import MetricsOutputs
 from ..schema import TrainerCallback
-from ..toolkit import get_ddp_info
 from ..toolkit import tensor_batch_to_np
 from ...toolkit import console
 from ...toolkit.misc import prefix_dict
+from ...toolkit.misc import get_ddp_info
 from ...toolkit.misc import shallow_copy_dict
 from ...toolkit.misc import fix_float_to_length
 from ...toolkit.types import tensor_dict_type

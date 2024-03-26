@@ -10,8 +10,9 @@ from collections import OrderedDict
 
 from ..schema import IData
 from ..schema import Config
-from ..toolkit import get_ddp_info
 from ...toolkit import console
+from ...toolkit.misc import is_ddp
+from ...toolkit.misc import get_ddp_info
 from ...toolkit.misc import safe_execute
 from ...toolkit.misc import shallow_copy_dict
 from ...toolkit.types import TPath
@@ -59,7 +60,7 @@ class Block(IBlock):
 
     @property
     def ddp(self) -> bool:
-        return get_ddp_info() is not None
+        return is_ddp()
 
     @property
     def local_rank(self) -> Optional[int]:

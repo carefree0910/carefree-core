@@ -41,6 +41,7 @@ from datetime import datetime
 from datetime import timedelta
 from functools import reduce
 from accelerate import PartialState
+from accelerate import DistributedType
 from collections import OrderedDict
 from dataclasses import asdict
 from dataclasses import fields
@@ -59,6 +60,123 @@ from .constants import TIME_FORMAT
 
 
 dill._dill._reverse_typemap["ClassType"] = type
+
+
+# torch distributed utils
+
+
+@dataclass
+class DDPInfo:
+    """
+    A dataclass for storing Distributed Data Parallel (DDP) information.
+
+    Attributes
+    ----------
+    rank : int
+        The rank of the current process in the DDP group.
+    world_size : int
+        The total number of processes in the DDP group.
+    local_rank : int
+        The rank of the current process within its machine.
+
+    """
+
+    rank: int
+    world_size: int
+    local_rank: int
+
+
+def get_ddp_info() -> Optional[DDPInfo]:
+    """
+    Get DDP information from the environment variables.
+
+    Returns
+    -------
+    Optional[DDPInfo]
+        The DDP information if the relevant environment variables are set, otherwise None.
+
+    Examples
+    --------
+    >>> get_ddp_info()
+
+    """
+
+    if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
+        rank = int(os.environ["RANK"])
+        world_size = int(os.environ["WORLD_SIZE"])
+        local_rank = int(os.environ["LOCAL_RANK"])
+        return DDPInfo(rank, world_size, local_rank)
+    return None
+
+
+def is_ddp() -> bool:
+    return get_ddp_info() is not None
+
+
+def is_rank_0() -> bool:
+    """
+    Check if the rank is 0.
+
+    Returns
+    -------
+    bool
+        True if the rank is 0 or DDP is not being used, False otherwise.
+
+    Examples
+    --------
+    >>> is_rank_0()
+    True
+
+    """
+
+    ddp_info = get_ddp_info()
+    return ddp_info is None or ddp_info.rank == 0
+
+
+def is_local_rank_0() -> bool:
+    """
+    Check if the local rank is 0.
+
+    Returns
+    -------
+    bool
+        True if the local rank is 0 or DDP is not being used, False otherwise.
+
+    Examples
+    --------
+    >>> is_local_rank_0()
+    True
+
+    """
+
+    ddp_info = get_ddp_info()
+    return ddp_info is None or ddp_info.local_rank == 0
+
+
+def get_world_size() -> int:
+    """
+    Get the world size.
+
+    Returns
+    -------
+    int
+        The world size if DDP is being used, otherwise 1.
+
+    Examples
+    --------
+    >>> get_world_size()
+    1
+
+    """
+
+    ddp_info = get_ddp_info()
+    return 1 if ddp_info is None else ddp_info.world_size
+
+
+def is_fsdp() -> bool:
+    if not is_ddp():
+        return False
+    return PartialState().distributed_type == DistributedType.FSDP
 
 
 # util functions
@@ -650,7 +768,7 @@ def wait_for_everyone_at_end(fn: FAny) -> FAny:
 def only_execute_on_rank0(fn: FNone) -> FNone:
     @wait_for_everyone_at_end
     def _wrapper(*args: Any, **kwargs: Any) -> None:
-        if PartialState().is_main_process:
+        if is_rank_0():
             fn(*args, **kwargs)
 
     return _wrapper  # type: ignore

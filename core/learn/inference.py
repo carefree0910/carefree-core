@@ -22,12 +22,12 @@ from .schema import DataLoader
 from .schema import MetricsOutputs
 from .schema import InferenceOutputs
 from .toolkit import get_device
-from .toolkit import is_local_rank_0
 from .toolkit import tensor_batch_to_np
 from .toolkit import ONNX
 from .constants import LABEL_KEY
 from .constants import PREDICTIONS_KEY
 from ..toolkit import console
+from ..toolkit.misc import is_local_rank_0
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.array import to_device
 from ..toolkit.types import np_dict_type
