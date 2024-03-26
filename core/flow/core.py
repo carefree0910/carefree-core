@@ -65,6 +65,48 @@ def extract_from(data: Any, hierarchy: str) -> Any:
     return data
 
 
+def inject_leaf_data(d: Any, hierarchies: List[str], v: Any, *, verbose: bool) -> None:
+    h = hierarchies.pop(0)
+    is_leaf = len(hierarchies) == 0
+    if isinstance(d, list):
+        try:
+            ih = int(h)
+        except:
+            raise ValueError(f"current value is list, but '{h}' is not int")
+        if len(d) <= ih:
+            if verbose:
+                replace_msg = "target value" if is_leaf else "an empty `dict`"
+                console.warn(
+                    "current data is a list but its length is not enough, "
+                    f"corresponding index ({h}) will be set to {replace_msg}, "
+                    "and other elements will be set to `undefined`"
+                )
+            d.extend([UNDEFINED_PLACEHOLDER] * (ih - len(d) + 1))
+        if is_leaf:
+            d[ih] = v
+        else:
+            d[ih] = {}
+            inject_leaf_data(d[ih], hierarchies, v, verbose=verbose)
+    elif isinstance(d, dict):
+        if is_leaf:
+            d[h] = v
+        else:
+            if h not in d:
+                if verbose:
+                    console.warn(
+                        "current data is a dict but it does not have the "
+                        f" corresponding key ('{h}'), it will be set to "
+                        "an empty `dict`"
+                    )
+                d[h] = {}
+            inject_leaf_data(d[h], hierarchies, v, verbose=verbose)
+    else:
+        raise ValueError(
+            f"hierarchy '{h}' is required but current value type "
+            f"is '{type(d)}' ({d})"
+        )
+
+
 async def warmup(t_node: Type["Node"], verbose: bool) -> None:
     warmed_up_key = t_node.__identifier__
     if not warmed_up_records.get(warmed_up_key, False):
@@ -365,47 +407,6 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
             history[injection.dst_hierarchy] = injection
 
     def fetch_injections(self, results: Dict[str, Any], verbose: bool = True) -> None:
-        def inject_leaf_data(data: Any, hierarchies: List[str], value: Any) -> None:
-            h = hierarchies.pop(0)
-            is_leaf = len(hierarchies) == 0
-            if isinstance(data, list):
-                try:
-                    ih = int(h)
-                except:
-                    raise ValueError(f"current value is list, but '{h}' is not int")
-                if len(data) <= ih:
-                    if verbose:
-                        replace_msg = "target value" if is_leaf else "an empty `dict`"
-                        console.warn(
-                            "current data is a list but its length is not enough, "
-                            f"corresponding index ({h}) will be set to {replace_msg}, "
-                            "and other elements will be set to `undefined`"
-                        )
-                    data.extend([UNDEFINED_PLACEHOLDER] * (ih - len(data) + 1))
-                if is_leaf:
-                    data[ih] = value
-                else:
-                    data[ih] = {}
-                    inject_leaf_data(data[ih], hierarchies, value)
-            elif isinstance(data, dict):
-                if is_leaf:
-                    data[h] = value
-                else:
-                    if h not in data:
-                        if verbose:
-                            console.warn(
-                                "current data is a dict but it does not have the "
-                                f" corresponding key ('{h}'), it will be set to "
-                                "an empty `dict`"
-                            )
-                        data[h] = {}
-                    inject_leaf_data(data[h], hierarchies, value)
-            else:
-                raise ValueError(
-                    f"hierarchy '{h}' is required but current value type "
-                    f"is '{type(data)}' ({data})"
-                )
-
         for injection in self.injections:
             src_key = injection.src_key
             src_out = results.get(src_key)
@@ -414,7 +415,7 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
             if injection.src_hierarchy is not None:
                 src_out = extract_from(src_out, injection.src_hierarchy)
             dst_hierarchies = injection.dst_hierarchy.split(".")
-            inject_leaf_data(self.data, dst_hierarchies, src_out)
+            inject_leaf_data(self.data, dst_hierarchies, src_out, verbose=verbose)
 
     def check_undefined(self) -> None:
         def check(data: Any) -> None:
