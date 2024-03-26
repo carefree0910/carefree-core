@@ -26,8 +26,10 @@ from typing import Optional
 from typing import NamedTuple
 from typing import ContextManager
 from onnxsim import simplify as onnx_simplify
+from datetime import timedelta
 from functools import partial
 from accelerate import Accelerator
+from accelerate import InitProcessGroupKwargs
 from contextlib import nullcontext
 from dataclasses import dataclass
 from torch.optim import Optimizer
@@ -59,6 +61,7 @@ from ..toolkit.misc import safe_execute
 from ..toolkit.misc import get_world_size
 from ..toolkit.misc import is_local_rank_0
 from ..toolkit.misc import shallow_copy_dict
+from ..toolkit.misc import init_process_group
 from ..toolkit.misc import WithRegister
 from ..toolkit.misc import DataClassBase
 from ..toolkit.misc import ISerializable
@@ -1949,6 +1952,10 @@ class TrainerConfig:
     dispatch_batches: Optional[str] = None
     even_batches: bool = True
     timeout: int = 1800
+
+    def init_process_group(self, *, cpu: bool) -> None:
+        timeout = timedelta(seconds=self.timeout)
+        init_process_group(cpu=cpu, handler=InitProcessGroupKwargs(timeout=timeout))
 
 
 @dataclass

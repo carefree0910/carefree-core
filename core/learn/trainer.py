@@ -225,7 +225,7 @@ class Trainer(ITrainer):
                 cpu = True
             else:
                 torch.cuda.set_device(device)
-        timeout = timedelta(seconds=self.config.timeout)
+        self.config.init_process_group(cpu=cpu)
         self.accelerator = Accelerator(
             cpu=cpu,
             mixed_precision=self.config.mixed_precision,
@@ -234,7 +234,6 @@ class Trainer(ITrainer):
                 dispatch_batches=self.config.dispatch_batches,
                 even_batches=self.config.even_batches,
             ),
-            kwargs_handlers=[InitProcessGroupKwargs(timeout=timeout)],
         )
         self.accelerator.wait_for_everyone()
         # initialize artifact structure

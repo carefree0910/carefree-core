@@ -43,6 +43,7 @@ from datetime import timedelta
 from functools import reduce
 from accelerate import PartialState
 from accelerate import DistributedType
+from accelerate import InitProcessGroupKwargs
 from collections import OrderedDict
 from dataclasses import asdict
 from dataclasses import fields
@@ -182,6 +183,10 @@ def is_fsdp() -> bool:
     if not is_dist_initialized():
         return False
     return PartialState().distributed_type == DistributedType.FSDP
+
+
+def init_process_group(*, cpu: bool, handler: InitProcessGroupKwargs) -> None:
+    PartialState(cpu, **handler.to_kwargs())
 
 
 def wait_for_everyone() -> None:
