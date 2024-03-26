@@ -345,22 +345,35 @@ class TestLogics(unittest.TestCase):
             async def execute(self) -> dict:
                 return dict(a=dict(b=self.data["a"]["b"] + 1))
 
-        flow = Flow().push(ParametersNode("p", dict(params=dict(a=dict(b=0)))))
         num_loop = 7
+        list_range = list(range(num_loop))
+        targets = list(range(1, num_loop + 1))
+
+        flow = Flow().push(ParametersNode("p", dict(params=dict(a=dict(b=0)))))
         looped = flow.loop(
             AddOneNode("add_one", injections=[Injection("p", "params.a.b", "a.b")]),
-            {"loop_idx": list(range(num_loop))},
+            {"loop_idx": list_range},
             [LoopBackInjection("a.b", "a.b")],
             extract_hierarchy="a.b",
         )
         results = asyncio.run(flow.execute(looped))
-        targets = list(range(1, num_loop + 1))
+        self.assertSequenceEqual(results[looped]["results"], targets)
+
+        flow = Flow().push(ParametersNode("p", dict(params=dict(a=dict(b=0)))))
+        injection = Injection("p", ["params", "a", "b"], ["a", "b"])
+        looped = flow.loop(
+            AddOneNode("add_one", injections=[injection]),
+            {"loop_idx": list_range},
+            [LoopBackInjection(["a", "b"], ["a", "b"])],
+            extract_hierarchy="a.b",
+        )
+        results = asyncio.run(flow.execute(looped))
         self.assertSequenceEqual(results[looped]["results"], targets)
 
         flow = Flow()
         looped = flow.loop(
             AddOneNode("add_one"),
-            {"a.b": list(range(num_loop))},
+            {"a.b": list_range},
             extract_hierarchy="a.b",
         )
         results = asyncio.run(flow.execute(looped))
@@ -395,4 +408,4 @@ class TestLogics(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    TestLogics().test_loop()
+    unittest.main()

@@ -9,6 +9,7 @@ from typing import Set
 from typing import Dict
 from typing import List
 from typing import Type
+from typing import Union
 from typing import TypeVar
 from typing import Callable
 from typing import Optional
@@ -45,8 +46,14 @@ GATHER_NODE = "common.gather"
 WORKFLOW_ENDPOINT_NAME = "workflow"
 
 
-def extract_from(data: Any, hierarchy: str) -> Any:
-    hierarchies = hierarchy.split(".")
+def to_hierarchies(hierarchy: Union[str, List[str]]) -> List[str]:
+    if isinstance(hierarchy, list):
+        return hierarchy
+    return hierarchy.split(".")
+
+
+def extract_from(data: Any, hierarchy: Union[str, List[str]]) -> Any:
+    hierarchies = to_hierarchies(hierarchy)
     for h in hierarchies:
         if isinstance(data, list):
             try:
@@ -125,26 +132,26 @@ class Injection:
     ----------
     src_key : str
         The key of the dependent node.
-    src_hierarchy : str | None
+    src_hierarchy : str | list[str] | None
         The 'src_hierarchy' of the dependent node's results that the current node depends on.
         - `src_hierarchy` can be very complex:
           - use `int` as `list` index, and `str` as `dict` key.
-          - use `.` to represent nested structure.
-          - for example, you can use `a.0.b` to indicate `results["a"][0]["b"]`.
+          - use list / `.` to represent nested structure.
+          - for example, you can use `["a", "0", "b"]` or `a.0.b` to indicate `results["a"][0]["b"]`.
         - If `None`, all results of the dependent node will be used.
-    dst_hierarchy : str
+    dst_hierarchy : str | list[str]
         The 'dst_hierarchy' of the current node's `data`.
         - `dst_hierarchy` can be very complex:
           - use `int` as `list` index, and `str` as `dict` key.
-          - use `.` to represent nested structure.
-          - for example, if you want to inject to `data["a"][0]["b"]`, you can use `a.0.b`
-          as the `dst_hierarchy`.
+          - use list / `.` to represent nested structure.
+          - for example, if you want to inject to `data["a"][0]["b"]`, you can use either
+          `["a", "0", "b"]` or `a.0.b` as the `dst_hierarchy`.
 
     """
 
     src_key: str
-    src_hierarchy: Optional[str]
-    dst_hierarchy: str
+    src_hierarchy: Optional[Union[str, List[str]]]
+    dst_hierarchy: Union[str, List[str]]
 
 
 @dataclass
@@ -156,8 +163,8 @@ class LoopBackInjection:
     key of the previous node in the loop.
     """
 
-    src_hierarchy: Optional[str]
-    dst_hierarchy: str
+    src_hierarchy: Optional[Union[str, List[str]]]
+    dst_hierarchy: Union[str, List[str]]
 
 
 @dataclass
@@ -398,13 +405,14 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
     def check_injections(self) -> None:
         history: Dict[str, Injection] = {}
         for injection in self.injections:
-            existing = history.get(injection.dst_hierarchy)
+            dst_hierarchy_key = str(injection.dst_hierarchy)
+            existing = history.get(dst_hierarchy_key)
             if existing is not None:
                 raise ValueError(
                     f"`dst_hierarchy` of current injection ({injection}) is duplicated "
                     f"with previous injection ({existing})"
                 )
-            history[injection.dst_hierarchy] = injection
+            history[dst_hierarchy_key] = injection
 
     def fetch_injections(self, results: Dict[str, Any], verbose: bool = True) -> None:
         for injection in self.injections:
@@ -414,7 +422,7 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
                 raise ValueError(f"cannot find cache for '{src_key}'")
             if injection.src_hierarchy is not None:
                 src_out = extract_from(src_out, injection.src_hierarchy)
-            dst_hierarchies = injection.dst_hierarchy.split(".")
+            dst_hierarchies = to_hierarchies(injection.dst_hierarchy)
             inject_leaf_data(self.data, dst_hierarchies, src_out, verbose=verbose)
 
     def check_undefined(self) -> None:
@@ -549,11 +557,15 @@ class Flow(Bundle[Node]):
         loop_key = f"$loop_{node.key}_{random_hash()[:4]}"
         modified_injections: List[Injection] = []
         for injection in node.injections:
+            if isinstance(injection.dst_hierarchy, str):
+                modified_dst_hierarchy = f"base_data.{injection.dst_hierarchy}"
+            else:
+                modified_dst_hierarchy = ["base_data"] + injection.dst_hierarchy
             modified_injections.append(
                 Injection(
                     injection.src_key,
                     injection.src_hierarchy,
-                    f"base_data.{injection.dst_hierarchy}",
+                    modified_dst_hierarchy,
                 )
             )
         self.push(

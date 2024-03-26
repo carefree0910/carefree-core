@@ -38,23 +38,22 @@ from ...toolkit.misc import shallow_copy_dict
 class LoopBackInjectionModel(BaseModel):
     """Data model of `LoopBackInjection`"""
 
-    src_hierarchy: Optional[str] = Field(
+    src_hierarchy: Optional[Union[str, List[str]]] = Field(
         ...,
         description="""The 'src_hierarchy' of the dependent node's results that the current node depends on.
 - `src_hierarchy` can be very complex:
   - use `int` as `list` index, and `str` as `dict` key.
-  - use `.` to represent nested structure.
-  - for example, you can use `a.0.b` to indicate `results["a"][0]["b"]`.
+  - use list / `.` to represent nested structure.
+  - for example, you can use `["a", "0", "b"]` or `a.0.b` to indicate `results["a"][0]["b"]`.
 - If `None`, all results of the dependent node will be used.""",
     )
-    dst_hierarchy: str = Field(
+    dst_hierarchy: Union[str, List[str]] = Field(
         ...,
         description="""The 'dst_hierarchy' of the current node's `data`.
 - `dst_hierarchy` can be very complex:
   - use `int` as `list` index, and `str` as `dict` key.
-  - use `.` to represent nested structure.
-  - for example, if you want to inject to `data["a"][0]["b"]`, you can use `a.0.b`
-  as the `dst_hierarchy`.""",
+  - use list / `.` to represent nested structure.
+  - for example, if you want to inject to `data["a"][0]["b"]`, you can use either `["a", "0", "b"]` or `a.0.b` as the `dst_hierarchy`.""",
     )
 
 
