@@ -44,6 +44,7 @@ ALL_LATENCIES_KEY = "$all_latencies$"
 
 LOOP_NODE = "common.loop"
 GATHER_NODE = "common.gather"
+WORKFLOW_NODE = "common.workflow"
 WORKFLOW_ENDPOINT_NAME = "workflow"
 
 

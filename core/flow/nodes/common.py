@@ -22,12 +22,14 @@ from .schema import EmptyOutput
 from .schema import IWithImageNode
 from ..core import LOOP_NODE
 from ..core import GATHER_NODE
+from ..core import WORKFLOW_NODE
 from ..core import extract_from
 from ..core import inject_leaf_data
 from ..core import Node
 from ..core import Flow
 from ..core import Schema
 from ..core import Injection
+from ..core import WorkflowModel
 from ..core import LoopBackInjectionModel
 from ...toolkit import console
 from ...toolkit.misc import shallow_copy_dict
@@ -179,6 +181,19 @@ class GatherNode(Node):
         copied = super().copy()
         copied.flow = self.flow
         return copied
+
+
+@Node.register(WORKFLOW_NODE)
+class WorkflowNode(Node):
+    @classmethod
+    def get_schema(cls) -> Schema:
+        return Schema(
+            input_model=WorkflowModel,
+            description="A node that represents a workflow",
+        )
+
+    async def execute(self) -> Dict[str, Any]:
+        return await WorkflowModel(**self.data).run(return_api_response=False)
 
 
 # common nodes
