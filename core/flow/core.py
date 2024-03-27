@@ -13,6 +13,7 @@ from typing import Union
 from typing import TypeVar
 from typing import Callable
 from typing import Optional
+from pydantic import Field
 from pydantic import BaseModel
 from dataclasses import field
 from dataclasses import asdict
@@ -805,6 +806,95 @@ class Flow(Bundle[Node]):
 Node.d = nodes  # type: ignore
 
 
+class SrcKey(BaseModel):
+    src_key: str = Field(..., description="The key of the dependent node.")
+
+
+class LoopBackInjectionModel(BaseModel):
+    """Data model of `LoopBackInjection`"""
+
+    src_hierarchy: Optional[Union[str, List[str]]] = Field(
+        ...,
+        description="""The 'src_hierarchy' of the dependent node's results that the current node depends on.
+- `src_hierarchy` can be very complex:
+  - use `int` as `list` index, and `str` as `dict` key.
+  - use list / `.` to represent nested structure.
+  - for example, you can use `["a", "0", "b"]` or `a.0.b` to indicate `results["a"][0]["b"]`.
+- If `None`, all results of the dependent node will be used.""",
+    )
+    dst_hierarchy: Union[str, List[str]] = Field(
+        ...,
+        description="""The 'dst_hierarchy' of the current node's `data`.
+- `dst_hierarchy` can be very complex:
+  - use `int` as `list` index, and `str` as `dict` key.
+  - use list / `.` to represent nested structure.
+  - for example, if you want to inject to `data["a"][0]["b"]`, you can use either `["a", "0", "b"]` or `a.0.b` as the `dst_hierarchy`.""",
+    )
+
+
+class InjectionModel(LoopBackInjectionModel, SrcKey):
+    pass
+
+
+class NodeModel(BaseModel):
+    key: str = Field(
+        ...,
+        description="The key of the node, should be unique with respect to the workflow.",
+    )
+    type: str = Field(
+        ...,
+        description="The type of the node, should be the one when registered.",
+    )
+    data: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="The data associated with the node.",
+    )
+    injections: List[InjectionModel] = Field(
+        default_factory=list,
+        description="A list of injections of the node.",
+    )
+    offload: bool = Field(
+        False,
+        description="A flag indicating whether the node should be offloaded.",
+    )
+    lock_key: Optional[str] = Field(None, description="The lock key of the node.")
+
+
+class WorkflowModel(BaseModel):
+    target: str = Field(..., description="The target output node of the workflow.")
+    intermediate: Optional[List[str]] = Field(
+        None,
+        description="The intermediate nodes that you want to get outputs from.",
+    )
+    nodes: List[NodeModel] = Field(..., description="A list of nodes in the workflow.")
+    return_if_exception: bool = Field(
+        False,
+        description="Whether to return partial results if exception occurs.",
+    )
+    verbose: bool = Field(False, description="Whether to print debug logs.")
+
+    def get_workflow(self) -> Flow:
+        workflow_json = []
+        for node in self.model_dump()["nodes"]:
+            node_json = dict(type=node.pop("type"), info=node)
+            workflow_json.append(node_json)
+        return Flow.from_json(workflow_json)
+
+    async def run(
+        self,
+        flow: Flow,
+        *,
+        return_api_response: bool = False,
+    ) -> Dict[str, Any]:
+        return await flow.execute(
+            self.target,
+            self.intermediate,
+            return_api_response=return_api_response,
+            return_if_exception=self.return_if_exception,
+            verbose=self.verbose,
+        )
+
+
 __all__ = [
     "UNDEFINED_PLACEHOLDER",
     "EXCEPTION_MESSAGE_KEY",
@@ -815,4 +905,9 @@ __all__ = [
     "Node",
     "Flow",
     "BaseModel",
+    "SrcKey",
+    "LoopBackInjectionModel",
+    "InjectionModel",
+    "NodeModel",
+    "WorkflowModel",
 ]

@@ -15,9 +15,9 @@ from dataclasses import asdict
 
 from .core import Node
 from .core import Flow
-from .server import NodeModel
-from .server import WorkflowModel
-from .server import InjectionModel
+from .core import NodeModel
+from .core import WorkflowModel
+from .core import InjectionModel
 from ..toolkit.misc import truncate_string_to_length
 from ..toolkit.data_structures import Item
 

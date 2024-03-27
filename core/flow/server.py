@@ -15,8 +15,9 @@ from .core import WORKFLOW_ENDPOINT_NAME
 from .core import warmup
 from .core import Node
 from .core import Flow
+from .core import WorkflowModel
+from .core import InjectionModel
 from .nodes.common import to_endpoint
-from .nodes.common import LoopBackInjectionModel
 from ..parameters import OPT
 from ..toolkit.web import raise_err
 from ..toolkit.web import get_responses
@@ -102,73 +103,6 @@ def register_nodes_api(app: FastAPI) -> None:
     focus = OPT.flow_opt["focus"]
     for t_node in use_all_t_nodes():
         register_api(app, t_node, focus)
-
-
-class SrcKey(BaseModel):
-    src_key: str = Field(..., description="The key of the dependent node.")
-
-
-class InjectionModel(LoopBackInjectionModel, SrcKey):
-    pass
-
-
-class NodeModel(BaseModel):
-    key: str = Field(
-        ...,
-        description="The key of the node, should be unique with respect to the workflow.",
-    )
-    type: str = Field(
-        ...,
-        description="The type of the node, should be the one when registered.",
-    )
-    data: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="The data associated with the node.",
-    )
-    injections: List[InjectionModel] = Field(
-        default_factory=list,
-        description="A list of injections of the node.",
-    )
-    offload: bool = Field(
-        False,
-        description="A flag indicating whether the node should be offloaded.",
-    )
-    lock_key: Optional[str] = Field(None, description="The lock key of the node.")
-
-
-class WorkflowModel(BaseModel):
-    target: str = Field(..., description="The target output node of the workflow.")
-    intermediate: Optional[List[str]] = Field(
-        None,
-        description="The intermediate nodes that you want to get outputs from.",
-    )
-    nodes: List[NodeModel] = Field(..., description="A list of nodes in the workflow.")
-    return_if_exception: bool = Field(
-        False,
-        description="Whether to return partial results if exception occurs.",
-    )
-    verbose: bool = Field(False, description="Whether to print debug logs.")
-
-    def get_workflow(self) -> Flow:
-        workflow_json = []
-        for node in self.model_dump()["nodes"]:
-            node_json = dict(type=node.pop("type"), info=node)
-            workflow_json.append(node_json)
-        return Flow.from_json(workflow_json)
-
-    async def run(
-        self,
-        flow: Flow,
-        *,
-        return_api_response: bool = False,
-    ) -> Dict[str, Any]:
-        return await flow.execute(
-            self.target,
-            self.intermediate,
-            return_api_response=return_api_response,
-            return_if_exception=self.return_if_exception,
-            verbose=self.verbose,
-        )
 
 
 def register_workflow_api(app: FastAPI) -> None:
