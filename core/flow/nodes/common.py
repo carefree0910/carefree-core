@@ -371,6 +371,7 @@ __all__ = [
     "LoopBackInjectionModel",
     "LoopNode",
     "GatherNode",
+    "WorkflowNode",
     "ParametersNode",
     "EchoNode",
     "CopyNode",
