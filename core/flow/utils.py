@@ -18,6 +18,7 @@ from .core import Flow
 from .server import NodeModel
 from .server import WorkflowModel
 from .server import InjectionModel
+from ..toolkit.misc import truncate_string_to_length
 from ..toolkit.data_structures import Item
 
 
@@ -47,6 +48,8 @@ def toposort(workflow: Flow) -> ToposortResult:
                 edge_labels[label_key] = edge_label
             else:
                 edge_labels[label_key] = f"{existing_label}, {edge_label}"
+    for k, v in edge_labels.items():
+        edge_labels[k] = truncate_string_to_length(v, 25)
 
     ready = [k for k, v in out_degrees.items() if v == 0]
     result = []
