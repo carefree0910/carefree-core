@@ -880,13 +880,8 @@ class WorkflowModel(BaseModel):
             workflow_json.append(node_json)
         return Flow.from_json(workflow_json)
 
-    async def run(
-        self,
-        flow: Flow,
-        *,
-        return_api_response: bool = False,
-    ) -> Dict[str, Any]:
-        return await flow.execute(
+    async def run(self, *, return_api_response: bool = False) -> Dict[str, Any]:
+        return await self.get_workflow().execute(
             self.target,
             self.intermediate,
             return_api_response=return_api_response,

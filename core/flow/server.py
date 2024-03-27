@@ -109,8 +109,7 @@ def register_workflow_api(app: FastAPI) -> None:
     @app.post(f"/{WORKFLOW_ENDPOINT_NAME}")
     async def workflow(data: WorkflowModel) -> Dict[str, Any]:
         try:
-            flow = data.get_workflow()
-            return await data.run(flow, return_api_response=True)
+            return await data.run(return_api_response=True)
         except Exception as err:
             raise_err(err)
             return {}
