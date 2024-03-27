@@ -94,7 +94,9 @@ def inject_leaf_data(d: Any, hierarchies: List[str], v: Any, *, verbose: bool) -
         if is_leaf:
             d[ih] = v
         else:
-            d[ih] = {}
+            if d[ih] == UNDEFINED_PLACEHOLDER:
+                console.warn("filling `undefined` value with an empty `dict`")
+                d[ih] = {}
             inject_leaf_data(d[ih], hierarchies, v, verbose=verbose)
     elif isinstance(d, dict):
         if is_leaf:
