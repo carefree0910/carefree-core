@@ -157,6 +157,13 @@ class Injection:
     src_hierarchy: Optional[Union[str, List[str]]]
     dst_hierarchy: Union[str, List[str]]
 
+    def to_model(self) -> "InjectionModel":
+        return InjectionModel(
+            src_key=self.src_key,
+            src_hierarchy=self.src_hierarchy,
+            dst_hierarchy=self.dst_hierarchy,
+        )
+
 
 @dataclass
 class LoopBackInjection:
@@ -169,6 +176,12 @@ class LoopBackInjection:
 
     src_hierarchy: Optional[Union[str, List[str]]]
     dst_hierarchy: Union[str, List[str]]
+
+    def to_model(self) -> "LoopBackInjectionModel":
+        return LoopBackInjectionModel(
+            src_hierarchy=self.src_hierarchy,
+            dst_hierarchy=self.dst_hierarchy,
+        )
 
 
 @dataclass
@@ -328,6 +341,18 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
 
         tag = f"$depend_{random_hash()[:4]}"
         self.injections.append(Injection(src_key, None, tag))
+
+    def to_model(self) -> "NodeModel":
+        if self.key is None:
+            raise ValueError("node key cannot be None")
+        return NodeModel(
+            key=self.key,
+            type=self.__identifier__,
+            data=shallow_copy_dict(self.data),
+            injections=[injection.to_model() for injection in self.injections],
+            offload=self.offload,
+            lock_key=self.lock_key,
+        )
 
     # abstract
 
@@ -621,6 +646,22 @@ class Flow(Bundle[Node]):
         for pack in data:
             workflow.push(Node.from_pack(pack))
         return workflow
+
+    def to_model(
+        self,
+        *,
+        target: str,
+        intermediate: Optional[List[str]] = None,
+        return_if_exception: bool = False,
+        verbose: bool = False,
+    ) -> "WorkflowModel":
+        return WorkflowModel(
+            target=target,
+            intermediate=intermediate,
+            nodes=[item.data.to_model() for item in self],
+            return_if_exception=return_if_exception,
+            verbose=verbose,
+        )
 
     def copy(self) -> "Flow":
         return Flow.from_json(self.to_json())
