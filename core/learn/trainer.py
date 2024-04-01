@@ -131,6 +131,10 @@ class Trainer(ITrainer):
         return self.accelerator.device
 
     @property
+    def is_rank_0(self) -> bool:
+        return self.accelerator.is_main_process
+
+    @property
     def is_local_rank_0(self) -> bool:
         return self.accelerator.is_local_main_process
 
@@ -572,11 +576,6 @@ class Trainer(ITrainer):
             metric_values = shallow_copy_dict(metrics_outputs.metric_values)
             metric_values["score"] = metrics_outputs.final_score
             self.epoch_tqdm.set_postfix(metric_values)
-        for callback in self.callbacks:
-            callback.log_metrics(metrics_outputs, self.state)
-        if self.state.should_log_artifacts:
-            for callback in self.callbacks:
-                callback.log_artifacts(self)
         if self.state.should_log_metrics_msg:
             for callback in self.callbacks:
                 callback.log_metrics_msg(
@@ -584,6 +583,12 @@ class Trainer(ITrainer):
                     self.metrics_log_path,
                     self.state,
                 )
+        if self.is_rank_0:
+            for callback in self.callbacks:
+                callback.log_metrics(metrics_outputs, self.state)
+            if self.state.should_log_artifacts:
+                for callback in self.callbacks:
+                    callback.log_artifacts(self)
 
     # `*_loader`s are distributed loaders
     def _monitor(
