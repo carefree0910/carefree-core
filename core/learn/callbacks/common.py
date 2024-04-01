@@ -72,6 +72,8 @@ class LogMetricsMsgCallback(TrainerCallback):
         metrics_outputs: MetricsOutputs,
         metrics_log_path: str,
         state: TrainerState,
+        *,
+        prefix: Optional[str] = None,
     ) -> None:
         final_score = metrics_outputs.final_score
         metric_values = metrics_outputs.metric_values
@@ -83,8 +85,9 @@ class LogMetricsMsgCallback(TrainerCallback):
         )
         step_str = self._step_str(state)
         timer_str = f"[{time.time() - self.timer:.3f}s]"
+        prefix_str = "" if prefix is None else f" \['{prefix}']"
         msg = (
-            f"| epoch {state.epoch:^4d} {step_str} {timer_str} | {core} | "
+            f"| epoch {state.epoch:^4d} {step_str} {timer_str}{prefix_str} | {core} | "
             f"score : {fix_float_to_length(final_score, 8)} |"
         )
         if self.verbose:
@@ -188,9 +191,17 @@ class WandBCallback(TrainerCallback):
         if state.should_log_losses:
             wandb.log(prefix_dict(step_outputs.loss_items, "tr"), step=state.step)
 
-    def log_metrics(self, metric_outputs: MetricsOutputs, state: TrainerState) -> None:
+    def log_metrics(
+        self,
+        metric_outputs: MetricsOutputs,
+        state: TrainerState,
+        *,
+        prefix: Optional[str] = None,
+    ) -> None:
         metrics = shallow_copy_dict(metric_outputs.metric_values)
         metrics["score"] = metric_outputs.final_score
+        if prefix is not None:
+            metrics = prefix_dict(metrics, prefix)
         wandb.log(metrics, step=self._wandb_step(state))
 
     def log_artifacts(self, trainer: ITrainer) -> None:

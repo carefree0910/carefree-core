@@ -1767,7 +1767,13 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     def log_train_step(self, step_outputs: StepOutputs, state: TrainerState) -> None:
         pass
 
-    def log_metrics(self, metric_outputs: MetricsOutputs, state: TrainerState) -> None:
+    def log_metrics(
+        self,
+        metric_outputs: MetricsOutputs,
+        state: TrainerState,
+        *,
+        prefix: Optional[str] = None,
+    ) -> None:
         pass
 
     def log_metrics_msg(
@@ -1775,6 +1781,8 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
         metric_outputs: MetricsOutputs,
         metrics_log_path: str,
         state: TrainerState,
+        *,
+        prefix: Optional[str] = None,
     ) -> None:
         pass
 
