@@ -590,6 +590,22 @@ class Trainer(ITrainer):
                 for callback in self.callbacks:
                     callback.log_artifacts(self)
 
+    # `loader` is distributed loader
+    def _log_metrics(self, loader: DataLoader, *, prefix: Optional[str] = None) -> None:
+        if self.is_local_rank_0:
+            valid_portion = self.config.valid_portion
+            metrics_outputs = self._get_metrics(loader, valid_portion)
+            for callback in self.callbacks:
+                callback.log_metrics_msg(
+                    metrics_outputs,
+                    self.metrics_log_path,
+                    self.state,
+                    prefix=prefix,
+                )
+            if self.is_rank_0:
+                for callback in self.callbacks:
+                    callback.log_metrics(metrics_outputs, self.state, prefix=prefix)
+
     # `*_loader`s are distributed loaders
     def _monitor(
         self,
