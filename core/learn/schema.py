@@ -1959,7 +1959,7 @@ class TrainerConfig:
     mixed_precision: str = "no"
     dispatch_batches: Optional[str] = None
     even_batches: bool = True
-    timeout: int = 1800
+    timeout: int = 2400
 
     def init_process_group(self, *, cpu: bool) -> None:
         timeout = timedelta(seconds=self.timeout)
