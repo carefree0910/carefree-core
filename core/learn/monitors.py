@@ -3,7 +3,6 @@ import math
 import numpy as np
 
 from typing import List
-from typing import Union
 from typing import Optional
 
 from .schema import TrainerState
