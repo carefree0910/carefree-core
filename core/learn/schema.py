@@ -1803,6 +1803,21 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     def after_save_checkpoint(self, trainer: "ITrainer") -> None:
         pass
 
+    def at_epoch_start(self, trainer: "ITrainer") -> None:
+        pass
+
+    def at_step_start(self, batch: tensor_dict_type, trainer: "ITrainer") -> None:
+        pass
+
+    def at_step_end(self, trainer: "ITrainer") -> None:
+        pass
+
+    def at_epoch_end(self, trainer: "ITrainer") -> None:
+        pass
+
+    def at_terminate(self, trainer: "ITrainer") -> None:
+        pass
+
     def finalize(self, trainer: "ITrainer") -> None:
         pass
 

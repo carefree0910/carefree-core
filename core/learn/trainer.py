@@ -321,6 +321,8 @@ class Trainer(ITrainer):
             console.debug("entered training loop")
         while self.state.should_train and not only_touch:
             try:
+                for callback in self.callbacks:
+                    callback.at_epoch_start(self)
                 self.state.epoch += 1
                 if not self.is_local_rank_0 or not self.tqdm_settings.use_step_tqdm:
                     step_iterator = distributed_train_loader
@@ -335,6 +337,8 @@ class Trainer(ITrainer):
                 for i, batch in enumerate(step_iterator):
                     if i == 0:
                         self.accelerator.wait_for_everyone()
+                    for callback in self.callbacks:
+                        callback.at_step_start(batch, self)
                     self.state.step += 1
                     step_outputs = self._step(i, batch)
                     if self.is_local_rank_0:
@@ -357,11 +361,17 @@ class Trainer(ITrainer):
                         if self.is_local_rank_0:
                             for callback in self.callbacks:
                                 callback.after_save_checkpoint(self)
+                    for callback in self.callbacks:
+                        callback.at_step_end(self)
                     terminate = monitored.terminate or self.state.should_terminate
                     if terminate:
+                        for callback in self.callbacks:
+                            callback.at_terminate(self)
                         break
                     if p is not None and self.is_local_rank_0:
                         p.step()
+                for callback in self.callbacks:
+                    callback.at_epoch_end(self)
             except KeyboardInterrupt:
                 if is_dist_initialized():
                     raise
