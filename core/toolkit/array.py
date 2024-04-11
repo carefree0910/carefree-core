@@ -340,7 +340,12 @@ def get_one_hot(feature: Union[list, np.ndarray], dim: int) -> np.ndarray:
     return one_hot
 
 
-def get_indices_from_another(base: np.ndarray, segment: np.ndarray) -> np.ndarray:
+def get_indices_from_another(
+    base: np.ndarray,
+    segment: np.ndarray,
+    *,
+    already_sorted: bool = False,
+) -> np.ndarray:
     """
     Get `segment` elements' indices in `base`.
 
@@ -352,6 +357,7 @@ def get_indices_from_another(base: np.ndarray, segment: np.ndarray) -> np.ndarra
     ----------
     base : np.ndarray, base array.
     segment : np.ndarray, segment array.
+    already_sorted : bool, whether `base` is already sorted.
 
     Returns
     -------
@@ -365,6 +371,8 @@ def get_indices_from_another(base: np.ndarray, segment: np.ndarray) -> np.ndarra
 
     """
 
+    if already_sorted:
+        return np.searchsorted(base, segment)
     base_sorted_args = np.argsort(base)
     positions = np.searchsorted(base[base_sorted_args], segment)
     return base_sorted_args[positions]

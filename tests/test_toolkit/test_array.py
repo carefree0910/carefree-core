@@ -189,8 +189,15 @@ class TestArray(unittest.TestCase):
         )
 
     def test_get_indices_from_another(self):
-        base, segment = np.arange(100), np.random.permutation(100)[:10]
-        self.assertTrue(np.allclose(get_indices_from_another(base, segment), segment))
+        def _get(is_sorted: bool) -> np.ndarray:
+            indices = get_indices_from_another(base, segment, already_sorted=is_sorted)
+            return base[np.minimum(indices, len(base) - 1)]
+
+        base, segment = np.random.permutation(100), np.random.permutation(100)[:10]
+        self.assertTrue(np.allclose(_get(False), segment))
+        self.assertFalse(np.allclose(_get(True), segment))
+        base.sort()
+        self.assertTrue(np.allclose(_get(True), segment))
 
     def test_get_unique_indices(self):
         arr = np.array([1, 2, 3, 2, 4, 1, 0, 1], np.int64)
