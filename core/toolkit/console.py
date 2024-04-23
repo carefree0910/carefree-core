@@ -10,8 +10,8 @@ from rich.console import Console
 _console = Console()
 
 
-def log(msg: str, *args: Any, **kwargs: Any) -> None:
-    _console.log(msg, *args, **kwargs)
+def log(msg: str, *args: Any, _stack_offset: int = 2, **kwargs: Any) -> None:
+    _console.log(msg, *args, _stack_offset=_stack_offset, **kwargs)
 
 
 def debug(msg: str, *args: Any, prefix: str = "", **kwargs: Any) -> None:
