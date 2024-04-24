@@ -1,3 +1,5 @@
+from accelerate.utils.dataclasses import PrecisionType
+
 from .constants import *
 from .toolkit import *
 from .schema import *
