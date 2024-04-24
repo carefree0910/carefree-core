@@ -113,6 +113,7 @@ class Pipeline(Generic[TPipeline], IPipeline[Block, Config, TPipeline]):
 
     @classmethod
     def init(cls, config: Config) -> TPipeline:
+        config.sanity_check()
         self: Pipeline = cls()
         self.config = config.copy()
         self._defaults = OrderedDict()

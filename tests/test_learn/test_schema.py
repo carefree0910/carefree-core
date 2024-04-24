@@ -116,9 +116,9 @@ class TestSchema(unittest.TestCase):
             np.testing.assert_allclose(o0, o1)
 
     def test_config(self):
-        cflearn.Config(module_name="foo")
+        cflearn.Config(module_name="foo").sanity_check()
         with self.assertRaises(ValueError):
-            cflearn.Config()
+            cflearn.Config().sanity_check()
         self.assertTrue(cflearn.Config().to_debug().is_debug)
         self.assertEqual(cflearn.Config().trainer_config, cflearn.TrainerConfig())
 

@@ -1998,8 +1998,6 @@ class DLSettings:
 @dataclass
 class Config(TrainerConfig, DLSettings, ISerializableDataClass["Config"]):  # type: ignore
     def __post_init__(self) -> None:
-        if not self.module_name:
-            raise ValueError("`module_name` should be provided")
         if isinstance(self.mixed_precision, PrecisionType):
             self.mixed_precision = str(self.mixed_precision)
         if not isinstance(self.mixed_precision, str):
@@ -2010,6 +2008,10 @@ class Config(TrainerConfig, DLSettings, ISerializableDataClass["Config"]):  # ty
         self.log_steps = 1
         self.valid_portion = 1.0e-4
         return self
+
+    def sanity_check(self) -> None:
+        if not self.module_name:
+            raise ValueError("`module_name` should be provided")
 
     def get_external_configs(self, excluded: Set[str]) -> Dict[str, Any]:
         original = self.__class__().asdict()
