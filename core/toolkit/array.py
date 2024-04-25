@@ -21,7 +21,7 @@ from .misc import to_path
 from .misc import random_hash
 from .misc import get_file_size
 from .misc import wait_for_everyone
-from .misc import only_execute_on_rank0
+from .misc import only_execute_on_local_rank0
 from .misc import timeit
 from .types import TPath
 from .types import TArray
@@ -677,7 +677,7 @@ class NpSafeSerializer:
     array_file = "array.npy"
 
     @classmethod
-    @only_execute_on_rank0
+    @only_execute_on_local_rank0
     def save(cls, folder: TPath, data: np.ndarray, *, verbose: bool = True) -> None:
         folder = to_path(folder)
         folder.mkdir(parents=True, exist_ok=True)
@@ -760,7 +760,7 @@ class NpSafeSerializer:
         return array
 
     @classmethod
-    @only_execute_on_rank0
+    @only_execute_on_local_rank0
     def cleanup(cls, folder: TPath) -> None:
         folder = to_path(folder)
         (folder / cls.array_file).unlink(missing_ok=True)

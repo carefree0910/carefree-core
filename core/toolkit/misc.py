@@ -789,6 +789,15 @@ def only_execute_on_rank0(fn: FNone) -> FNone:
     return _wrapper  # type: ignore
 
 
+def only_execute_on_local_rank0(fn: FNone) -> FNone:
+    @wait_for_everyone_at_end
+    def _wrapper(*args: Any, **kwargs: Any) -> None:
+        if is_local_rank_0():
+            fn(*args, **kwargs)
+
+    return _wrapper  # type: ignore
+
+
 def get_memory_size(obj: Any, seen: Optional[Set] = None) -> int:
     try:
         from pandas import Index
