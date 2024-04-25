@@ -20,6 +20,7 @@ from numpy.lib.stride_tricks import as_strided
 from .misc import to_path
 from .misc import random_hash
 from .misc import get_file_size
+from .misc import is_local_rank_0
 from .misc import wait_for_everyone
 from .misc import only_execute_on_local_rank0
 from .misc import timeit
@@ -677,8 +678,7 @@ class NpSafeSerializer:
     array_file = "array.npy"
 
     @classmethod
-    @only_execute_on_local_rank0
-    def save(cls, folder: TPath, data: np.ndarray, *, verbose: bool = True) -> None:
+    def _save(cls, folder: TPath, data: np.ndarray, *, verbose: bool = True) -> None:
         folder = to_path(folder)
         folder.mkdir(parents=True, exist_ok=True)
         array_path = folder / cls.array_file
@@ -686,6 +686,11 @@ class NpSafeSerializer:
             np.save(array_path, data)
             with open(folder / cls.size_file, "w") as f:
                 f.write(str(get_file_size(array_path)))
+
+    @classmethod
+    @only_execute_on_local_rank0
+    def save(cls, folder: TPath, data: np.ndarray, *, verbose: bool = True) -> None:
+        cls._save(folder, data, verbose=verbose)
 
     @classmethod
     def load(cls, folder: TPath, *, mmap_mode: Optional[str] = None) -> np.ndarray:
@@ -760,7 +765,9 @@ class NpSafeSerializer:
                 array = init_fn()
                 cls.save(folder, array, verbose=verbose)
             else:
-                cls.save(folder, init_fn(), verbose=verbose)
+                if is_local_rank_0():
+                    cls._save(folder, init_fn(), verbose=verbose)
+                wait_for_everyone()
                 array = cls.load(folder, mmap_mode=mmap_mode)
         return array
 
