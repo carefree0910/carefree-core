@@ -731,6 +731,7 @@ class NpSafeSerializer:
         *,
         mmap_mode: Optional[str] = None,
         should_wait: bool = True,
+        optimize_init: bool = False,
         no_load: bool = False,
         verbose: bool = True,
         **kwargs: Any,
@@ -755,8 +756,12 @@ class NpSafeSerializer:
                     "this function), or use `save` method (on all ranks) to save "
                     "the array first, then call this function again."
                 )
-            array = init_fn()
-            cls.save(folder, array, verbose=verbose)
+            if not optimize_init:
+                array = init_fn()
+                cls.save(folder, array, verbose=verbose)
+            else:
+                cls.save(folder, init_fn(), verbose=verbose)
+                array = cls.load(folder, mmap_mode=mmap_mode)
         return array
 
     @classmethod
