@@ -60,9 +60,9 @@ from ..toolkit.types import tensor_dict_type
 T_Lo = Optional[DataLoader]
 
 
-def get_scores(folder: TPath) -> Dict[str, float]:
-    folder = to_path(folder)
-    scores_path = folder / SCORES_FILE
+def get_scores(checkpoint_folder: TPath) -> Dict[str, float]:
+    checkpoint_folder = to_path(checkpoint_folder)
+    scores_path = checkpoint_folder / SCORES_FILE
     if not scores_path.is_file():
         return {}
     with scores_path.open("r") as f:
