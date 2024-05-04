@@ -96,7 +96,7 @@ def is_finished_workspace(workspace: TPath) -> bool:
     with get_metrics_path(workspace).open("r") as f:
         metrics = [line.strip() for line in f]
     metrics = [line for line in metrics if line]
-    return metrics and "epoch  -1" in metrics[-1]
+    return len(metrics) > 0 and "epoch  -1" in metrics[-1]
 
 
 def is_crashed_workspace(workspace: TPath) -> bool:
