@@ -11,6 +11,7 @@ from typing import List
 from typing import Tuple
 from typing import Callable
 from typing import Optional
+from pathlib import Path
 from accelerate import Accelerator
 from accelerate import DataLoaderConfiguration
 from dataclasses import asdict
@@ -79,6 +80,27 @@ def get_sorted_checkpoints(checkpoint_folder: TPath) -> List[str]:
     if not scores:
         return []
     return list(sort_dict_by_value(scores, reverse=True).keys())
+
+
+def get_metrics_path(workspace: TPath) -> Path:
+    return to_path(workspace) / Trainer.metrics_log_file
+
+
+def is_started_workspace(workspace: TPath) -> bool:
+    return get_metrics_path(workspace).is_file()
+
+
+def is_finished_workspace(workspace: TPath) -> bool:
+    if not is_started_workspace(workspace):
+        return False
+    with get_metrics_path(workspace).open("r") as f:
+        metrics = [line.strip() for line in f]
+    metrics = [line for line in metrics if line]
+    return "epoch  -1" in metrics[-1]
+
+
+def is_crashed_workspace(workspace: TPath) -> bool:
+    return is_started_workspace(workspace) and not is_finished_workspace(workspace)
 
 
 class Trainer(ITrainer):
