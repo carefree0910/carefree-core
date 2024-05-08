@@ -1404,7 +1404,8 @@ class timeit:
         if self.enabled:
             console.log(
                 f"timing for {self.message:^16s} : "
-                f"{time.time() - self.t:{self.p}.{self.p-2}f}"
+                f"{time.time() - self.t:{self.p}.{self.p-2}f}",
+                _stack_offset=3,
             )
 
 
