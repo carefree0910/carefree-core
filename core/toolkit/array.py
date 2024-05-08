@@ -13,6 +13,7 @@ from typing import Union
 from typing import Callable
 from typing import Optional
 from typing import NamedTuple
+from filelock import FileLock
 from collections import Counter
 from multiprocessing.shared_memory import SharedMemory
 from numpy.lib.stride_tricks import as_strided
@@ -20,7 +21,6 @@ from numpy.lib.stride_tricks import as_strided
 from .misc import to_path
 from .misc import random_hash
 from .misc import get_file_size
-from .misc import is_local_rank_0
 from .misc import wait_for_everyone
 from .misc import only_execute_on_local_rank0
 from .misc import timeit
@@ -233,6 +233,7 @@ def to_device(
     device: Optional[torch.device],
     **kwargs: Any,
 ) -> tensor_dict_type:
+
     def to(v: Any) -> Any:
         if isinstance(v, torch.Tensor):
             return v.to(device, **kwargs)
@@ -735,40 +736,34 @@ class NpSafeSerializer:
         init_fn: Callable[[], np.ndarray],
         *,
         mmap_mode: Optional[str] = None,
-        should_wait: bool = True,
-        optimize_init: bool = False,
         no_load: bool = False,
         verbose: bool = True,
         **kwargs: Any,
     ) -> np.ndarray:
-        """This method should be called by all ranks if `should_wait` is `True`."""
+        """
+        This method uses `FileLock` to ensure that only one rank will save the array.
+        > It will also ensure that all ranks will load the array after it's saved. The load
+        procedure will even be executed on the rank that saved the array in order to make
+        use of the `mmap_mode` feature at the first time.
+        """
 
-        array = cls.try_load(
+        load_func = lambda: cls.try_load(
             folder,
             mmap_mode=mmap_mode,
-            should_wait=should_wait,
+            should_wait=False,
             no_load=no_load,
             **kwargs,
         )
-        if should_wait:
-            wait_for_everyone()
+        array = load_func()
         if array is None:
-            if not should_wait:
-                raise RuntimeError(
-                    "`should_wait` is set to False but the array is not found "
-                    f"under '{folder}', which is dangerous. Please either set "
-                    "`should_wait` to True (and make sure all ranks will call "
-                    "this function), or use `save` method (on all ranks) to save "
-                    "the array first, then call this function again."
-                )
-            if not optimize_init:
-                array = init_fn()
-                cls.save(folder, array, verbose=verbose)
-            else:
-                if is_local_rank_0():
+            folder = to_path(folder)
+            folder.mkdir(parents=True, exist_ok=True)
+            with FileLock(folder / "NpSafeSerializer.lock", timeout=30000):
+                if load_func() is None:
                     cls._save(folder, init_fn(), verbose=verbose)
-                wait_for_everyone()
-                array = cls.load(folder, mmap_mode=mmap_mode)
+            array = load_func()
+            if array is None:
+                raise RuntimeError(f"failed to load array from '{folder}'")
         return array
 
     @classmethod

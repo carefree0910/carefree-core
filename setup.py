@@ -24,6 +24,7 @@ setup(
         "aiohttp",
         "fastapi",
         "uvicorn",
+        "filelock",
         "networkx",
         "requests",
         "matplotlib",
