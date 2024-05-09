@@ -814,7 +814,8 @@ class TestTimeit(unittest.TestCase):
             with mock.patch("core.toolkit.misc.console.log") as mock_log:
                 self.timeit.__exit__(None, None, None)
         mock_log.assert_called_once_with(
-            f"timing for {self.message:^16s} : {1.000000:6.4f}"
+            f"timing for {self.message:^16s} : {1.000000:6.4f}",
+            _stack_offset=3,
         )
 
 
