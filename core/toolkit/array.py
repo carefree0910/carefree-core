@@ -703,16 +703,11 @@ class NpSafeSerializer:
         folder: TPath,
         *,
         mmap_mode: Optional[str] = None,
-        should_wait: bool = True,
         no_load: bool = False,
         **kwargs: Any,
     ) -> Optional[np.ndarray]:
-        """This method should be called by all ranks if `should_wait` is `True`."""
-
         folder = to_path(folder)
         array_path = folder / cls.array_file
-        if should_wait:
-            wait_for_everyone()
         if not array_path.exists():
             return None
         size_path = folder / cls.size_file
@@ -750,7 +745,6 @@ class NpSafeSerializer:
         load_func = lambda: cls.try_load(
             folder,
             mmap_mode=mmap_mode,
-            should_wait=False,
             no_load=no_load,
             **kwargs,
         )
