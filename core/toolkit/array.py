@@ -21,8 +21,6 @@ from numpy.lib.stride_tricks import as_strided
 from .misc import to_path
 from .misc import random_hash
 from .misc import get_file_size
-from .misc import wait_for_everyone
-from .misc import only_execute_on_local_rank0
 from .misc import timeit
 from .types import TPath
 from .types import TArray
@@ -689,9 +687,9 @@ class NpSafeSerializer:
                 f.write(str(get_file_size(array_path)))
 
     @classmethod
-    @only_execute_on_local_rank0
     def save(cls, folder: TPath, data: np.ndarray, *, verbose: bool = True) -> None:
-        cls._save(folder, data, verbose=verbose)
+        with FileLock(folder / "NpSafeSerializer.lock", timeout=30000):
+            cls._save(folder, data, verbose=verbose)
 
     @classmethod
     def load(cls, folder: TPath, *, mmap_mode: Optional[str] = None) -> np.ndarray:
@@ -761,8 +759,8 @@ class NpSafeSerializer:
         return array
 
     @classmethod
-    @only_execute_on_local_rank0
     def cleanup(cls, folder: TPath) -> None:
         folder = to_path(folder)
-        (folder / cls.array_file).unlink(missing_ok=True)
-        (folder / cls.size_file).unlink(missing_ok=True)
+        with FileLock(folder / "NpSafeSerializer.lock", timeout=30000):
+            (folder / cls.array_file).unlink(missing_ok=True)
+            (folder / cls.size_file).unlink(missing_ok=True)
