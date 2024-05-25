@@ -688,6 +688,7 @@ class NpSafeSerializer:
 
     @classmethod
     def save(cls, folder: TPath, data: np.ndarray, *, verbose: bool = True) -> None:
+        folder = to_path(folder)
         with FileLock(folder / "NpSafeSerializer.lock", timeout=30000):
             cls._save(folder, data, verbose=verbose)
 
