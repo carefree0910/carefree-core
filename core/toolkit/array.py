@@ -677,20 +677,24 @@ class NpSafeSerializer:
     array_file = "array.npy"
 
     @classmethod
-    def _save(cls, folder: TPath, data: np.ndarray, *, verbose: bool = True) -> None:
-        folder = to_path(folder)
-        folder.mkdir(parents=True, exist_ok=True)
-        array_path = folder / cls.array_file
-        with timeit(f"save '{folder}'", enabled=verbose):
-            np.save(array_path, data)
-            with open(folder / cls.size_file, "w") as f:
-                f.write(str(get_file_size(array_path)))
-
-    @classmethod
-    def save(cls, folder: TPath, data: np.ndarray, *, verbose: bool = True) -> None:
+    def save(
+        cls,
+        folder: TPath,
+        data: Union[np.ndarray, Callable[[], np.ndarray]],
+        *,
+        verbose: bool = True,
+    ) -> None:
         folder = to_path(folder)
         with FileLock(folder / "NpSafeSerializer.lock", timeout=30000):
-            cls._save(folder, data, verbose=verbose)
+            if cls.try_load(folder, no_load=True) is None:
+                folder.mkdir(parents=True, exist_ok=True)
+                array_path = folder / cls.array_file
+                with timeit(f"save '{folder}'", enabled=verbose):
+                    if not isinstance(data, np.ndarray):
+                        data = data()
+                    np.save(array_path, data)
+                    with (folder / cls.size_file).open("w") as f:
+                        f.write(str(get_file_size(array_path)))
 
     @classmethod
     def load(cls, folder: TPath, *, mmap_mode: Optional[str] = None) -> np.ndarray:
@@ -751,9 +755,7 @@ class NpSafeSerializer:
         if array is None:
             folder = to_path(folder)
             folder.mkdir(parents=True, exist_ok=True)
-            with FileLock(folder / "NpSafeSerializer.lock", timeout=30000):
-                if load_func() is None:
-                    cls._save(folder, init_fn(), verbose=verbose)
+            cls.save(folder, init_fn, verbose=verbose)
             array = load_func()
             if array is None:
                 raise RuntimeError(f"failed to load array from '{folder}'")
