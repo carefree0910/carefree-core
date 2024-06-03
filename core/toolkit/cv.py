@@ -1,20 +1,13 @@
 import math
-import torch
 import base64
-import torchvision
-
-import numpy as np
 
 from io import BytesIO
-from PIL import Image
-from numpy import ndarray
-from typing import Any
 from typing import Tuple
 from typing import Union
 from typing import Optional
 from typing import NamedTuple
+from typing import TYPE_CHECKING
 from dataclasses import dataclass
-from PIL.Image import Image as TImage
 
 from .array import to_torch
 from .types import TArray
@@ -23,18 +16,25 @@ from .geometry import is_close
 from .geometry import Matrix2D
 from .geometry import Matrix2DProperties
 
+if TYPE_CHECKING:
+    from PIL import Image
+    from numpy import ndarray
+    from PIL.Image import Image as TImage
+
 
 class ReadImageResponse(NamedTuple):
-    image: np.ndarray
-    alpha: Optional[np.ndarray]
-    original: TImage
-    anchored: TImage
-    to_masked: Optional[TImage]
+    image: "ndarray"
+    alpha: Optional["ndarray"]
+    original: "TImage"
+    anchored: "TImage"
+    to_masked: Optional["TImage"]
     original_size: Tuple[int, int]
     anchored_size: Tuple[int, int]
 
 
-def to_rgb(image: TImage, color: Tuple[int, int, int] = (255, 255, 255)) -> TImage:
+def to_rgb(image: "TImage", color: Tuple[int, int, int] = (255, 255, 255)) -> "TImage":
+    from PIL import Image
+
     if image.mode == "CMYK":
         return image.convert("RGB")
     split = image.split()
@@ -46,18 +46,24 @@ def to_rgb(image: TImage, color: Tuple[int, int, int] = (255, 255, 255)) -> TIma
 
 
 def to_uint8(normalized_img: TArray) -> TArray:
-    if isinstance(normalized_img, ndarray):
+    import torch
+    import numpy as np
+
+    if isinstance(normalized_img, np.ndarray):
         return (np.clip(normalized_img * 255.0, 0.0, 255.0)).astype(np.uint8)  # type: ignore
     return torch.clamp(normalized_img * 255.0, 0.0, 255.0).to(torch.uint8)
 
 
-def to_alpha_channel(image: TImage) -> TImage:
+def to_alpha_channel(image: "TImage") -> "TImage":
     if image.mode == "RGBA":
         return image.split()[3]
     return image.convert("L")
 
 
-def np_to_bytes(img_arr: ndarray) -> bytes:
+def np_to_bytes(img_arr: "ndarray") -> bytes:
+    import numpy as np
+    from PIL import Image
+
     if img_arr.dtype != np.uint8:
         img_arr = to_uint8(img_arr)
     bytes_io = BytesIO()
@@ -83,16 +89,19 @@ def get_suitable_size(n: int, anchor: int) -> int:
 
 
 def read_image(
-    image: Union[str, TImage],
+    image: Union[str, "TImage"],
     max_wh: Optional[int],
     *,
     anchor: Optional[int],
     to_gray: bool = False,
     to_mask: bool = False,
-    resample: Any = Image.Resampling.LANCZOS,
+    resample: "Image.Resampling" = "auto",
     normalize: bool = True,
     to_torch_fmt: bool = True,
 ) -> ReadImageResponse:
+    import numpy as np
+    from PIL import Image
+
     if isinstance(image, str):
         image = Image.open(image)
     alpha = None
@@ -117,6 +126,8 @@ def read_image(
     if anchor is not None:
         w, h = map(get_suitable_size, (w, h), (anchor, anchor))
     if w != original_w or h != original_h:
+        if resample == "auto":
+            resample = Image.Resampling.LANCZOS
         image = image.resize((w, h), resample=resample)
     anchored = image
     anchored_size = w, h
@@ -144,6 +155,9 @@ def read_image(
 
 
 def save_images(arr: arr_type, path: str, n_row: Optional[int] = None) -> None:
+    import torchvision
+    import numpy as np
+
     if isinstance(arr, np.ndarray):
         arr = to_torch(arr)
     if n_row is None:
@@ -151,14 +165,16 @@ def save_images(arr: arr_type, path: str, n_row: Optional[int] = None) -> None:
     torchvision.utils.save_image(arr, path, normalize=True, nrow=n_row)
 
 
-def to_base64(image: TImage) -> str:
+def to_base64(image: "TImage") -> str:
     buffered = BytesIO()
     image.save(buffered, format="PNG")
     img_str = base64.b64encode(buffered.getvalue()).decode()
     return f"data:image/png;base64,{img_str}"
 
 
-def from_base64(base64_string: str) -> TImage:
+def from_base64(base64_string: str) -> "TImage":
+    from PIL import Image
+
     base64_string = base64_string.split("base64,")[1]
     return Image.open(BytesIO(base64.b64decode(base64_string)))
 
@@ -258,7 +274,9 @@ class ImageBox:
         return ImageBox(l, t, r, b)
 
     @classmethod
-    def from_mask(cls, uint8_mask: ndarray, threshold: int = 0) -> "ImageBox":
+    def from_mask(cls, uint8_mask: "ndarray", threshold: int = 0) -> "ImageBox":
+        import numpy as np
+
         ys, xs = np.where(uint8_mask > threshold)
         ys, xs = np.where(uint8_mask)
         if len(ys) == 0:

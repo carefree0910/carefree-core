@@ -1,4 +1,3 @@
-import os
 import shutil
 
 from abc import abstractmethod

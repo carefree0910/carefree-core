@@ -2,6 +2,8 @@ import json
 import tempfile
 import unittest
 
+import numpy as np
+
 from typing import Any
 from typing import Dict
 from unittest import mock

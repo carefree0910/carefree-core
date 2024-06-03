@@ -1,15 +1,17 @@
 import math
 
-import numpy as np
-
 from enum import Enum
 from typing import List
 from typing import Tuple
 from typing import Union
 from typing import TypeVar
 from typing import Optional
+from typing import TYPE_CHECKING
 from pydantic import BaseModel
 from dataclasses import dataclass
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 class PivotType(str, Enum):
@@ -265,7 +267,9 @@ class Matrix2D(BaseModel):
         return self.a * self.d - self.b * self.c
 
     @property
-    def matrix(self) -> np.ndarray:
+    def matrix(self) -> "np.ndarray":
+        import numpy as np
+
         return np.array([[self.a, self.c, self.e], [self.b, self.d, self.f]])
 
     @property
@@ -344,6 +348,8 @@ class Matrix2D(BaseModel):
 
     @property
     def outer_most(self) -> Box:
+        import numpy as np
+
         corner_points = self.corner_points
         xs = np.array([point.x for point in corner_points])
         ys = np.array([point.y for point in corner_points])

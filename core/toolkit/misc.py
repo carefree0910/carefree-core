@@ -13,9 +13,6 @@ import hashlib
 import operator
 import unicodedata
 
-import numpy as np
-import torch.distributed as dist
-
 from abc import abstractmethod
 from abc import ABC
 from abc import ABCMeta
@@ -35,23 +32,19 @@ from typing import Optional
 from typing import Protocol
 from typing import Coroutine
 from typing import NamedTuple
+from typing import TYPE_CHECKING
 from typing import ContextManager
 from pathlib import Path
 from argparse import Namespace
 from datetime import datetime
 from datetime import timedelta
 from functools import reduce
-from accelerate import PartialState
-from accelerate import DistributedType
-from accelerate import InitProcessGroupKwargs
 from collections import OrderedDict
 from dataclasses import asdict
 from dataclasses import fields
 from dataclasses import dataclass
 from dataclasses import is_dataclass
 from dataclasses import Field
-from accelerate.utils import wait_for_everyone as accelerate_wait
-from concurrent.futures import ThreadPoolExecutor
 
 from . import console
 from .types import TPath
@@ -59,6 +52,9 @@ from .types import TConfig
 from .types import arr_type
 from .types import np_dict_type
 from .constants import TIME_FORMAT
+
+if TYPE_CHECKING:
+    from accelerate import InitProcessGroupKwargs
 
 
 dill._dill._reverse_typemap["ClassType"] = type
@@ -176,20 +172,29 @@ def get_world_size() -> int:
 
 
 def is_dist_initialized() -> bool:
+    import torch.distributed as dist
+
     return dist.is_initialized()
 
 
 def is_fsdp() -> bool:
+    from accelerate import PartialState
+    from accelerate import DistributedType
+
     if not is_dist_initialized():
         return False
     return PartialState().distributed_type == DistributedType.FSDP
 
 
-def init_process_group(*, cpu: bool, handler: InitProcessGroupKwargs) -> None:
+def init_process_group(*, cpu: bool, handler: "InitProcessGroupKwargs") -> None:
+    from accelerate import PartialState
+
     PartialState(cpu, **handler.to_kwargs())
 
 
 def wait_for_everyone() -> None:
+    from accelerate.utils import wait_for_everyone as accelerate_wait
+
     if is_dist_initialized():
         accelerate_wait()
 
@@ -646,6 +651,8 @@ async def retry(
 
 
 async def offload(future: Coroutine[Any, Any, TFutureResponse]) -> TFutureResponse:
+    from concurrent.futures import ThreadPoolExecutor
+
     loop = asyncio.get_event_loop()
     with ThreadPoolExecutor() as executor:
         return await loop.run_in_executor(
@@ -799,6 +806,8 @@ def only_execute_on_local_rank0(fn: FNone) -> FNone:
 
 
 def get_memory_size(obj: Any, seen: Optional[Set] = None) -> int:
+    import numpy as np
+
     try:
         from pandas import Index
         from pandas import DataFrame
@@ -1178,6 +1187,8 @@ class Serializer:
         npd: Optional[np_dict_type] = None,
         serializable: Optional[ISerializableArrays] = None,
     ) -> None:
+        import numpy as np
+
         folder = to_path(folder)
         folder.mkdir(parents=True, exist_ok=True)
         if npd is None and serializable is None:
@@ -1191,6 +1202,8 @@ class Serializer:
 
     @classmethod
     def load_npd(cls, folder: TPath) -> np_dict_type:
+        import numpy as np
+
         folder = to_path(folder)
         folder.mkdir(parents=True, exist_ok=True)
         npd_folder = folder / cls.npd_folder

@@ -1,9 +1,4 @@
 import math
-import torch
-import torchvision
-
-import numpy as np
-import torch.nn.functional as F
 
 from typing import Any
 from typing import Dict
@@ -13,10 +8,9 @@ from typing import Union
 from typing import Callable
 from typing import Optional
 from typing import NamedTuple
+from typing import TYPE_CHECKING
 from filelock import FileLock
 from collections import Counter
-from multiprocessing.shared_memory import SharedMemory
-from numpy.lib.stride_tricks import as_strided
 
 from .misc import to_path
 from .misc import random_hash
@@ -27,20 +21,32 @@ from .types import TArray
 from .types import arr_type
 from .types import tensor_dict_type
 
+if TYPE_CHECKING:
+    import torch
+    import numpy as np
+
 
 def is_int(arr: arr_type) -> bool:
+    import torch
+    import numpy as np
+
     if isinstance(arr, (np.ndarray, np.number)):
         return np.issubdtype(arr.dtype, np.integer)
     return not torch.is_floating_point(arr) and not torch.is_complex(arr)
 
 
 def is_float(arr: arr_type) -> bool:
+    import torch
+    import numpy as np
+
     if isinstance(arr, (np.ndarray, np.number)):
         return np.issubdtype(arr.dtype, np.floating)
     return torch.is_floating_point(arr)
 
 
 def is_string(arr: arr_type) -> bool:
+    import numpy as np
+
     if isinstance(arr, (np.ndarray, np.character)):
         return np.issubdtype(arr.dtype, str)
     return False
@@ -51,12 +57,18 @@ def is_real_numeric(arr: arr_type) -> bool:
 
 
 def sigmoid(arr: TArray) -> TArray:
+    import torch
+    import numpy as np
+
     if isinstance(arr, np.ndarray):
         return 1.0 / (1.0 + np.exp(-arr))
     return torch.sigmoid(arr)
 
 
 def softmax(arr: TArray) -> TArray:
+    import numpy as np
+    import torch.nn.functional as F
+
     if isinstance(arr, np.ndarray):
         logits = arr - np.max(arr, axis=1, keepdims=True)
         exp = np.exp(logits)
@@ -65,6 +77,8 @@ def softmax(arr: TArray) -> TArray:
 
 
 def l2_normalize(arr: TArray) -> TArray:
+    import numpy as np
+
     if isinstance(arr, np.ndarray):
         return arr / np.linalg.norm(arr, axis=-1, keepdims=True)
     return arr / arr.norm(dim=-1, keepdim=True)  # type: ignore
@@ -77,6 +91,9 @@ def normalize(
     return_stats: bool = False,
     eps: float = 1.0e-8,
 ) -> Union[TArray, Tuple[TArray, Dict[str, Any]]]:
+    import torch
+    import numpy as np
+
     if global_norm:
         arr_mean, arr_std = arr.mean().item(), arr.std().item()
         arr_std = max(eps, arr_std)
@@ -113,6 +130,9 @@ def min_max_normalize(
     return_stats: bool = False,
     eps: float = 1.0e-8,
 ) -> Union[TArray, Tuple[TArray, Dict[str, Any]]]:
+    import torch
+    import numpy as np
+
     if global_norm:
         arr_min, arr_max = arr.min().item(), arr.max().item()
         diff = max(eps, arr_max - arr_min)
@@ -150,6 +170,9 @@ def quantile_normalize(
     return_stats: bool = False,
     eps: float = 1.0e-8,
 ) -> Union[TArray, Tuple[TArray, Dict[str, Any]]]:
+    import torch
+    import numpy as np
+
     # quantiles
     if isinstance(arr, np.ndarray):
         kw = {"axis": 0}
@@ -195,6 +218,9 @@ def recover_quantile_normalize_from(arr: TArray, stats: Dict[str, Any]) -> TArra
 
 
 def clip_normalize(arr: TArray) -> TArray:
+    import torch
+    import numpy as np
+
     fn = np if isinstance(arr, np.ndarray) else torch
     if arr.dtype == fn.uint8:
         return arr
@@ -210,7 +236,9 @@ def squeeze(arr: TArray) -> TArray:
     return arr
 
 
-def to_standard(arr: np.ndarray) -> np.ndarray:
+def to_standard(arr: "np.ndarray") -> "np.ndarray":
+    import numpy as np
+
     if is_int(arr):
         arr = arr.astype(np.int64)
     elif is_float(arr):
@@ -218,19 +246,22 @@ def to_standard(arr: np.ndarray) -> np.ndarray:
     return arr
 
 
-def to_torch(arr: np.ndarray) -> torch.Tensor:
+def to_torch(arr: "np.ndarray") -> "torch.Tensor":
+    import torch
+
     return torch.from_numpy(to_standard(arr))
 
 
-def to_numpy(tensor: torch.Tensor) -> np.ndarray:
+def to_numpy(tensor: "torch.Tensor") -> "np.ndarray":
     return tensor.detach().cpu().numpy()
 
 
 def to_device(
     batch: tensor_dict_type,
-    device: Optional[torch.device],
+    device: Optional["torch.device"],
     **kwargs: Any,
 ) -> tensor_dict_type:
+    import torch
 
     def to(v: Any) -> Any:
         if isinstance(v, torch.Tensor):
@@ -247,6 +278,8 @@ def to_device(
 
 
 def iou(logits: TArray, labels: TArray) -> TArray:
+    import numpy as np
+
     is_numpy = isinstance(logits, np.ndarray)
     num_classes = logits.shape[1]
     if num_classes == 1:
@@ -269,6 +302,9 @@ def corr(
     get_diagonal: bool = False,
     eps: float = 1.0e-8,
 ) -> TArray:
+    import torch
+    import numpy as np
+
     is_numpy = isinstance(predictions, np.ndarray)
     keepdim_kw: Dict[str, Any] = {"keepdims" if is_numpy else "keepdim": True}
     norm_fn = np.linalg.norm if is_numpy else torch.norm
@@ -320,7 +356,7 @@ def corr(
     return np.diag(mat) if is_numpy else mat.diag()
 
 
-def get_one_hot(feature: Union[list, np.ndarray], dim: int) -> np.ndarray:
+def get_one_hot(feature: Union[list, "np.ndarray"], dim: int) -> "np.ndarray":
     """
     Get one-hot representation.
 
@@ -335,17 +371,19 @@ def get_one_hot(feature: Union[list, np.ndarray], dim: int) -> np.ndarray:
 
     """
 
+    import numpy as np
+
     one_hot = np.zeros([len(feature), dim], np.int64)
     one_hot[range(len(one_hot)), np.asarray(feature, np.int64).ravel()] = 1
     return one_hot
 
 
 def get_indices_from_another(
-    base: np.ndarray,
-    segment: np.ndarray,
+    base: "np.ndarray",
+    segment: "np.ndarray",
     *,
     already_sorted: bool = False,
-) -> np.ndarray:
+) -> "np.ndarray":
     """
     Get `segment` elements' indices in `base`.
 
@@ -371,6 +409,8 @@ def get_indices_from_another(
 
     """
 
+    import numpy as np
+
     if already_sorted:
         return np.searchsorted(base, segment)
     base_sorted_args = np.argsort(base)
@@ -390,17 +430,19 @@ class UniqueIndices(NamedTuple):
                                    unique values.
     """
 
-    unique: np.ndarray
-    unique_cnt: np.ndarray
-    sorting_indices: np.ndarray
-    split_arr: np.ndarray
+    unique: "np.ndarray"
+    unique_cnt: "np.ndarray"
+    sorting_indices: "np.ndarray"
+    split_arr: "np.ndarray"
 
     @property
-    def split_indices(self) -> List[np.ndarray]:
+    def split_indices(self) -> List["np.ndarray"]:
+        import numpy as np
+
         return np.split(self.sorting_indices, self.split_arr)
 
 
-def get_unique_indices(arr: np.ndarray) -> UniqueIndices:
+def get_unique_indices(arr: "np.ndarray") -> UniqueIndices:
     """
     Get indices for unique values of an array.
 
@@ -428,6 +470,8 @@ def get_unique_indices(arr: np.ndarray) -> UniqueIndices:
 
     """
 
+    import numpy as np
+
     unique, unique_inv, unique_cnt = np.unique(
         arr,
         return_inverse=True,
@@ -440,7 +484,7 @@ def get_unique_indices(arr: np.ndarray) -> UniqueIndices:
     return UniqueIndices(unique, unique_cnt, sorting_indices, split_arr)
 
 
-def get_counter_from_arr(arr: np.ndarray) -> Counter:
+def get_counter_from_arr(arr: "np.ndarray") -> Counter:
     """
     Get `Counter` of an array.
 
@@ -461,10 +505,12 @@ def get_counter_from_arr(arr: np.ndarray) -> Counter:
 
     """
 
+    import numpy as np
+
     return Counter(dict(zip(*np.unique(arr, return_counts=True))))
 
 
-def allclose(*arrays: np.ndarray, **kwargs: Any) -> bool:
+def allclose(*arrays: "np.ndarray", **kwargs: Any) -> bool:
     """
     Perform `np.allclose` to `arrays` one by one.
 
@@ -479,6 +525,8 @@ def allclose(*arrays: np.ndarray, **kwargs: Any) -> bool:
 
     """
 
+    import numpy as np
+
     for i, arr in enumerate(arrays[:-1]):
         if not np.allclose(arr, arrays[i + 1], **kwargs):
             return False
@@ -488,7 +536,7 @@ def allclose(*arrays: np.ndarray, **kwargs: Any) -> bool:
 class StrideArray:
     def __init__(
         self,
-        arr: np.ndarray,
+        arr: "np.ndarray",
         *,
         copy: bool = False,
         writable: Optional[bool] = None,
@@ -512,7 +560,9 @@ class StrideArray:
         self,
         shapes: Tuple[int, ...],
         strides: Tuple[int, ...],
-    ) -> np.ndarray:
+    ) -> "np.ndarray":
+        from numpy.lib.stride_tricks import as_strided
+
         arr = self.arr.copy() if self.copy else self.arr
         return as_strided(
             arr,
@@ -525,7 +575,7 @@ class StrideArray:
     def _get_output_dim(in_dim: int, window: int, stride: int) -> int:
         return (in_dim - window) // stride + 1
 
-    def roll(self, window: int, *, axis: int, stride: int = 1) -> np.ndarray:
+    def roll(self, window: int, *, axis: int, stride: int = 1) -> "np.ndarray":
         while axis < 0:
             axis += self.num_dim
         target_dim = self.shape[axis]
@@ -553,7 +603,7 @@ class StrideArray:
         h_stride: int = 1,
         w_stride: int = 1,
         h_axis: int = -2,
-    ) -> np.ndarray:
+    ) -> "np.ndarray":
         if self.num_dim < 2:
             raise ValueError("`patch` requires input with at least 2d")
         while h_axis < 0:
@@ -588,7 +638,7 @@ class StrideArray:
         # construct
         return self._construct(patched_shapes, patched_strides)
 
-    def repeat(self, k: int, axis: int = -1) -> np.ndarray:
+    def repeat(self, k: int, axis: int = -1) -> "np.ndarray":
         while axis < 0:
             axis += self.num_dim
         target_dim = self.shape[axis]
@@ -608,17 +658,20 @@ class StrideArray:
 
 
 class SharedArray:
-    value: np.ndarray
+    value: "np.ndarray"
 
     def __init__(
         self,
         name: str,
-        dtype: Union[type, np.dtype],
+        dtype: Union[type, "np.dtype"],
         shape: Union[List[int], Tuple[int, ...]],
         *,
         create: bool = True,
-        data: Optional[np.ndarray] = None,
+        data: Optional["np.ndarray"] = None,
     ):
+        import numpy as np
+        from multiprocessing.shared_memory import SharedMemory
+
         self.name = name
         self.dtype = dtype
         self.shape = shape
@@ -641,11 +694,11 @@ class SharedArray:
         self._shm.unlink()
 
     @classmethod
-    def from_data(cls, data: np.ndarray) -> "SharedArray":
+    def from_data(cls, data: "np.ndarray") -> "SharedArray":
         return cls(random_hash()[:16], data.dtype, data.shape, data=data)
 
 
-def to_labels(logits: np.ndarray, threshold: Optional[float] = None) -> np.ndarray:
+def to_labels(logits: "np.ndarray", threshold: Optional[float] = None) -> "np.ndarray":
     # binary classification
     if logits.shape[-1] == 2:
         logits = logits[..., [1]] - logits[..., [0]]
@@ -657,14 +710,19 @@ def to_labels(logits: np.ndarray, threshold: Optional[float] = None) -> np.ndarr
     return logits.argmax(1)[..., None]
 
 
-def get_full_logits(logits: np.ndarray) -> np.ndarray:
+def get_full_logits(logits: "np.ndarray") -> "np.ndarray":
+    import numpy as np
+
     # binary classification
     if logits.shape[-1] == 1:
         logits = np.concatenate([-logits, logits], axis=-1)
     return logits
 
 
-def make_grid(arr: arr_type, n_row: Optional[int] = None) -> torch.Tensor:
+def make_grid(arr: arr_type, n_row: Optional[int] = None) -> "torch.Tensor":
+    import torchvision
+    import numpy as np
+
     if isinstance(arr, np.ndarray):
         arr = to_torch(arr)
     if n_row is None:
@@ -680,10 +738,12 @@ class NpSafeSerializer:
     def save(
         cls,
         folder: TPath,
-        data: Union[np.ndarray, Callable[[], np.ndarray]],
+        data: Union["np.ndarray", Callable[[], "np.ndarray"]],
         *,
         verbose: bool = True,
     ) -> None:
+        import numpy as np
+
         folder = to_path(folder)
         with FileLock(folder / "NpSafeSerializer.lock", timeout=30000):
             if cls.try_load(folder, no_load=True) is None:
@@ -697,7 +757,9 @@ class NpSafeSerializer:
                         f.write(str(get_file_size(array_path)))
 
     @classmethod
-    def load(cls, folder: TPath, *, mmap_mode: Optional[str] = None) -> np.ndarray:
+    def load(cls, folder: TPath, *, mmap_mode: Optional[str] = None) -> "np.ndarray":
+        import numpy as np
+
         return np.load(to_path(folder) / cls.array_file, mmap_mode=mmap_mode)  # type: ignore
 
     @classmethod
@@ -708,7 +770,9 @@ class NpSafeSerializer:
         mmap_mode: Optional[str] = None,
         no_load: bool = False,
         **kwargs: Any,
-    ) -> Optional[np.ndarray]:
+    ) -> Optional["np.ndarray"]:
+        import numpy as np
+
         folder = to_path(folder)
         array_path = folder / cls.array_file
         if not array_path.exists():
@@ -731,13 +795,13 @@ class NpSafeSerializer:
     def load_with(
         cls,
         folder: TPath,
-        init_fn: Callable[[], np.ndarray],
+        init_fn: Callable[[], "np.ndarray"],
         *,
         mmap_mode: Optional[str] = None,
         no_load: bool = False,
         verbose: bool = True,
         **kwargs: Any,
-    ) -> np.ndarray:
+    ) -> "np.ndarray":
         """
         This method uses `FileLock` to ensure that only one rank will save the array.
         > It will also ensure that all ranks will load the array after it's saved. The load
