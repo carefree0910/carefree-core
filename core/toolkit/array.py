@@ -9,7 +9,6 @@ from typing import Callable
 from typing import Optional
 from typing import NamedTuple
 from typing import TYPE_CHECKING
-from filelock import FileLock
 from collections import Counter
 
 from .misc import to_path
@@ -743,6 +742,7 @@ class NpSafeSerializer:
         verbose: bool = True,
     ) -> None:
         import numpy as np
+        from filelock import FileLock
 
         folder = to_path(folder)
         with FileLock(folder / "NpSafeSerializer.lock", timeout=30000):
@@ -827,6 +827,8 @@ class NpSafeSerializer:
 
     @classmethod
     def cleanup(cls, folder: TPath) -> None:
+        from filelock import FileLock
+
         folder = to_path(folder)
         with FileLock(folder / "NpSafeSerializer.lock", timeout=30000):
             (folder / cls.array_file).unlink(missing_ok=True)

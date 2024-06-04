@@ -1,12 +1,10 @@
 import os
 import sys
-import dill
 import json
 import math
 import time
 import random
 import shutil
-import asyncio
 import decimal
 import inspect
 import hashlib
@@ -16,7 +14,6 @@ import unicodedata
 from abc import abstractmethod
 from abc import ABC
 from abc import ABCMeta
-from tqdm import tqdm
 from typing import Any
 from typing import Set
 from typing import Dict
@@ -55,9 +52,6 @@ from .constants import TIME_FORMAT
 
 if TYPE_CHECKING:
     from accelerate import InitProcessGroupKwargs
-
-
-dill._dill._reverse_typemap["ClassType"] = type
 
 
 # torch distributed utils
@@ -221,6 +215,8 @@ def walk(
     hierarchy_callback: Callable[[List[str], str], None],
     filter_extensions: Optional[Set[str]] = None,
 ) -> None:
+    from tqdm import tqdm
+
     walked = list(os.walk(root))
     for folder, _, files in tqdm(walked, desc="folders", position=0, mininterval=1):
         for file in tqdm(files, desc="files", position=1, leave=False, mininterval=1):
@@ -651,6 +647,7 @@ async def retry(
 
 
 async def offload(future: Coroutine[Any, Any, TFutureResponse]) -> TFutureResponse:
+    import asyncio
     from concurrent.futures import ThreadPoolExecutor
 
     loop = asyncio.get_event_loop()
