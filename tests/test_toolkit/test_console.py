@@ -15,7 +15,7 @@ class TestConsole(unittest.TestCase):
         rule("Hello World!")
         status("Hello World!")
 
-    @patch("core.toolkit.console.Prompt.ask")
+    @patch("rich.prompt.Prompt.ask")
     def test_ask_without_default(self, mock_ask):
         mock_ask.return_value = "yes"
         question = "Continue?"
@@ -24,7 +24,7 @@ class TestConsole(unittest.TestCase):
         mock_ask.assert_called_once_with(question, choices=choices)
         self.assertEqual(result, "yes")
 
-    @patch("core.toolkit.console.Prompt.ask")
+    @patch("rich.prompt.Prompt.ask")
     def test_ask_with_default(self, mock_ask):
         mock_ask.return_value = "no"
         question = "Continue?"
@@ -34,7 +34,7 @@ class TestConsole(unittest.TestCase):
         mock_ask.assert_called_once_with(question, choices=choices, default=default)
         self.assertEqual(result, "no")
 
-    @patch("core.toolkit.console.Prompt.ask")
+    @patch("rich.prompt.Prompt.ask")
     def test_ask_with_kwargs(self, mock_ask):
         mock_ask.return_value = "yes"
         question = "Continue?"
