@@ -1,17 +1,23 @@
 from typing import Any
 from typing import List
 from typing import Optional
+from typing import TYPE_CHECKING
+from functools import lru_cache
 
-from rich.prompt import Prompt
-from rich.status import Status
-from rich.console import Console
+if TYPE_CHECKING:
+    from rich.status import Status
+    from rich.console import Console
 
 
-_console = Console()
+@lru_cache
+def get_console() -> "Console":
+    from rich.console import Console
+
+    return Console()
 
 
 def log(msg: str, *args: Any, _stack_offset: int = 2, **kwargs: Any) -> None:
-    _console.log(msg, *args, _stack_offset=_stack_offset, **kwargs)
+    get_console().log(msg, *args, _stack_offset=_stack_offset, **kwargs)
 
 
 def debug(msg: str, *args: Any, prefix: str = "", **kwargs: Any) -> None:
@@ -35,11 +41,11 @@ def error(msg: str, *args: Any, prefix: str = "Error: ", **kwargs: Any) -> None:
 
 
 def print(msg: str, *args: Any, **kwargs: Any) -> None:
-    _console.print(msg, *args, **kwargs)
+    get_console().print(msg, *args, **kwargs)
 
 
 def rule(title: str, **kwargs: Any) -> None:
-    _console.rule(title, **kwargs)
+    get_console().rule(title, **kwargs)
 
 
 def ask(
@@ -49,6 +55,8 @@ def ask(
     default: Optional[str] = None,
     **kwargs: Any,
 ) -> str:
+    from rich.prompt import Prompt
+
     kwargs = kwargs.copy()
     kwargs["choices"] = choices
     if default is not None:
@@ -56,5 +64,5 @@ def ask(
     return Prompt.ask(question, **kwargs)
 
 
-def status(msg: str, **kwargs: Any) -> Status:
-    return _console.status(msg, **kwargs)
+def status(msg: str, **kwargs: Any) -> "Status":
+    return get_console().status(msg, **kwargs)
