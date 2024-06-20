@@ -91,7 +91,7 @@ class GradientDetectorCallback(TrainerCallback):
         super().__init__()
         self.threshold = threshold
 
-    def before_train_update(
+    def before_gradient_update(
         self,
         trainer: ITrainer,
         batch: tensor_dict_type,

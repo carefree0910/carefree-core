@@ -956,7 +956,7 @@ def get_update_fn(
     ) -> None:
         trainer.accelerator.backward(loss_res.loss)
         for c in trainer.callbacks:
-            c.before_train_update(trainer, batch, forward, loss_res, update)
+            c.before_gradient_update(trainer, batch, forward, loss_res, update)
         if update:
             trainer.clip_norm_step()
             optimizer.step()
@@ -1802,7 +1802,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     def log_artifacts(self, trainer: "ITrainer") -> None:
         pass
 
-    def before_train_update(
+    def before_gradient_update(
         self,
         trainer: "ITrainer",
         batch: tensor_dict_type,
