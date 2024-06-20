@@ -121,7 +121,11 @@ class NaNDetectorCallback(TrainerCallback):
                     is_nan.append(k)
         if is_nan:
             np_batch = tensor_batch_to_np(batch)
-            nan_ratios = {k: np.isnan(v).mean().item() for k, v in np_batch.items()}
+            nan_ratios = {
+                k: np.isnan(v).mean().item()
+                for k, v in np_batch.items()
+                if isinstance(v, np.ndarray)
+            }
             debug_folder = Path(trainer.workspace) / "debugging"
             debug_folder.mkdir(exist_ok=True)
             ddp_info = get_ddp_info()
