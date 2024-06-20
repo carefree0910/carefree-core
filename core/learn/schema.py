@@ -1253,6 +1253,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                     with autocast_ctx:
                         loss_args = self, state, batch, forward
                         loss_res = train_step.loss_fn(*loss_args, **loss_kwargs)
+                    for c in trainer.callbacks:
+                        c.before_train_update(trainer, batch, forward, loss_res, update)
                     update_fn(loss_res.loss, optimizer, update)
                     i_losses = {k: v.detach() for k, v in loss_res.loss_tensors.items()}
                     loss_tensors.update(i_losses)
@@ -1261,7 +1263,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         if any_update:
             trainer.ema_step()
             trainer.scheduler_step()
-        # callbacks
+        # train step callbacks
         for train_step in self.train_steps:
             train_step.callback(self, trainer, batch, forward)
         return StepOutputs(forward, loss_tensors)
@@ -1788,6 +1790,16 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
         pass
 
     def log_artifacts(self, trainer: "ITrainer") -> None:
+        pass
+
+    def before_train_update(
+        self,
+        trainer: "ITrainer",
+        batch: tensor_dict_type,
+        forward: tensor_dict_type,
+        loss_res: TrainStepLoss,
+        update: bool,
+    ) -> None:
         pass
 
     def after_train_step(
