@@ -4,8 +4,6 @@ import torch
 
 import numpy as np
 
-from torch import Tensor
-from typing import Any
 from typing import Dict
 from pathlib import Path
 
@@ -67,7 +65,7 @@ class NaNDetectorCallback(TrainerCallback):
             }
             debug_folder = Path(trainer.workspace) / "debugging"
             debug_folder.mkdir(exist_ok=True)
-            batch_paths = {}
+            batch_paths: Dict[str, Path] = {}
             appendix = dump_problematic(
                 np_batch, step_outputs.forward_results, debug_folder, batch_paths
             )
@@ -107,10 +105,10 @@ class GradientDetectorCallback(TrainerCallback):
             err_parameters[k] = p
 
         m = trainer.model.m
-        errors = {}
-        err_grads = {}
-        err_parameters = {}
-        batch_paths = {}
+        errors: Dict[str, str] = {}
+        err_grads: Dict[str, torch.Tensor] = {}
+        err_parameters: Dict[str, torch.nn.Parameter] = {}
+        batch_paths: Dict[str, Path] = {}
         debug_folder = Path(trainer.workspace) / "debugging" / str(trainer.state.step)
         need_raise = False
         for k, p in m.named_parameters():
