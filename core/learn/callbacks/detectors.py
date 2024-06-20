@@ -4,15 +4,41 @@ import torch
 
 import numpy as np
 
+from torch import Tensor
+from typing import Any
+from typing import Dict
 from pathlib import Path
 
 from ..schema import ITrainer
 from ..schema import StepOutputs
+from ..schema import TrainStepLoss
 from ..schema import TrainerCallback
 from ..toolkit import tensor_batch_to_np
 from ...toolkit import console
 from ...toolkit.misc import get_ddp_info
+from ...toolkit.types import np_dict_type
 from ...toolkit.types import tensor_dict_type
+
+
+def dump_problematic(
+    np_batch: np_dict_type,
+    forward_results: tensor_dict_type,
+    debug_folder: Path,
+    batch_paths: Dict[str, Path],
+) -> str:
+    ddp_info = get_ddp_info()
+    appendix = "" if ddp_info is None else f"_{ddp_info.rank}"
+    for k, v in np_batch.items():
+        if isinstance(v, np.ndarray):
+            v_path = debug_folder / f"{k}{appendix}.npy"
+            batch_paths[k] = v_path
+            np.save(v_path, v)
+    for k, v in forward_results.items():
+        if isinstance(v, torch.Tensor):
+            v_path = debug_folder / f"{k}{appendix}.pt"
+            batch_paths[k] = v_path
+            torch.save(v, v_path)
+    return appendix
 
 
 @TrainerCallback.register("nan_detector")
@@ -41,19 +67,10 @@ class NaNDetectorCallback(TrainerCallback):
             }
             debug_folder = Path(trainer.workspace) / "debugging"
             debug_folder.mkdir(exist_ok=True)
-            ddp_info = get_ddp_info()
-            appendix = "" if ddp_info is None else f"_{ddp_info.rank}"
             batch_paths = {}
-            for k, v in np_batch.items():
-                if isinstance(v, np.ndarray):
-                    v_path = debug_folder / f"{k}{appendix}.npy"
-                    batch_paths[k] = v_path
-                    np.save(v_path, v)
-            for k, v in step_outputs.forward_results.items():
-                if isinstance(v, torch.Tensor):
-                    v_path = debug_folder / f"{k}{appendix}.pt"
-                    batch_paths[k] = v_path
-                    torch.save(v, v_path)
+            appendix = dump_problematic(
+                np_batch, step_outputs.forward_results, debug_folder, batch_paths
+            )
             ckpt_dir = debug_folder / f"checkpoints_{trainer.accelerator.process_index}"
             ckpt_dir.mkdir(exist_ok=True)
             trainer.save_checkpoint(0.0, ckpt_dir, no_history=True, check_rank_0=False)
@@ -70,6 +87,67 @@ class NaNDetectorCallback(TrainerCallback):
             raise RuntimeError("NaN detected")
 
 
+@TrainerCallback.register("grad_detector")
+class GradientDetectorCallback(TrainerCallback):
+    def __init__(self, threshold: float = 1.0):
+        super().__init__()
+        self.threshold = threshold
+
+    def before_train_update(
+        self,
+        trainer: ITrainer,
+        batch: tensor_dict_type,
+        forward: tensor_dict_type,
+        loss_res: TrainStepLoss,
+        update: bool,
+    ) -> None:
+        def record(msg: str) -> None:
+            errors[k] = msg
+            err_grads[k] = p.grad
+            err_parameters[k] = p
+
+        m = trainer.model.m
+        errors = {}
+        err_grads = {}
+        err_parameters = {}
+        batch_paths = {}
+        debug_folder = Path(trainer.workspace) / "debugging" / str(trainer.state.step)
+        need_raise = False
+        for k, p in m.named_parameters():
+            if torch.isnan(p.grad).any().item():
+                record("NaN")
+                need_raise = True
+            elif torch.isinf(p.grad).any().item():
+                record("Inf")
+                need_raise = True
+            elif torch.abs(p.grad).max().item() > self.threshold:
+                record("Too Large")
+        if errors:
+            debug_folder.mkdir(exist_ok=True, parents=True)
+            appendix = dump_problematic(
+                tensor_batch_to_np(batch), forward, debug_folder, batch_paths
+            )
+            for k, g in err_grads.items():
+                grad_path = debug_folder / f"{k}_grad{appendix}.pt"
+                batch_paths[k] = grad_path
+                torch.save(g, grad_path)
+            for k, p in err_parameters.items():
+                param_path = debug_folder / f"{k}{appendix}.pt"
+                batch_paths[k] = param_path
+                torch.save(p, param_path)
+        if need_raise:
+            console.error(
+                f"following errors occurred: {errors}, current batch / states / grads "
+                f"will be saved to {batch_paths} for further investigation"
+            )
+        elif errors:
+            console.warn(
+                f"following warnings occurred: {errors}, current batch / states / grads "
+                f"will be saved to {batch_paths} for further investigation"
+            )
+
+
 __all__ = [
     "NaNDetectorCallback",
+    "GradientDetectorCallback",
 ]
