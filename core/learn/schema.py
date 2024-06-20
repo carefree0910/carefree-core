@@ -942,9 +942,21 @@ def weighted_loss_score(config: "TrainerConfig", loss_items: Dict[str, float]) -
     return score
 
 
-def get_update_fn(trainer: "ITrainer") -> Callable[[Tensor, Optimizer, bool], None]:
-    def update_fn(loss: Tensor, optimizer: Optimizer, update: bool) -> None:
-        trainer.accelerator.backward(loss)
+def get_update_fn(
+    trainer: "ITrainer",
+) -> Callable[
+    [tensor_dict_type, tensor_dict_type, "TrainStepLoss", Optimizer, bool], None
+]:
+    def update_fn(
+        batch: tensor_dict_type,
+        forward: tensor_dict_type,
+        loss_res: TrainStepLoss,
+        optimizer: Optimizer,
+        update: bool,
+    ) -> None:
+        trainer.accelerator.backward(loss_res.loss)
+        for c in trainer.callbacks:
+            c.before_train_update(trainer, batch, forward, loss_res, update)
         if update:
             trainer.clip_norm_step()
             optimizer.step()
@@ -1253,9 +1265,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                     with autocast_ctx:
                         loss_args = self, state, batch, forward
                         loss_res = train_step.loss_fn(*loss_args, **loss_kwargs)
-                    for c in trainer.callbacks:
-                        c.before_train_update(trainer, batch, forward, loss_res, update)
-                    update_fn(loss_res.loss, optimizer, update)
+                    update_fn(batch, forward, loss_res, optimizer, update)
                     i_losses = {k: v.detach() for k, v in loss_res.loss_tensors.items()}
                     loss_tensors.update(i_losses)
             if update:
