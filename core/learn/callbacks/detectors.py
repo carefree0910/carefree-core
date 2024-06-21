@@ -118,8 +118,10 @@ class GradientDetectorCallback(TrainerCallback):
             elif torch.isinf(p.grad).any().item():
                 record("Inf")
                 need_raise = True
-            elif torch.abs(p.grad).max().item() > self.threshold:
-                record("Too Large")
+            else:
+                max_grad = torch.abs(p.grad).max().item()
+                if max_grad >= self.threshold:
+                    record(f"Too Large ({max_grad})")
         if errors:
             debug_folder.mkdir(exist_ok=True, parents=True)
             appendix = dump_problematic(
