@@ -140,7 +140,8 @@ class GradientDetectorCallback(TrainerCallback):
                 f"following errors occurred: {errors}, current batch / states / grads "
                 f"will be saved to {batch_paths} for further investigation"
             )
-        elif errors:
+            raise RuntimeError("Gradient Error Detected")
+        if errors:
             console.warn(
                 f"following warnings occurred: {errors}, current batch / states / grads "
                 f"will be saved to {batch_paths} for further investigation"
