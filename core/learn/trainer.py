@@ -1,5 +1,4 @@
 import os
-import re
 import json
 import math
 import torch
@@ -8,7 +7,6 @@ from typing import Any
 from typing import Set
 from typing import Dict
 from typing import List
-from typing import Tuple
 from typing import Callable
 from typing import Optional
 from pathlib import Path
@@ -41,8 +39,6 @@ from .toolkit import get_torch_device
 from .constants import PT_PREFIX
 from .constants import SCORES_FILE
 from .constants import CHECKPOINTS_FOLDER
-from .schedulers import WarmupScheduler
-from .modules.common import EMA
 from ..toolkit import console
 from ..toolkit.misc import is_ddp
 from ..toolkit.misc import to_path
@@ -109,8 +105,6 @@ class Trainer(ITrainer):
         self.config = config
         self.tqdm_settings = safe_execute(TqdmSettings, config.tqdm_settings or {})  # type: ignore
         self.accelerator: Accelerator = None
-        self._current_scheduler_epoch = -1
-        self.lr_metrics_updated = False
         self.loss_incrementers: Dict[str, Incrementer] = {}
         self.intermediate: Optional[MetricsOutputs] = None
         self.final_results: Optional[MetricsOutputs] = None
@@ -151,44 +145,6 @@ class Trainer(ITrainer):
     @property
     def should_autocast(self) -> bool:
         return self.config.mixed_precision != "no"
-
-    # inheritance
-
-    def clip_norm_step(self) -> None:
-        if self.config.clip_norm > 0.0:
-            if self.accelerator.sync_gradients:
-                self._gradient_norm = self.accelerator.clip_grad_norm_(
-                    self.model.parameters(),
-                    max_norm=self.config.clip_norm,
-                )
-
-    def ema_step(self) -> None:
-        for module in self.model.m.modules():
-            if isinstance(module, EMA):
-                module()
-
-    def scheduler_step(self) -> None:
-        if self.config.update_scheduler_per_epoch:
-            if self.state.epoch == self._current_scheduler_epoch:
-                return
-        lr_metric_logged = False
-        for key, scheduler in self.schedulers.items():
-            if scheduler is not None:
-                should_log_lr, kwargs = self._get_scheduler_settings(key, scheduler)
-                if should_log_lr or self.config.update_scheduler_per_epoch:
-                    lr_metric_logged = True
-                    if self.is_local_rank_0:
-                        for callback in self.callbacks:
-                            callback.log_lr(
-                                f"lr-{key}",
-                                scheduler.get_last_lr()[0],
-                                self.state,
-                            )
-                scheduler.step(**shallow_copy_dict(kwargs))
-        if lr_metric_logged:
-            self.lr_metrics_updated = False
-        if self.config.update_scheduler_per_epoch:
-            self._current_scheduler_epoch = self.state.epoch
 
     # api
 
@@ -271,11 +227,9 @@ class Trainer(ITrainer):
         for sch in schedulers.values():
             if sch is not None:
                 sch.load_state_dict(sch.state_dict())
-        # callback
-        self.model.init_with_trainer(self)
-        # finetune
-        self._init_finetune()
         # summary
+        for callback in self.callbacks:
+            callback.before_summary(self)
         ## should always summary to sync the statuses in distributed training
         input_sample = train_loader.get_input_sample(self.device)
         summary_msg = summary(
@@ -325,13 +279,13 @@ class Trainer(ITrainer):
                     for callback in self.callbacks:
                         callback.at_step_start(batch, self)
                     self.state.step += 1
-                    step_outputs = self._step(i, batch)
+                    step_outputs = self.train_step(i, batch)
                     if self.is_local_rank_0:
                         for callback in self.callbacks:
                             callback.log_train_step(step_outputs, self.state)
                     for callback in self.callbacks:
                         callback.after_train_step(batch, step_outputs, self)
-                    monitored = self._monitor(
+                    monitored = self.monitor(
                         distributed_train_loader,
                         distributed_valid_loader,
                         step_outputs,
@@ -383,8 +337,8 @@ class Trainer(ITrainer):
             self.final_results = self.intermediate
         else:
             loader = distributed_valid_loader or distributed_train_loader
-            self.final_results = self._get_metrics(loader, self.config.valid_portion)
-            self._logging(self.final_results)
+            self.final_results = self.get_metrics(loader, self.config.valid_portion)
+            self.log_with(self.final_results)
         if not has_ckpt:
             if self.final_results is None:
                 final_score = 0.0
@@ -477,48 +431,19 @@ class Trainer(ITrainer):
             break
         return success
 
-    # internal
+    ## internal
 
-    def _init_finetune(self) -> None:
-        finetune_config = self.config.finetune_config
-        if finetune_config is None:
-            return None
-        pretrained_ckpt = finetune_config.get("pretrained_ckpt")
-        if pretrained_ckpt is None:
-            raise ValueError("`rank` should be provided when `finetune` is triggered")
-        console.log(f"loading pretrained checkpoint from '{pretrained_ckpt}'...")
-        states = torch.load(pretrained_ckpt, map_location=self.device)["states"]
-        self.model.load_state_dict(states)
-        freeze = finetune_config.get("freeze", "")
-        freeze_except = finetune_config.get("freeze_except", "")
-        if not freeze and not freeze_except:
-            return None
-        if freeze and freeze_except:
-            msg = "`freeze` & `freeze_except` should not be provided simultaneously"
-            raise ValueError(msg)
-        msg_fmt = f"-> {'{}'} parameter(s) will be {'{}'} under '{'{}'}'"
-        param_names = []
-        if freeze:
-            num_frozen = 0
-            for name, param in self.model.named_parameters():
-                if re.match(freeze, name):
-                    num_frozen += 1
-                    param.requires_grad_(False)
-                    param_names.append(name)
-            msg = msg_fmt.format(num_frozen, "frozen", freeze)
-        elif freeze_except:
-            num_trainable = 0
-            for name, param in self.model.named_parameters():
-                if not re.match(freeze_except, name):
-                    param.requires_grad_(False)
-                else:
-                    num_trainable += 1
-                    param_names.append(name)
-            msg = msg_fmt.format(num_trainable, "trainable", freeze_except)
-        console.log("\n".join(["=" * 100, msg, "-" * 100] + param_names + ["-" * 100]))
+    def train_step(self, batch_idx: int, batch: tensor_dict_type) -> StepOutputs:
+        forward_kw: Dict[str, Any] = {}
+        for callback in self.callbacks:
+            callback.mutate_forward_kwargs(forward_kw, self)
+        loss_kw: Dict[str, Any] = {}
+        for callback in self.callbacks:
+            callback.mutate_loss_kwargs(loss_kw, self)
+        return self.model.train(batch_idx, batch, self, forward_kw, loss_kw)
 
     # `loader` is distributed loader
-    def _get_metrics(self, loader: DataLoader, portion: float = 1.0) -> MetricsOutputs:
+    def get_metrics(self, loader: DataLoader, portion: float = 1.0) -> MetricsOutputs:
         if not self.use_tqdm_in_validation:
             use_tqdm = False
             tqdm_kwargs = None
@@ -547,24 +472,7 @@ class Trainer(ITrainer):
         )
         return outputs.metric_outputs  # type: ignore
 
-    def _get_scheduler_settings(
-        self,
-        key: str,
-        scheduler: Any,
-    ) -> Tuple[bool, Dict[str, Any]]:
-        kwargs = {}
-        should_log_lr = self.state.should_log_lr
-        is_warmup = isinstance(scheduler, WarmupScheduler)
-        requires_metric = key in self.schedulers_requires_metric
-        if requires_metric and not (is_warmup and not scheduler.finished_warmup):
-            if self.intermediate is None:
-                kwargs["metrics"] = -math.inf
-            else:
-                kwargs["metrics"] = self.intermediate.final_score
-            should_log_lr &= self.lr_metrics_updated
-        return should_log_lr, kwargs
-
-    def _logging(self, metrics_outputs: MetricsOutputs) -> None:
+    def log_with(self, metrics_outputs: MetricsOutputs) -> None:
         if not self.is_local_rank_0:
             return None
         if self.epoch_tqdm is not None:
@@ -585,24 +493,8 @@ class Trainer(ITrainer):
                 for callback in self.callbacks:
                     callback.log_artifacts(self)
 
-    # `loader` is distributed loader
-    def _log_metrics(self, loader: DataLoader, *, prefix: Optional[str] = None) -> None:
-        if self.is_local_rank_0:
-            valid_portion = self.config.valid_portion
-            metrics_outputs = self._get_metrics(loader, valid_portion)
-            for callback in self.callbacks:
-                callback.log_metrics_msg(
-                    metrics_outputs,
-                    self.metrics_log_path,
-                    self.state,
-                    prefix=prefix,
-                )
-            if self.is_rank_0:
-                for callback in self.callbacks:
-                    callback.log_metrics(metrics_outputs, self.state, prefix=prefix)
-
     # `*_loader`s are distributed loaders
-    def _monitor(
+    def monitor(
         self,
         train_loader: DataLoader,
         valid_loader: T_Lo,
@@ -629,12 +521,12 @@ class Trainer(ITrainer):
             # get metrics
             valid_portion = self.config.valid_portion
             if valid_loader is not None:
-                self.intermediate = self._get_metrics(valid_loader, valid_portion)
+                self.intermediate = self.get_metrics(valid_loader, valid_portion)
             elif (
                 not self.config.use_incrementer_for_train_losses_in_eval
                 and self.config.recompute_train_losses_in_eval
             ):
-                self.intermediate = self._get_metrics(train_loader, valid_portion)
+                self.intermediate = self.get_metrics(train_loader, valid_portion)
             else:
                 if not self.config.use_incrementer_for_train_losses_in_eval:
                     loss_tensors = shallow_copy_dict(step_outputs.loss_tensors)
@@ -647,9 +539,10 @@ class Trainer(ITrainer):
                 is_positive = {k: False for k in loss_items}
                 loss_score = weighted_loss_score(self.config, loss_items)
                 self.intermediate = MetricsOutputs(loss_score, loss_items, is_positive)
-            self.lr_metrics_updated = True
+            for callback in self.callbacks:
+                callback.before_monitor_logging(self)
             # logging
-            self._logging(self.intermediate)
+            self.log_with(self.intermediate)
             # check terminate
             if self.state.should_start_snapshot:
                 score = self.intermediate.final_score
@@ -662,15 +555,6 @@ class Trainer(ITrainer):
                     if any(m.should_terminate(score) for m in self.monitors):
                         terminate = True
         return MonitorResults(terminate, save_checkpoint, self.intermediate)
-
-    def _step(self, batch_idx: int, batch: tensor_dict_type) -> StepOutputs:
-        forward_kw: Dict[str, Any] = {}
-        for callback in self.callbacks:
-            callback.mutate_forward_kwargs(forward_kw, self)
-        loss_kw: Dict[str, Any] = {}
-        for callback in self.callbacks:
-            callback.mutate_loss_kwargs(loss_kw, self)
-        return self.model.train(batch_idx, batch, self, forward_kw, loss_kw)
 
 
 __all__ = [

@@ -45,6 +45,7 @@ from ...trainer import get_scores
 from ...trainer import get_sorted_checkpoints
 from ...trainer import Trainer
 from ...monitors import BasicMonitor
+from ...callbacks import TrainingLoopCallback
 from ...callbacks import LogMetricsMsgCallback
 from ...callbacks import UpdateArtifactsCallback
 from ...constants import PT_PREFIX
@@ -319,6 +320,10 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
                 config_str = json.dumps(module_configs)
                 wandb_config["config"] = module_configs
                 self._defaults["callback_configs.wandb.config"] = config_str
+        training_loop_callback = TrainingLoopCallback.__identifier__
+        if training_loop_callback not in callback_names:
+            callback_names.append(training_loop_callback)
+            self._defaults["additional_callbacks"].append(training_loop_callback)
         config.tqdm_settings = tqdm_settings
         config.callback_names = callback_names
         config.callback_configs = callback_configs

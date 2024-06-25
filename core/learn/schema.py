@@ -958,7 +958,6 @@ def get_update_fn(
         for c in trainer.callbacks:
             c.before_gradient_update(trainer, batch, forward, loss_res, update)
         if update:
-            trainer.clip_norm_step()
             optimizer.step()
             optimizer.zero_grad()
 
@@ -1217,7 +1216,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
           `autocast` context manager is used if mixed-precision training is enabled.
           6) Update the optimizer if `train_step.grad_accumulate` is a factor of the current `state.step`.
           7) Update the `loss_tensors` with the loss values for this training step.
-        5. If any optimizer updates occurred, call `trainer.scheduler_step()` to update the learning rate.
+        5. Loop through each callback in the trainer and call its `after_gradient_update` method with the trainer, batch,
+        forward pass outputs, loss values, and `any_update` flag.
         6. Loop through each training step and call its callback function with the model, trainer, batch, and forward pass outputs.
         7. Return the `StepOutputs` object containing the forward pass outputs and loss values.
         """
@@ -1270,9 +1270,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                     loss_tensors.update(i_losses)
             if update:
                 any_update = True
-        if any_update:
-            trainer.ema_step()
-            trainer.scheduler_step()
+        for c in trainer.callbacks:
+            c.after_gradient_update(trainer, batch, forward, loss_tensors, any_update)
         # train step callbacks
         for train_step in self.train_steps:
             train_step.callback(self, trainer, batch, forward)
@@ -1730,12 +1729,15 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
 
     overall:
 
-        `initialize` -> `before_loop` -> training loop -> `finalize`
+       `initialize` -> `before_summary` -> `before_loop` -> training loop -> `finalize`
 
     * training loop:
 
-        train step -> `log_train_step` -> `after_train_step` -> monitor step -> `after_monitor`
-     -> save checkpoint -> `after_save_checkpoint`
+       `at_epoch_start` -> `at_step_start`
+    ->  train step -> `log_train_step` -> `after_train_step`
+    ->  monitor step -> `after_monitor`
+    ->  save checkpoint -> `after_save_checkpoint` -> `at_step_end`
+    ->  (if terminate) -> `at_terminate` -> `at_epoch_end`
 
     * train step:
 
@@ -1743,7 +1745,10 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     -> `mutate_loss_kwargs`
     ->  IModel.run
     ->  train_step.loss_fn
-    ->  scheduler_step (`log_lr`)
+    ->  accelerator.backward
+    -> `before_gradient_update`
+    ->  optimizer.step & zero_grad
+    -> `after_gradient_update`
 
     * monitor step:
 
@@ -1765,6 +1770,9 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     def initialize(self) -> None:
         pass
 
+    def before_summary(self, trainer: "ITrainer") -> None:
+        pass
+
     def before_loop(self, trainer: "ITrainer") -> None:
         pass
 
@@ -1778,6 +1786,9 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
         pass
 
     def log_train_step(self, step_outputs: StepOutputs, state: TrainerState) -> None:
+        pass
+
+    def before_monitor_logging(self, trainer: "ITrainer") -> None:
         pass
 
     def log_metrics(
@@ -1809,6 +1820,16 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
         forward: tensor_dict_type,
         loss_res: TrainStepLoss,
         update: bool,
+    ) -> None:
+        pass
+
+    def after_gradient_update(
+        self,
+        trainer: "ITrainer",
+        batch: tensor_dict_type,
+        forward: tensor_dict_type,
+        loss_tensors: tensor_dict_type,
+        any_update: bool,
     ) -> None:
         pass
 
@@ -1864,7 +1885,9 @@ class ITrainer(ABC):
     state: TrainerState
     inference: IInference
 
+    intermediate: Optional[MetricsOutputs]
     tqdm_settings: "TqdmSettings"
+    schedulers_requires_metric: Set[str]
 
     @property
     @abstractmethod
@@ -1884,18 +1907,6 @@ class ITrainer(ABC):
     @property
     @abstractmethod
     def should_autocast(self) -> bool:
-        pass
-
-    @abstractmethod
-    def clip_norm_step(self) -> None:
-        pass
-
-    @abstractmethod
-    def ema_step(self) -> None:
-        pass
-
-    @abstractmethod
-    def scheduler_step(self) -> None:
         pass
 
     @abstractmethod
