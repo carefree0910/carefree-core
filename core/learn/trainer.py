@@ -14,7 +14,6 @@ from typing import Optional
 from pathlib import Path
 from accelerate import Accelerator
 from accelerate import DataLoaderConfiguration
-from dataclasses import asdict
 from tqdm.autonotebook import tqdm
 from torch.optim import Optimizer
 from torch.profiler import profile
@@ -36,7 +35,6 @@ from .schema import TrainerConfig
 from .schema import MetricsOutputs
 from .schema import MonitorResults
 from .schema import TrainerMonitor
-from .schema import MultipleMetrics
 from .schema import TrainerCallback
 from .toolkit import summary
 from .toolkit import get_torch_device
@@ -48,7 +46,6 @@ from .modules.common import EMA
 from ..toolkit import console
 from ..toolkit.misc import is_ddp
 from ..toolkit.misc import to_path
-from ..toolkit.misc import get_ddp_info
 from ..toolkit.misc import safe_execute
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.misc import sort_dict_by_value
