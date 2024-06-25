@@ -120,33 +120,6 @@ class Trainer(ITrainer):
         self.checkpoint_scores: Dict[str, float] = {}
 
     @property
-    def export_config(self) -> Dict[str, Any]:
-        ddp_info = get_ddp_info()
-        ddp_d = None if ddp_info is None else asdict(ddp_info)
-        return {
-            "state_config": self.state.config,
-            "valid_portion": self.config.valid_portion,
-            "mixed_precision": self.config.mixed_precision,
-            "clip_norm": self.config.clip_norm,
-            "metrics": (
-                None
-                if self.metrics is None
-                else (
-                    self.metrics.__identifier__
-                    if not isinstance(self.metrics, MultipleMetrics)
-                    else [metric.__identifier__ for metric in self.metrics.metrics]
-                )
-            ),
-            "loss_metrics_weights": self.config.loss_metrics_weights,
-            "monitors": [monitor.__identifier__ for monitor in self.monitors],
-            "callbacks": [callback.__identifier__ for callback in self.callbacks],
-            "optimizer_settings": self.config.optimizer_settings,
-            "ddp_info": ddp_d,
-            "finetune_config": self.config.finetune_config,
-            "tqdm_settings": self.tqdm_settings.asdict(),
-        }
-
-    @property
     def device(self) -> torch.device:
         return self.accelerator.device
 
@@ -234,7 +207,6 @@ class Trainer(ITrainer):
         callbacks: List[TrainerCallback],
         schedulers_requires_metric: Set[str],
         *,
-        config_export_file: Optional[str] = None,
         show_summary: bool = True,
         skip_final_evaluation: bool = False,
         only_touch: bool = False,
@@ -330,10 +302,6 @@ class Trainer(ITrainer):
             )
         # train
         has_ckpt = terminate = False
-        if self.is_local_rank_0 and config_export_file is not None:
-            config_export_path = os.path.join(self.workspace, config_export_file)
-            with open(config_export_path, "w") as f:
-                json.dump(self.export_config, f)
         for callback in self.callbacks:
             callback.before_loop(self)
         self.accelerator.wait_for_everyone()

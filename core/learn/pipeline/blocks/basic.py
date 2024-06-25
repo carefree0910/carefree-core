@@ -684,7 +684,6 @@ class ReportBlock(Block):
 @Block.register("training")
 class TrainingBlock(Block):
     config: Config
-    trainer_config_file = "trainer_config.json"
 
     def build(self, config: Config) -> None:
         self.config = config
@@ -750,7 +749,6 @@ class TrainingBlock(Block):
                 self.build_monitors.monitors,
                 self.build_callbacks.callbacks,
                 self.build_optimizers.schedulers_requires_metric,
-                config_export_file=self.trainer_config_file,
                 skip_final_evaluation=skip_final_evaluation,
                 only_touch=only_touch,
                 device=device,
