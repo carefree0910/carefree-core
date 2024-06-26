@@ -108,7 +108,7 @@ class TrainingLoopCallback(TrainerCallback):
 
     def __init__(self) -> None:
         self.gradient_norm: Optional[Tensor] = None
-        self.lr_metrics_updated = False
+        self.should_log_lr = False
         self.current_scheduler_epoch = -1
 
     def before_summary(self, trainer: ITrainer) -> None:
@@ -193,12 +193,12 @@ class TrainingLoopCallback(TrainerCallback):
             config.update_scheduler_per_epoch
             and state.epoch == self.current_scheduler_epoch
         ):
-            lr_metrics_logged = False
+            lr_logged = False
             for k, sch in trainer.schedulers.items():
                 if sch is not None:
                     should_log_lr, kwargs = self.get_scheduler_settings(k, trainer, sch)
                     if should_log_lr or config.update_scheduler_per_epoch:
-                        lr_metrics_logged = True
+                        lr_logged = True
                         if self.is_local_rank_0:
                             for callback in trainer.callbacks:
                                 callback.log_lr(
@@ -207,13 +207,13 @@ class TrainingLoopCallback(TrainerCallback):
                                     state,
                                 )
                     sch.step(**shallow_copy_dict(kwargs))
-            if lr_metrics_logged:
-                self.lr_metrics_updated = False
+            if lr_logged:
+                self.should_log_lr = False
             if config.update_scheduler_per_epoch:
                 self.current_scheduler_epoch = state.epoch
 
     def before_monitor_logging(self, trainer: ITrainer) -> None:
-        self.lr_metrics_updated = True
+        self.should_log_lr = True
 
     # internal
 
@@ -232,7 +232,7 @@ class TrainingLoopCallback(TrainerCallback):
                 kwargs["metrics"] = -math.inf
             else:
                 kwargs["metrics"] = trainer.intermediate.final_score
-            should_log_lr &= self.lr_metrics_updated
+            should_log_lr &= self.should_log_lr
         return should_log_lr, kwargs
 
 
