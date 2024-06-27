@@ -771,29 +771,31 @@ class TestOPTBase(unittest.TestCase):
             def env_key(self) -> str:
                 return "TEST_ENV_KEY"
 
-        self.opt = OPTTest()
+        self.opt_factory = lambda: OPTTest()
 
     def test_init(self):
-        self.assertEqual(self.opt.model_dump(), {"foo": {"bar": "bar"}})
-
-    def test_update_from_env(self):
-        os.environ[self.opt.env_key] = json.dumps({"foo": {"bar": "updated_bar"}})
-        self.opt.update_from_env()
-        self.assertEqual(self.opt.foo.bar, "updated_bar")
-        del os.environ[self.opt.env_key]
+        self.assertEqual(self.opt_factory().model_dump(), {"foo": {"bar": "bar"}})
 
     def test_opt_context(self):
-        with self.opt.opt_context({"foo": {"bar": "updated_bar"}}):
-            self.assertEqual(self.opt.foo.bar, "updated_bar")
-        self.assertEqual(self.opt.foo.bar, "bar")
+        opt = self.opt_factory()
+        with opt.opt_context({"foo": {"bar": "updated_bar"}}):
+            self.assertEqual(opt.foo.bar, "updated_bar")
+        self.assertEqual(opt.foo.bar, "bar")
 
     def test_opt_env_context(self):
-        with self.opt.opt_env_context({"foo": {"bar": "env_context_value"}}):
+        opt = self.opt_factory()
+        with opt.opt_env_context({"foo": {"bar": "env_context_value"}}):
             self.assertEqual(
-                json.loads(os.environ[self.opt.env_key])["foo"]["bar"],
+                json.loads(os.environ[opt.env_key])["foo"]["bar"],
                 "env_context_value",
             )
-        self.assertNotIn(self.opt.env_key, os.environ)
+        self.assertNotIn(opt.env_key, os.environ)
+
+    def test_update_from_env(self):
+        opt = self.opt_factory()
+        with opt.opt_env_context({"foo": {"bar": "updated_bar"}}):
+            opt.update_from_env()
+            self.assertEqual(opt.foo.bar, "updated_bar")
 
 
 class TestTimeit(unittest.TestCase):
