@@ -12,7 +12,6 @@ import operator
 import unicodedata
 
 from abc import abstractmethod
-from abc import ABC
 from abc import ABCMeta
 from typing import Any
 from typing import Set
@@ -35,6 +34,7 @@ from pathlib import Path
 from argparse import Namespace
 from datetime import datetime
 from datetime import timedelta
+from pydantic import BaseModel
 from functools import reduce
 from collections import OrderedDict
 from dataclasses import asdict
@@ -1321,13 +1321,7 @@ class Incrementer:
                 self.running_square_sum -= previous**2
 
 
-class OPTBase(ABC):
-    def __init__(self) -> None:
-        self._opt = self.defaults
-        self.update_from_env()
-
-    def __getattr__(self, __name: str) -> Any:
-        return self._opt[__name]
+class OPTBase(BaseModel, metaclass=ABCMeta):
 
     # abstract
 
@@ -1336,31 +1330,32 @@ class OPTBase(ABC):
     def env_key(self) -> str:
         pass
 
-    @property
-    @abstractmethod
-    def defaults(self) -> Dict[str, Any]:
-        pass
-
     # optional callbacks
 
     def update_from_env(self) -> None:
         env_opt_json = os.environ.get(self.env_key)
         if env_opt_json is not None:
-            update_dict(json.loads(env_opt_json), self._opt)
+            self.update_with(json.loads(env_opt_json))
 
     # api
+
+    def update_with(self, d: Dict[str, Any]) -> None:
+        d = update_dict(d, self.model_dump())
+        new = self.__class__(**d)
+        for k in d:
+            setattr(self, k, getattr(new, k))
 
     def opt_context(self, increment: Dict[str, Any]) -> ContextManager:
         class _:
             def __init__(self) -> None:
                 self._increment = increment
-                self._backup = shallow_copy_dict(instance._opt)
+                self._backup = shallow_copy_dict(instance.model_dump())
 
             def __enter__(self) -> None:
-                update_dict(self._increment, instance._opt)
+                instance.update_with(self._increment)
 
             def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-                instance._opt = self._backup
+                instance.update_with(self._backup)
 
         instance = self
         return _()

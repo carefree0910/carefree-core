@@ -757,42 +757,43 @@ class TestSerializations(unittest.TestCase):
 
 
 class TestOPTBase(unittest.TestCase):
-    class OPTBaseSubclass(OPTBase):
-        @property
-        def env_key(self) -> str:
-            return "TEST_ENV_KEY"
-
-        @property
-        def defaults(self) -> Dict[str, Any]:
-            return {"default_key": "default_value"}
 
     def setUp(self):
-        self.opt_base = self.OPTBaseSubclass()
+        from pydantic import Field
+
+        class FooOpt(BaseModel):
+            bar: str = "bar"
+
+        class OPTTest(OPTBase):
+            foo: FooOpt = Field(default_factory=FooOpt)
+
+            @property
+            def env_key(self) -> str:
+                return "TEST_ENV_KEY"
+
+        self.opt = OPTTest()
 
     def test_init(self):
-        self.assertEqual(self.opt_base._opt, {"default_key": "default_value"})
-
-    def test_getattr(self):
-        self.assertEqual(self.opt_base.default_key, "default_value")
+        self.assertEqual(self.opt.model_dump(), {"foo": {"bar": "bar"}})
 
     def test_update_from_env(self):
-        os.environ["TEST_ENV_KEY"] = json.dumps({"default_key": "updated_value"})
-        self.opt_base.update_from_env()
-        self.assertEqual(self.opt_base.default_key, "updated_value")
-        del os.environ["TEST_ENV_KEY"]
+        os.environ[self.opt.env_key] = json.dumps({"foo": {"bar": "updated_bar"}})
+        self.opt.update_from_env()
+        self.assertEqual(self.opt.foo.bar, "updated_bar")
+        del os.environ[self.opt.env_key]
 
     def test_opt_context(self):
-        with self.opt_base.opt_context({"default_key": "context_value"}):
-            self.assertEqual(self.opt_base.default_key, "context_value")
-        self.assertEqual(self.opt_base.default_key, "default_value")
+        with self.opt.opt_context({"foo": {"bar": "updated_bar"}}):
+            self.assertEqual(self.opt.foo.bar, "updated_bar")
+        self.assertEqual(self.opt.foo.bar, "bar")
 
     def test_opt_env_context(self):
-        with self.opt_base.opt_env_context({"default_key": "env_context_value"}):
+        with self.opt.opt_env_context({"foo": {"bar": "env_context_value"}}):
             self.assertEqual(
-                json.loads(os.environ["TEST_ENV_KEY"])["default_key"],
+                json.loads(os.environ[self.opt.env_key])["foo"]["bar"],
                 "env_context_value",
             )
-        self.assertNotIn("TEST_ENV_KEY", os.environ)
+        self.assertNotIn(self.opt.env_key, os.environ)
 
 
 class TestTimeit(unittest.TestCase):
