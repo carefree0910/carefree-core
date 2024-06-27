@@ -16,7 +16,6 @@ from .core import warmup
 from .core import Node
 from .core import Flow
 from .core import WorkflowModel
-from .core import InjectionModel
 from .nodes.common import to_endpoint
 from ..parameters import OPT
 from ..toolkit.web import raise_err
