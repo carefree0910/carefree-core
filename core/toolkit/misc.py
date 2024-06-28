@@ -381,7 +381,8 @@ def get_arguments(
         frame = frame.f_back
     if frame is None:
         raise ValueError(f"`get_arguments` failed at {num_back}th frame backword")
-    arguments = inspect.getargvalues(frame)[-1]
+    args, _, _, values = inspect.getargvalues(frame)
+    arguments = {k: values[k] for k in args}
     if pop_class_attributes:
         arguments.pop("self", None)
         arguments.pop("__class__", None)
