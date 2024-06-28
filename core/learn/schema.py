@@ -1805,8 +1805,6 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
         metric_outputs: MetricsOutputs,
         metrics_log_path: str,
         state: TrainerState,
-        *,
-        prefix: Optional[str] = None,
     ) -> None:
         pass
 

@@ -486,18 +486,14 @@ class Trainer(ITrainer):
             metric_values["score"] = metrics_outputs.final_score
             self.epoch_tqdm.set_postfix(metric_values)
         if self.state.should_log_metrics_msg:
-            for callback in self.callbacks:
-                callback.log_metrics_msg(
-                    metrics_outputs,
-                    self.metrics_log_path,
-                    self.state,
-                )
+            for c in self.callbacks:
+                c.log_metrics_msg(metrics_outputs, self.metrics_log_path, self.state)
         if self.is_rank_0:
-            for callback in self.callbacks:
-                callback.log_metrics(metrics_outputs, self.state)
+            for c in self.callbacks:
+                c.log_metrics(metrics_outputs, self.state)
             if self.state.should_log_artifacts:
-                for callback in self.callbacks:
-                    callback.log_artifacts(self)
+                for c in self.callbacks:
+                    c.log_artifacts(self)
 
     # `*_loader`s are distributed loaders
     def monitor(
