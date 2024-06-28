@@ -36,6 +36,7 @@ from .schema import TrainerMonitor
 from .schema import TrainerCallback
 from .toolkit import summary
 from .toolkit import get_torch_device
+from .callbacks import TrainingLoopCallback
 from .constants import PT_PREFIX
 from .constants import SCORES_FILE
 from .constants import CHECKPOINTS_FOLDER
@@ -196,6 +197,11 @@ class Trainer(ITrainer):
         self.metrics = metrics
         self.monitors = monitors
         self.callbacks = callbacks
+        if not any(isinstance(c, TrainingLoopCallback) for c in self.callbacks):
+            console.warn(
+                "`TrainingLoopCallback` is not found in the callbacks, "
+                "some features may not work as expected"
+            )
         self.schedulers_requires_metric = schedulers_requires_metric
         if self.is_local_rank_0:
             with open(os.path.join(self.workspace, self.model_log_file), "w") as f:
