@@ -126,17 +126,17 @@ class IPipeline(
     @classmethod
     @abstractmethod
     def init(cls: Type[TPipeline], config: TConfig) -> TPipeline:
-        pass
+        """initialize the pipeline with the given `config`"""
 
     @property
     @abstractmethod
     def config_base(self) -> Type[TConfig]:
-        pass
+        """return the base class of the `config`"""
 
     @property
     @abstractmethod
     def block_base(self) -> Type[TBlock]:
-        pass
+        """return the base class of the `block`"""
 
     # inheritance
 
