@@ -36,7 +36,13 @@ class RuntimeError(BaseModel):
 def get_ip() -> str:
     import socket
 
-    return socket.gethostbyname(socket.gethostname())
+    return socket.gethostbyname(get_host_name())
+
+
+def get_host_name() -> str:
+    import socket
+
+    return socket.gethostname()
 
 
 def get_responses(
