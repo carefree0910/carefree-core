@@ -1456,9 +1456,8 @@ class batch_manager:
         if batch_size is not None:
             self.batch_size = batch_size
         else:
-            self.batch_size = int(
-                int(num_elem) / sum(map(lambda arr: prod(arr.shape[1:]), inputs))
-            )
+            shapes = [a.shape if len(a.shape) == 1 else a.shape[1:] for a in inputs]
+            self.batch_size = int(int(num_elem) / sum(map(prod, shapes)))
         self.batch_size = min(max_batch_size, min(self.num_samples, self.batch_size))
         self.num_epoch = int(self.num_samples / self.batch_size)
         self.num_epoch += int(self.num_epoch * self.batch_size < self.num_samples)
