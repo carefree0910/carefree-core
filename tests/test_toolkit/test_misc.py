@@ -617,6 +617,7 @@ class TestMisc(unittest.TestCase):
         expected_result = sys.getsizeof([1, 2, 3]) + sys.getsizeof(1) * 3
         self.assertEqual(result, expected_result)
         result = get_memory_size([1, 2, 3, 1])
+        expected_result = sys.getsizeof([1, 2, 3, 1]) + sys.getsizeof(1) * 3
         self.assertEqual(result, expected_result)
 
     def test_get_memory_size_with_dict(self):

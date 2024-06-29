@@ -211,7 +211,8 @@ class TestWeb(unittest.TestCase):
             self.loop.run_until_complete(web.download_image(mock_session, url))
         self.assertEqual("raw | None | err | Image open error", str(context.exception))
 
-        raw_data = Image.fromarray(np.random.randint(0, 256, [10, 10])).tobytes()
+        raw_data_arr = np.random.randint(0, 256, [10, 10], dtype=np.uint8)
+        raw_data = Image.fromarray(raw_data_arr).tobytes()
         mock_download_raw.return_value = raw_data
         with self.assertRaises(ValueError) as context:
             self.loop.run_until_complete(web.download_image(mock_session, url))
