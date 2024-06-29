@@ -9,6 +9,8 @@ from typing import Any
 from typing import Dict
 from unittest import mock
 from dataclasses import field
+from unittest.mock import Mock
+from unittest.mock import patch
 from core.toolkit.misc import *
 
 
@@ -16,6 +18,35 @@ test_dict = {}
 
 
 class TestMisc(unittest.TestCase):
+    @patch("core.toolkit.misc.get_ddp_info")
+    def test_ddp_info_is_none(self, mock_get_ddp_info):
+        mock_get_ddp_info.return_value = None
+        self.assertTrue(is_rank_0())
+
+    @patch("core.toolkit.misc.get_ddp_info")
+    def test_ddp_info_rank_is_zero(self, mock_get_ddp_info):
+        mock_ddp_info = Mock()
+        mock_ddp_info.rank = 0
+        mock_get_ddp_info.return_value = mock_ddp_info
+        self.assertTrue(is_rank_0())
+
+    @patch("core.toolkit.misc.get_ddp_info")
+    def test_ddp_info_rank_is_not_zero(self, mock_get_ddp_info):
+        mock_ddp_info = Mock()
+        mock_ddp_info.rank = 1
+        mock_get_ddp_info.return_value = mock_ddp_info
+        self.assertFalse(is_rank_0())
+
+    @patch("core.toolkit.misc.is_dist_initialized")
+    def test_is_fsdp(self, mock_is_dist_initialized):
+        mock_is_dist_initialized.return_value = True
+        self.assertFalse(is_fsdp())
+
+    @patch("core.toolkit.misc.is_dist_initialized")
+    def test_wait_for_everyone(self, mock_is_dist_initialized):
+        mock_is_dist_initialized.return_value = True
+        wait_for_everyone()
+
     def test_walk(self):
         def reset():
             nonlocal paths, hierarchies
@@ -253,6 +284,49 @@ class TestMisc(unittest.TestCase):
         self.assertDictEqual(_1(), dict(a=1, b=2, c=3))
         self.assertDictEqual(_2().kw, dict(a=1, b=2, c=3))
 
+    def test_get_arguments_default(self):
+        def dummy_function(a, b, c):
+            return get_arguments()
+
+        arguments = dummy_function(1, 2, 3)
+        expected_arguments = {"a": 1, "b": 2, "c": 3}
+        self.assertDictEqual(arguments, expected_arguments)
+
+    def test_get_arguments_num_back(self):
+        def dummy_function_1(a, b, c, /, d, *, e):
+            return dummy_function_2()
+
+        def dummy_function_2():
+            return get_arguments(num_back=1)
+
+        arguments = dummy_function_1(1, 2, 3, 4, e=5)
+        expected_arguments = {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5}
+        self.assertDictEqual(arguments, expected_arguments)
+
+    def test_get_arguments_pop_class_attributes(self):
+        class DummyClass:
+            def __init__(self, a, b, c):
+                self.args = get_arguments(pop_class_attributes=False)
+
+        dummy_object = DummyClass(1, 2, 3)
+        expected_arguments = {"self": dummy_object, "a": 1, "b": 2, "c": 3}
+        self.assertDictEqual(dummy_object.args, expected_arguments)
+
+    @patch("core.toolkit.misc.inspect.currentframe")
+    def test_get_arguments_no_frame(self, mock_currentframe):
+        mock_currentframe.return_value = None
+        with self.assertRaises(ValueError):
+            get_arguments()
+        f_mock = Mock()
+        mock_currentframe.return_value = f_mock
+        f_mock.f_back = None
+        with self.assertRaises(ValueError):
+            get_arguments()
+
+    def test_get_arguments_frame_backword_fail(self):
+        with self.assertRaises(ValueError):
+            get_arguments(num_back=100)
+
     def test_timestamp(self):
         for i in range(2):
             try:
@@ -284,10 +358,10 @@ class TestMisc(unittest.TestCase):
         self.assertNotEqual(hash11, hash22)
 
     def test_hash_dict(self):
-        d0 = dict(a=1, b=2, c=3)
-        d1 = dict(c=3, b=2, a=1)
+        d0 = dict(a=1, b=2, c=dict(d={3}))
+        d1 = dict(c=dict(d={3}), b=2, a=1)
         d2 = dict(a=1, b=2, c=4)
-        d3 = dict(a=1, b=2, d=3)
+        d3 = dict(a=1, b=2, d=dict(e={3}))
         self.assertEqual(hash_dict(d0), hash_dict(d1))
         self.assertNotEqual(hash_dict(d0), hash_dict(d2))
         self.assertNotEqual(hash_dict(d0), hash_dict(d3))
@@ -298,12 +372,18 @@ class TestMisc(unittest.TestCase):
         d3 = dict(a="a", b="b", c="c")
         d4 = dict(c="c", b="b", a="a")
         d5 = dict(a="a", b="b", c="d")
+        d6 = dict(a="a", b="b", d="d")
         key_order0 = ["a", "b", "c"]
         key_order1 = ["c", "b", "a"]
         self.assertEqual(hash_str_dict(d3), hash_str_dict(d4))
         self.assertEqual(hash_str_dict(d3), hash_str_dict(d3, key_order=key_order0))
         self.assertNotEqual(hash_str_dict(d3), hash_str_dict(d3, key_order=key_order1))
         self.assertNotEqual(hash_str_dict(d3), hash_str_dict(d5))
+        self.assertNotEqual(hash_str_dict(d5), hash_str_dict(d6))
+        self.assertEqual(
+            hash_str_dict(d5, static_keys=True),
+            hash_str_dict(d6, static_keys=True),
+        )
 
     def test_prefix_dict(self):
         prefix = "^_^"
@@ -484,6 +564,107 @@ class TestMisc(unittest.TestCase):
 
         path.unlink()
 
+    def test_to_set_with_set(self):
+        inp = {1, 2, 3}
+        result = to_set(inp)
+        self.assertEqual(result, inp)
+
+    def test_to_set_with_list(self):
+        inp = [1, 2, 3]
+        result = to_set(inp)
+        expected_result = {1, 2, 3}
+        self.assertEqual(result, expected_result)
+
+    def test_to_set_with_tuple(self):
+        inp = (1, 2, 3)
+        result = to_set(inp)
+        expected_result = {1, 2, 3}
+        self.assertEqual(result, expected_result)
+
+    def test_to_set_with_dict(self):
+        inp = {1: "a", 2: "b", 3: "c"}
+        result = to_set(inp)
+        expected_result = {1, 2, 3}
+        self.assertEqual(result, expected_result)
+
+    def test_to_set_with_single_value(self):
+        inp = 1
+        result = to_set(inp)
+        expected_result = {1}
+        self.assertEqual(result, expected_result)
+
+    def test_func_decorators(self):
+        @only_execute_on_rank0
+        @only_execute_on_local_rank0
+        def dummy_function(a, b, c):
+            pass
+
+        result = dummy_function(1, 2, 3)
+        self.assertEqual(result, None)
+
+    def test_get_memory_size_with_int(self):
+        result = get_memory_size(1)
+        self.assertEqual(result, sys.getsizeof(1))
+        result = get_memory_mb(1)
+        self.assertAlmostEqual(result, sys.getsizeof(1) / 1024 / 1024)
+
+    def test_get_memory_size_with_str(self):
+        result = get_memory_size("test")
+        self.assertEqual(result, sys.getsizeof("test"))
+
+    def test_get_memory_size_with_list(self):
+        result = get_memory_size([1, 2, 3])
+        expected_result = sys.getsizeof([1, 2, 3]) + sys.getsizeof(1) * 3
+        self.assertEqual(result, expected_result)
+        result = get_memory_size([1, 2, 3, 1])
+        self.assertEqual(result, expected_result)
+
+    def test_get_memory_size_with_dict(self):
+        result = get_memory_size({"a": 1, "b": 2, "c": 3})
+        expected_result = (
+            sys.getsizeof({"a": 1, "b": 2, "c": 3})
+            + sys.getsizeof("a") * 3
+            + sys.getsizeof(1) * 3
+        )
+        self.assertEqual(result, expected_result)
+
+    def test_get_memory_size_with_class(self):
+        class Foo:
+            def __init__(self, a, b, c):
+                self.a = a
+                self.b = b
+                self.c = c
+
+        foo = Foo(a=1, b=2, c=3)
+        d = foo.__dict__
+        result = get_memory_size(foo)
+        expected_result = (
+            sys.getsizeof(foo)
+            + sys.getsizeof(d)
+            + sys.getsizeof("a") * 3
+            + sys.getsizeof(1) * 3
+        )
+        self.assertEqual(result, expected_result)
+
+    def test_get_memory_size_with_numpy_array(self):
+        arr = np.array([1, 2, 3])
+        result = get_memory_size(arr)
+        self.assertEqual(result, arr.nbytes)
+
+    def test_get_memory_size_with_pandas_index(self):
+        import pandas as pd
+
+        idx = pd.Index([1, 2, 3])
+        result = get_memory_size(idx)
+        self.assertEqual(result, idx.memory_usage(deep=True))
+
+    def test_get_memory_size_with_pandas_dataframe(self):
+        import pandas as pd
+
+        df = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
+        result = get_memory_size(df)
+        self.assertEqual(result, df.memory_usage(deep=True).sum())
+
     def test_data_class_base(self):
         @dataclass
         class Foo(DataClassBase):
@@ -495,6 +676,7 @@ class TestMisc(unittest.TestCase):
         self.assertListEqual(["bar"], foo.field_names)
         self.assertListEqual([0], foo.attributes)
         self.assertEqual(foo, foo.copy())
+        self.assertEqual(foo, foo.construct(dict(bar=0)))
         foo.update_with(foo2)
         self.assertEqual(foo2, foo)
 
@@ -623,6 +805,9 @@ class TestRetry(unittest.TestCase):
     def health_check(self, response):
         return response == "success"
 
+    def error_verbose(self, message):
+        self.counter = -1
+
     def test_retry_success_after_retries(self):
         self.counter = 0
         result = asyncio.run(retry(self.async_fn, 3, health_check=self.health_check))
@@ -632,8 +817,23 @@ class TestRetry(unittest.TestCase):
     def test_retry_never_succeeds(self):
         self.counter = 0
         with self.assertRaises(ValueError):
+            asyncio.run(retry(self.async_fn, health_check=self.health_check))
+        self.assertEqual(self.counter, 1)
+        self.counter = 0
+        with self.assertRaises(ValueError):
             asyncio.run(retry(self.async_fn, 2, health_check=self.health_check))
         self.assertEqual(self.counter, 2)
+        self.counter = 0
+        with self.assertRaises(ValueError):
+            asyncio.run(
+                retry(
+                    self.async_fn,
+                    2,
+                    health_check=self.health_check,
+                    error_verbose_fn=self.error_verbose,
+                )
+            )
+        self.assertEqual(self.counter, -1)
 
     def test_retry_raises_exception(self):
         async def async_fn_raises_exception():
@@ -740,6 +940,8 @@ class TestSerializations(unittest.TestCase):
     def test_serializer(self):
         f = self.Foo("test")
         with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertRaises(ValueError):
+                Serializer.save_info(tmp_dir)
             Serializer.save_info(tmp_dir, serializable=f)
             self.assertDictEqual(f.to_info(), Serializer.load_info(tmp_dir))
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -749,11 +951,19 @@ class TestSerializations(unittest.TestCase):
 
         f = self.FooArrays("test")
         with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertRaises(ValueError):
+                Serializer.save_npd(tmp_dir)
             Serializer.save_npd(tmp_dir, serializable=f)
             np.testing.assert_allclose(f.array, Serializer.load_npd(tmp_dir)["array"])
         with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertRaises(ValueError):
+                Serializer.load_npd(tmp_dir)
             Serializer.save(tmp_dir, f)
             self.assertEqual(f, Serializer.load(tmp_dir, self.FooArrays))
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertRaises(ValueError):
+                Serializer.load_empty(tmp_dir, self.Foo)
 
 
 class TestOPTBase(unittest.TestCase):
@@ -794,6 +1004,9 @@ class TestOPTBase(unittest.TestCase):
     def test_update_from_env(self):
         opt = self.opt_factory()
         with opt.opt_env_context({"foo": {"bar": "updated_bar"}}):
+            with opt.opt_env_context({"foo": {"bar": "second_updated_bar"}}):
+                opt.update_from_env()
+                self.assertEqual(opt.foo.bar, "second_updated_bar")
             opt.update_from_env()
             self.assertEqual(opt.foo.bar, "updated_bar")
 
@@ -827,8 +1040,12 @@ class TestTimeit(unittest.TestCase):
 
 class TestBatchManager(unittest.TestCase):
     def setUp(self):
+        with self.assertRaises(ValueError):
+            batch_manager()
         self.inputs = (np.arange(5), np.arange(5) + 1)
         self.batch_manager = batch_manager(*self.inputs, batch_size=2)
+        batch_manager_1 = batch_manager(*self.inputs, num_elem=20)
+        self.assertEqual(self.batch_manager.batch_size, batch_manager_1.batch_size)
 
     def test_init(self):
         self.assertEqual(self.batch_manager.num_samples, 5)
