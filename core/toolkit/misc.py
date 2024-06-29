@@ -941,8 +941,6 @@ class DataClassBase:
     def construct(cls: Type[TDataClass], d: Dict[str, Any]) -> TDataClass:
         def _construct(t: Type, d: Dict[str, Any]) -> Any:
             instance = safe_instantiate(t, d)
-            if not is_dataclass(instance):
-                return instance
             for field in fields(instance):
                 if is_dataclass(field.type):
                     setattr(
