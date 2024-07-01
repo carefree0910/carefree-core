@@ -122,7 +122,7 @@ def seed_everything(seed: int) -> int:
     return seed
 
 
-def _get_environ_workspace() -> Optional[str]:
+def get_environ_workspace() -> Optional[str]:
     """
     Get the workspace from the environment variable.
     This is used internally to set the default workspace.
@@ -137,7 +137,7 @@ def _get_environ_workspace() -> Optional[str]:
     return os.environ.get(WORKSPACE_ENVIRON_KEY)
 
 
-def _set_environ_workspace(workspace: str) -> None:
+def set_environ_workspace(workspace: str) -> None:
     """
     Set the (default) workspace in the environment variable.
 

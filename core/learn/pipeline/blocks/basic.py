@@ -39,7 +39,7 @@ from ...schema import TrainerMonitor
 from ...schema import TrainerCallback
 from ...losses import losses
 from ...models import EnsembleModel
-from ...toolkit import _get_environ_workspace
+from ...toolkit import get_environ_workspace
 from ...toolkit import scheduler_requires_metric
 from ...trainer import get_scores
 from ...trainer import get_sorted_checkpoints
@@ -94,7 +94,7 @@ class SetDefaultsBlock(InjectDefaultsMixin, Block):
             if module_name in trainer_callbacks:
                 callback_names = module_name
                 self._defaults["callback_names"] = callback_names
-        environ_workspace = _get_environ_workspace()
+        environ_workspace = get_environ_workspace()
         if environ_workspace:
             config.workspace = environ_workspace
         config.loss_name = loss_name
