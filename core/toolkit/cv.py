@@ -230,11 +230,11 @@ class ImageBox:
         l = max(0, l - padding)
         r += padding
         if w is not None:
-            r = min(r, w)
+            r = min(r, w + l)
         t = max(0, t - padding)
         b += padding
         if h is not None:
-            b = min(b, h)
+            b = min(b, h + t)
         return ImageBox(l, t, r, b)
 
     def to_square(
