@@ -253,24 +253,24 @@ class ImageBox:
             if bw > bh:
                 t = max(0, t - diff // 2)
                 b = t + bw
-                if h is not None:
-                    b = min(b, h)
             else:
                 l = max(0, l - diff // 2)
                 r = l + bh
-                if w is not None:
-                    r = min(r, w)
+            if w is not None:
+                r = min(r, w + l)
+            if h is not None:
+                b = min(b, h + t)
         else:
             if bw > bh:
                 l += diff // 2
                 r = l + bh
-                if w is not None:
-                    r = min(r, w)
             else:
                 t += diff // 2
                 b = t + bw
-                if h is not None:
-                    b = min(b, h)
+            if w is not None:
+                r = min(r, w + l)
+            if h is not None:
+                b = min(b, h + t)
         return ImageBox(l, t, r, b)
 
     @classmethod
