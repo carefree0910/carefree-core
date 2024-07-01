@@ -665,7 +665,6 @@ class SharedArray:
         dtype: Union[type, "np.dtype"],
         shape: Union[List[int], Tuple[int, ...]],
         *,
-        create: bool = True,
         data: Optional["np.ndarray"] = None,
     ):
         import numpy as np
@@ -674,19 +673,11 @@ class SharedArray:
         self.name = name
         self.dtype = dtype
         self.shape = shape
-        if create:
-            d_size = np.dtype(dtype).itemsize * np.prod(shape).item()
-            self._shm = SharedMemory(name, create=True, size=int(round(d_size)))
-        else:
-            if data is not None:
-                raise ValueError("`data` should not be provided when `create` is False")
-            self._shm = SharedMemory(name)
+        d_size = np.dtype(dtype).itemsize * np.prod(shape).item()
+        self._shm = SharedMemory(name, create=True, size=int(round(d_size)))
         self.value = np.ndarray(shape=shape, dtype=dtype, buffer=self._shm.buf)
         if data is not None:
             self.value[:] = data[:]
-
-    def close(self) -> None:
-        self._shm.close()
 
     def destroy(self) -> None:
         self._shm.close()
