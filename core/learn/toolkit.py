@@ -1731,7 +1731,7 @@ class Initializer:
         epoch = self.config.setdefault("epoch", 20)
         num_elem = param.numel()
         weight_base = param.new_empty(num_elem).normal_()
-        get_invalid = lambda w: (w > span) | (w < -span)
+        get_invalid = lambda w: (w < mean - span * std) | (w > mean + span * std)
         invalid = get_invalid(weight_base)
         success = False
         for _ in range(epoch):
