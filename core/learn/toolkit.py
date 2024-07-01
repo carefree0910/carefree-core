@@ -151,6 +151,13 @@ def set_environ_workspace(workspace: str) -> None:
     os.environ[WORKSPACE_ENVIRON_KEY] = workspace
 
 
+def unset_environ_workspace() -> None:
+    """unset the (default) workspace in the environment variable"""
+
+    if WORKSPACE_ENVIRON_KEY in os.environ:
+        del os.environ[WORKSPACE_ENVIRON_KEY]
+
+
 def check_is_ci() -> bool:
     """
     Check if the code is running in a continuous integration (CI) environment.
