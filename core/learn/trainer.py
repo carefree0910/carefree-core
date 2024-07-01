@@ -172,7 +172,7 @@ class Trainer(ITrainer):
             if device.type == "cpu":
                 cpu = True
             else:
-                torch.cuda.set_device(device)
+                torch.cuda.set_device(device)  # pragma: no cover
         self.config.init_process_group(cpu=cpu)
         self.accelerator = Accelerator(
             cpu=cpu,
@@ -196,7 +196,7 @@ class Trainer(ITrainer):
         self.monitors = monitors
         self.callbacks = callbacks
         if not any(isinstance(c, TrainingLoopCallback) for c in self.callbacks):
-            console.warn(
+            console.warn(  # pragma: no cover
                 "`TrainingLoopCallback` is not found in the callbacks, "
                 "some features may not work as expected"
             )
