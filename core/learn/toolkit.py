@@ -579,7 +579,7 @@ def empty_cuda_cache(device: device_type) -> None:
     device = get_torch_device(device)
     if device.type != "cuda":
         return
-    with torch.cuda.device(device):
+    with torch.cuda.device(device):  # pragma: no cover
         torch.cuda.empty_cache()
 
 
@@ -1123,10 +1123,10 @@ def summary(
 
         def hook(m: nn.Module, inp: Any, output: Any) -> None:
             m_name = module_names.get(m)
-            if m_name is None:
+            if m_name is None:  # pragma: no cover
                 return
 
-            if not inp:
+            if not inp:  # pragma: no cover
                 return
             inp = inp[0]
             if not isinstance(inp, Tensor):
@@ -1806,7 +1806,7 @@ class ONNX:
     """
 
     def __init__(self, onnx_path: str):
-        if InferenceSession is None:
+        if InferenceSession is None:  # pragma: no cover
             msg = "`ONNX` is not available when `onnxruntime` is not installed"
             raise ValueError(msg)
         self.ort_session = InferenceSession(onnx_path)

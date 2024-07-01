@@ -1,6 +1,7 @@
 import unittest
 
 from core.learn.toolkit import *
+from unittest.mock import Mock
 from unittest.mock import patch
 from safetensors.torch import save_file
 from core.toolkit.misc import random_hash
@@ -12,6 +13,13 @@ class TestToolkit(unittest.TestCase):
             seed = new_seed()
             self.assertLessEqual(seed, max_seed_value)
             self.assertGreaterEqual(seed, min_seed_value)
+
+    def test_env_workspace(self) -> None:
+        env_workspace = "env_workspace"
+        set_environ_workspace(env_workspace)
+        self.assertEqual(get_environ_workspace(), env_workspace)
+        unset_environ_workspace()
+        self.assertIsNone(get_environ_workspace())
 
     def test_seed_everything(self) -> None:
         seed = 123
@@ -79,8 +87,19 @@ class TestToolkit(unittest.TestCase):
             mock_torch_seed.assert_called_once_with(new_seed)
             mock_cuda_seed_all.assert_called_once_with(new_seed)
 
-    def test_show_or_return(self) -> None:
+    @patch("core.learn.toolkit.plt.show")
+    def test_show_or_save(self, mock_show) -> None:
+        show_or_save(None)
+        mock_show.assert_called_once()
+        fig = Mock()
+        show_or_save("", fig=fig)
+        fig.savefig.assert_called_once()
+
+    @patch("core.learn.toolkit.plt.show")
+    def test_show_or_return(self, mock_show) -> None:
         plt.figure()
+        self.assertIsNone(show_or_return(False))
+        mock_show.assert_called_once()
         self.assertIsInstance(show_or_return(True), np.ndarray)
         plt.close()
 
@@ -165,6 +184,14 @@ class TestToolkit(unittest.TestCase):
         foo = Foo()
         self.assertEqual(get_dtype(foo), torch.float32)
 
+    def test_get_clones(self) -> None:
+        m = nn.Linear(10, 2)
+        clones = get_clones(m, 3, return_list=True)
+        self.assertIsInstance(clones, list)
+        self.assertEqual(len(clones), 3)
+        for clone in clones:
+            self.assertIsInstance(clone, nn.Linear)
+
     def test_empty_cuda_cache(self) -> None:
         empty_cuda_cache(None)
         empty_cuda_cache("cpu")
@@ -195,6 +222,11 @@ class TestToolkit(unittest.TestCase):
         result = insert_intermediate_dims(net, ref)
         expected = torch.tensor([[[1.0, 2.0, 3.0]]])
         torch.testing.assert_close(result, expected)
+        net = np.array([[1.0, 2.0, 3.0]])
+        ref = np.array([[[1.0, 2.0, 3.0]]])
+        result = insert_intermediate_dims(net, ref)
+        expected = np.array([[[1.0, 2.0, 3.0]]])
+        np.testing.assert_allclose(result, expected)
 
     def test_insert_intermediate_dims_with_same_dims(self):
         net = torch.tensor([[1.0, 2.0, 3.0]])
@@ -213,10 +245,12 @@ class TestToolkit(unittest.TestCase):
         states = {
             "a": torch.tensor([1.0, 2.0, 1.0e-33]),
             "b": torch.tensor([4.0, 5.0, 6.0]),
+            "c": torch.tensor([7, 8, 9], dtype=torch.int32),
         }
         expected_states = {
             "a": torch.tensor([1.0, 2.0, 0.0]),
             "b": torch.tensor([4.0, 5.0, 6.0]),
+            "c": torch.tensor([7, 8, 9], dtype=torch.int32),
         }
 
         new_states = fix_denormal_states(states)
@@ -238,12 +272,49 @@ class TestToolkit(unittest.TestCase):
 
         self.assertFalse(result)
 
-    def test_inject_parameters_with_identical_modules(self):
+    def test_inject_parameters(self):
         src = nn.Linear(10, 2)
         tgt = nn.Linear(10, 2)
         inject_parameters(src, tgt)
         for src_param, tgt_param in zip(src.parameters(), tgt.parameters()):
             torch.testing.assert_close(src_param, tgt_param)
+        tgt = nn.Linear(10, 2)
+        exclude = {"bias"}
+        inject_parameters(
+            src,
+            tgt,
+            src_filter_fn=lambda k: k not in exclude,
+            tgt_filter_fn=lambda k: k not in exclude,
+        )
+        torch.testing.assert_close(src.weight, tgt.weight)
+        self.assertFalse(torch.allclose(src.bias, tgt.bias))
+        inject_parameters(
+            src,
+            tgt,
+            states_callback=lambda d: {k: torch.zeros_like(v) for k, v in d.items()},
+        )
+        for tgt_param in tgt.parameters():
+            torch.testing.assert_close(tgt_param, torch.zeros_like(tgt_param))
+        tgt = nn.Linear(10, 3)
+        with self.assertRaises(ValueError):
+            inject_parameters(src, tgt)
+
+        class CustomLinear(nn.Module):
+            def __init__(self, in_dim: int, out_dim: int) -> None:
+                super().__init__()
+                self.bias = nn.Parameter(torch.randn(out_dim))
+                self.custom_weight = nn.Parameter(torch.randn(out_dim, in_dim))
+
+        tgt = CustomLinear(10, 2)
+        with self.assertRaises(ValueError):
+            inject_parameters(src, tgt)
+        inject_parameters(src, tgt, custom_mappings={"weight": "custom_weight"})
+        torch.testing.assert_close(src.weight, tgt.custom_weight)
+        torch.testing.assert_close(src.bias, tgt.bias)
+
+        tgt = nn.Sequential(nn.Linear(10, 2), nn.Linear(2, 2))
+        with self.assertRaises(ValueError):
+            inject_parameters(src, tgt)
 
     def test_sorted_param_diffs(self) -> None:
         m1 = nn.Linear(10, 2)
@@ -290,11 +361,30 @@ class TestToolkit(unittest.TestCase):
         self.assertFalse(m.weight.requires_grad)
         self.assertFalse(m.bias.requires_grad)
 
+    def test_toggle_optimizer(self) -> None:
+        with toggle_optimizer(None, None, enabled=False):
+            pass
+
+    def test_train_context(self) -> None:
+        linear = nn.Linear(3, 1).eval()
+        with train_context(linear):
+            self.assertTrue(linear.training)
+
     def test_eval_context(self) -> None:
         x = torch.tensor([[1.0, 2.0, 3.0]], requires_grad=True)
         linear = nn.Linear(3, 1)
         y = linear(x)
         with eval_context(linear, use_inference=False):
+            z = linear(x)
+        self.assertTrue(x.requires_grad)
+        self.assertTrue(y.requires_grad)
+        self.assertFalse(z.requires_grad)
+
+    def test_no_grad_context(self) -> None:
+        x = torch.tensor([[1.0, 2.0, 3.0]], requires_grad=True)
+        linear = nn.Linear(3, 1)
+        y = linear(x)
+        with no_grad_context(enabled=True):
             z = linear(x)
         self.assertTrue(x.requires_grad)
         self.assertTrue(y.requires_grad)
@@ -320,9 +410,7 @@ class TestInitializations(unittest.TestCase):
         initializer = Initializer()
         m = nn.Linear(10, 2)
         param = m.weight
-
         initializer.initialize(param, "xavier_uniform")
-
         self.assertIsInstance(param, Tensor)
 
     def test_initialize_custom_method(self) -> None:
@@ -335,8 +423,13 @@ class TestInitializations(unittest.TestCase):
             with torch.no_grad():
                 param.data.fill_(1.0)
 
-        initializer.initialize(param, "custom")
+        with self.assertRaises(ValueError):
 
+            @Initializer.register("custom")
+            def custom(self: Initializer, param: nn.Parameter) -> None:
+                pass
+
+        initializer.initialize(param, "custom")
         self.assertIsInstance(param, Tensor)
         torch.testing.assert_close(param, torch.ones_like(param))
 
@@ -344,45 +437,37 @@ class TestInitializations(unittest.TestCase):
         initializer = Initializer()
         m = nn.Linear(10, 2)
         param = m.weight
-
         initializer.xavier_uniform(param)
-
         self.assertIsInstance(param, Tensor)
 
     def test_xavier_normal(self) -> None:
         initializer = Initializer()
         m = nn.Linear(10, 2)
         param = m.weight
-
         initializer.xavier_normal(param)
-
         self.assertIsInstance(param, Tensor)
 
     def test_normal(self) -> None:
         initializer = Initializer()
         m = nn.Linear(10, 2)
         param = m.weight
-
         initializer.normal(param)
-
         self.assertIsInstance(param, Tensor)
 
     def test_truncated_normal(self) -> None:
-        initializer = Initializer()
+        initializer = Initializer({"span": 0.1, "epoch": 1})
         m = nn.Linear(10, 2)
         param = m.weight
-
         initializer.truncated_normal(param)
-
         self.assertIsInstance(param, Tensor)
+        initializer = Initializer({"span": 0.1, "epoch": 1, "tol": 1.0})
+        initializer.truncated_normal(param)
 
     def test_orthogonal(self) -> None:
         initializer = Initializer()
         m = nn.Linear(10, 2)
         param = m.weight
-
         initializer.orthogonal(param)
-
         self.assertIsInstance(param, Tensor)
 
 
