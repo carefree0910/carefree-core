@@ -197,7 +197,7 @@ def quantile_normalize(
     out = (arr - arr_min) / diff
     if not return_stats:
         return out
-    if not global_norm:
+    if global_norm:
         arr_min = arr_min.item()
         diff = diff.item()
     else:
