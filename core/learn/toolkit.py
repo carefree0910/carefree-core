@@ -1746,7 +1746,8 @@ class Initializer:
             console.warn(
                 "invalid ratio for truncated normal : "
                 f"{invalid.to(torch.float32).mean():8.6f}, it might cause by "
-                f"too little epoch ({epoch}) or too small tolerance ({tol})",
+                f"too little epoch ({epoch}), too small span ({span}), "
+                f"or too small tolerance ({tol})",
             )
         with torch.no_grad():
             param.data.copy_(weight_base.reshape(param.shape))
