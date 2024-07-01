@@ -362,8 +362,6 @@ class WeightsStrategy:
         n = 1000
         x = np.linspace(0, 1, n)
         y = self(n)
-        if isinstance(y, tuple):
-            y = y[0]
         plt.figure()
         plt.plot(x, y)
         show_or_save(export_path)
