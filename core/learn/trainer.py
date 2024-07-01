@@ -131,8 +131,6 @@ class Trainer(ITrainer):
 
     @property
     def has_checkpoint_folder(self) -> bool:
-        if self.checkpoint_folder is None:
-            return False
         return os.path.isdir(self.checkpoint_folder)
 
     @property
@@ -371,9 +369,6 @@ class Trainer(ITrainer):
         """
 
         if folder is None:
-            if self.checkpoint_folder is None:
-                msg = "either `folder` or `checkpoint_folder` should be provided"
-                raise ValueError(msg)
             folder = self.checkpoint_folder
         folder = to_path(folder)
         state: Optional[TrainerState] = getattr(self, "state", None)
@@ -412,9 +407,6 @@ class Trainer(ITrainer):
         state_dict_callback: Optional[Callable[[tensor_dict_type], None]] = None,
     ) -> bool:
         if folder is None:
-            if self.checkpoint_folder is None:
-                msg = "either `folder` or `checkpoint_folder` should be provided"
-                raise ValueError(msg)
             folder = self.checkpoint_folder
         folder = to_path(folder)
         checkpoints = get_sorted_checkpoints(folder)
