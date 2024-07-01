@@ -93,12 +93,32 @@ class TestArray(unittest.TestCase):
         tn = normalize_from(tensor, tensor_stats)
         np.testing.assert_allclose(array, recover_normalize_from(an, array_stats))
         torch.testing.assert_close(tensor, recover_normalize_from(tn, tensor_stats))
+        _, array_stats = normalize(array, global_norm=False, return_stats=True)
+        _, tensor_stats = normalize(tensor, global_norm=False, return_stats=True)
+        tensor_stats = {k: torch.tensor(v) for k, v in tensor_stats.items()}
+        an = normalize_from(array, array_stats)
+        tn = normalize_from(tensor, tensor_stats)
+        np.testing.assert_allclose(array, recover_normalize_from(an, array_stats))
+        torch.testing.assert_close(tensor, recover_normalize_from(tn, tensor_stats))
         min_max_normalize(array)
         min_max_normalize(tensor)
         min_max_normalize(array, global_norm=False)
         min_max_normalize(tensor, global_norm=False)
         _, array_stats = min_max_normalize(array, return_stats=True)
         _, tensor_stats = min_max_normalize(tensor, return_stats=True)
+        an = min_max_normalize_from(array, array_stats)
+        tn = min_max_normalize_from(tensor, tensor_stats)
+        np.testing.assert_allclose(
+            array, recover_min_max_normalize_from(an, array_stats)
+        )
+        torch.testing.assert_close(
+            tensor, recover_min_max_normalize_from(tn, tensor_stats)
+        )
+        _, array_stats = min_max_normalize(array, global_norm=False, return_stats=True)
+        _, tensor_stats = min_max_normalize(
+            tensor, global_norm=False, return_stats=True
+        )
+        tensor_stats = {k: torch.tensor(v) for k, v in tensor_stats.items()}
         an = min_max_normalize_from(array, array_stats)
         tn = min_max_normalize_from(tensor, tensor_stats)
         np.testing.assert_allclose(
@@ -121,13 +141,34 @@ class TestArray(unittest.TestCase):
         torch.testing.assert_close(
             tensor, recover_quantile_normalize_from(tn, tensor_stats)
         )
+        _, array_stats = quantile_normalize(array, global_norm=False, return_stats=True)
+        _, tensor_stats = quantile_normalize(
+            tensor, global_norm=False, return_stats=True
+        )
+        tensor_stats = {k: torch.tensor(v) for k, v in tensor_stats.items()}
+        an = quantile_normalize_from(array, array_stats)
+        tn = quantile_normalize_from(tensor, tensor_stats)
+        np.testing.assert_allclose(
+            array, recover_quantile_normalize_from(an, array_stats)
+        )
+        torch.testing.assert_close(
+            tensor, recover_quantile_normalize_from(tn, tensor_stats)
+        )
         clip_normalize(array)
         clip_normalize(tensor)
+        clip_normalize(array.astype(np.uint8))
+        clip_normalize(tensor.to(torch.uint8))
 
-        array = np.random.randn(17, 2)
-        tensor = torch.randn(17, 2)
-        iou(array, array)
-        iou(tensor, tensor)
+        array = np.random.randn(17, 3)
+        tensor = torch.randn(17, 3)
+        with self.assertRaises(ValueError):
+            iou(array, array)
+        with self.assertRaises(ValueError):
+            iou(tensor, tensor)
+        iou(array[:, :2], array[:, :2])
+        iou(tensor[:, :2], tensor[:, :2])
+        iou(array[:, :1], array[:, :1])
+        iou(tensor[:, :1], tensor[:, :1])
 
         array = np.random.randn(3, 5, 7, 11)
         tensor = torch.randn(3, 5, 7, 11)
@@ -161,12 +202,11 @@ class TestArray(unittest.TestCase):
     def test_to_device(self):
         tensors = {
             "a": torch.randn(3, 5, 7),
-            "b": torch.randn(3, 5, 7),
-            "c": torch.randn(3, 5, 7),
+            "b": [torch.randn(3, 5, 7)],
+            "c": {"d": torch.randn(3, 5, 7)},
         }
-        self.assertTrue(all([t.device.type == "cpu" for t in tensors.values()]))
+        to_device(tensors, None)
         to_device(tensors, "cpu")
-        self.assertTrue(all([t.device.type == "cpu" for t in tensors.values()]))
 
     def test_corr(self) -> None:
         pred = np.random.randn(100, 5)
@@ -183,6 +223,8 @@ class TestArray(unittest.TestCase):
         corr12 = corr(w_target, w_pred)
         self.assertTrue(allclose(corr00, corr10))
         self.assertTrue(allclose(corr01, corr11, corr02.T, corr12.T))
+        with self.assertRaises(ValueError):
+            corr(pred, target[:, :4], get_diagonal=True)
 
     def test_get_one_hot(self):
         indices = [1, 4, 2, 3]
@@ -230,9 +272,25 @@ class TestArray(unittest.TestCase):
 
     def test_stride_array(self):
         arr = StrideArray(np.arange(9).reshape([3, 3]))
+        self.assertEqual(str(arr), str(arr.arr))
+        self.assertEqual(repr(arr), repr(arr.arr))
+        with self.assertRaises(ValueError):
+            arr.roll(4, axis=0)
+        with self.assertRaises(ValueError):
+            arr.patch(4, patch_h=2)
+        with self.assertRaises(ValueError):
+            arr.patch(2, patch_h=4)
+        with self.assertRaises(ValueError):
+            StrideArray(np.arange(9)).patch(2)
         self.assertTrue(
             np.allclose(
                 arr.roll(2, axis=0),
+                np.array([[[0, 1, 2], [3, 4, 5]], [[3, 4, 5], [6, 7, 8]]]),
+            )
+        )
+        self.assertTrue(
+            np.allclose(
+                arr.roll(2, axis=-2),
                 np.array([[[0, 1, 2], [3, 4, 5]], [[3, 4, 5], [6, 7, 8]]]),
             )
         )
@@ -242,17 +300,31 @@ class TestArray(unittest.TestCase):
                 np.array([[[0, 1], [1, 2]], [[3, 4], [4, 5]], [[6, 7], [7, 8]]]),
             )
         )
-        self.assertTrue(
-            np.allclose(
-                arr.patch(2),
-                np.array(
+        patch_gt = np.array(
+            [
+                [
                     [
-                        [[[0, 1], [3, 4]], [[1, 2], [4, 5]]],
-                        [[[3, 4], [6, 7]], [[4, 5], [7, 8]]],
-                    ]
-                ),
-            )
+                        [0, 1],
+                        [3, 4],
+                    ],
+                    [
+                        [1, 2],
+                        [4, 5],
+                    ],
+                ],
+                [
+                    [
+                        [3, 4],
+                        [6, 7],
+                    ],
+                    [
+                        [4, 5],
+                        [7, 8],
+                    ],
+                ],
+            ]
         )
+        self.assertTrue(np.allclose(arr.patch(2), patch_gt))
         arr = StrideArray(np.arange(16).reshape([4, 4]))
         self.assertTrue(
             np.allclose(
@@ -309,19 +381,19 @@ class TestArray(unittest.TestCase):
                 ),
             )
         )
-        arr = StrideArray(np.arange(9).reshape([3, 3, 1]))
-        self.assertTrue(
-            np.allclose(
-                arr.repeat(2),
-                np.array(
-                    [
-                        [[0, 0], [1, 1], [2, 2]],
-                        [[3, 3], [4, 4], [5, 5]],
-                        [[6, 6], [7, 7], [8, 8]],
-                    ]
-                ),
-            )
+        arr = StrideArray(np.arange(9).reshape([3, 3, 1, 1]))
+        with self.assertRaises(ValueError):
+            arr.repeat(2, axis=0)
+        self.assertTrue(np.allclose(arr.patch(2, h_axis=0)[..., 0, 0], patch_gt))
+        repeat_gt = np.array(
+            [
+                [[0, 0], [1, 1], [2, 2]],
+                [[3, 3], [4, 4], [5, 5]],
+                [[6, 6], [7, 7], [8, 8]],
+            ]
         )
+        self.assertTrue(np.allclose(arr.repeat(2)[:, :, 0], repeat_gt))
+        self.assertTrue(np.allclose(arr.repeat(2, axis=-2)[..., 0], repeat_gt))
 
     def test_shared_array(self):
         array = SharedArray.from_data(np.random.randn(3, 5, 7))
@@ -365,8 +437,14 @@ class TestNpSafeSerializer(unittest.TestCase):
 
     def test_try_load(self):
         NpSafeSerializer.save(self.folder, self.data)
-        loaded_data = NpSafeSerializer.try_load(self.folder)
-        np.testing.assert_array_equal(loaded_data, self.data)
+        np.testing.assert_array_equal(NpSafeSerializer.try_load(self.folder), self.data)
+        self.assertIsNone(NpSafeSerializer.try_load(self.folder / "invalid"))
+        np.save(self.folder / NpSafeSerializer.array_file, self.data[..., :2])
+        self.assertIsNone(NpSafeSerializer.try_load(self.folder))
+        NpSafeSerializer.save(self.folder, self.data)
+        np.testing.assert_array_equal(NpSafeSerializer.try_load(self.folder), self.data)
+        (self.folder / NpSafeSerializer.size_file).unlink()
+        self.assertIsNone(NpSafeSerializer.try_load(self.folder))
 
     def test_try_load_no_load(self):
         NpSafeSerializer.save(self.folder, self.data)

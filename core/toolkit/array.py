@@ -812,7 +812,7 @@ class NpSafeSerializer:
             folder.mkdir(parents=True, exist_ok=True)
             cls.save(folder, init_fn, verbose=verbose)
             array = load_func()
-            if array is None:
+            if array is None:  # pragma: no cover
                 raise RuntimeError(f"failed to load array from '{folder}'")
         return array
 
