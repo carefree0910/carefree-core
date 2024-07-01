@@ -1168,18 +1168,7 @@ def summary(
             _inject_names(child, current_names)
 
     module_names: Dict[nn.Module, str] = OrderedDict()
-    existing_names: Set[str] = set()
-
-    def _get_name(original: str) -> str:
-        count = 0
-        final_name = original
-        while final_name in existing_names:
-            count += 1
-            final_name = f"{original}_{count}"
-        existing_names.add(final_name)
-        return final_name
-
-    model_name = _get_name(type(m).__name__)
+    model_name = type(m).__name__
     module_names[m] = model_name
     _inject_names(m, [model_name])
 
@@ -1211,8 +1200,6 @@ def summary(
 
     # reconstruct summary_dict
     def _inject_summary(current_hierarchy: Any, previous_keys: List[str]) -> None:
-        if previous_keys and not previous_keys[-1]:
-            previous_keys.pop()
         current_layer = len(previous_keys)
         current_count = hierarchy_counts.get(current_layer, 0)
         prefix = "  " * current_layer
