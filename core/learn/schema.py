@@ -1418,9 +1418,6 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         onnx_forward = forward_fn or model.onnx_forward
         input_names = sorted(input_sample.keys())
         if output_names is None:
-            if forward_fn is not None:
-                msg = "`output_names` should be provided when `forward_fn` is provided"
-                raise ValueError(msg)
             with model.eval_context():
                 forward_results = onnx_forward(shallow_copy_dict(input_sample))
             if not isinstance(forward_results, dict):
