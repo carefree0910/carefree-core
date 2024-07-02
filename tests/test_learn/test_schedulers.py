@@ -16,7 +16,12 @@ class TestSchedulers(unittest.TestCase):
             "warmup",
             "op.cosine_warmup",
             "op.linear_warmup",
+            "op.foo",
+            "warmup-step",
         ]:
+            if scheduler == "warmup-step":
+                scheduler = "warmup"
+                scheduler_config["scheduler_afterwards_base"] = "step"
             if scheduler.startswith("op."):
                 scheduler, op_type = scheduler.split(".")
                 scheduler_config["op_type"] = op_type
@@ -35,7 +40,11 @@ class TestSchedulers(unittest.TestCase):
                 loss_name="mse",
             )
             config.to_debug().num_steps = 10
-            cflearn.TrainingPipeline.init(config).fit(data)
+            if scheduler == "op" and op_type == "foo":
+                with self.assertRaises(ValueError):
+                    cflearn.TrainingPipeline.init(config).fit(data)
+            else:
+                cflearn.TrainingPipeline.init(config).fit(data)
 
 
 if __name__ == "__main__":
