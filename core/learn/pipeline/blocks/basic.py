@@ -358,6 +358,7 @@ class BuildCallbacksBlock(Block):
             self.callbacks = [
                 LogMetricsMsgCallback(not use_tqdm),
                 UpdateArtifactsCallback(),
+                TrainingLoopCallback(),
             ]
         for callback in self.callbacks:
             callback.initialize()
