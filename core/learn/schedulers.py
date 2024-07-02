@@ -134,13 +134,11 @@ class WarmupScheduler(LRScheduler):
         multiplier: float,
         warmup_step: int,
         scheduler_afterwards_base: Type[LRScheduler],
-        scheduler_afterwards_config: Optional[Dict[str, Any]] = None,
+        scheduler_afterwards_config: Dict[str, Any],
     ):
         self.multiplier = multiplier
         assert self.multiplier > 1.0, "multiplier should be greater than 1"
         self.warmup_step, self.finished_warmup = warmup_step, False
-        if scheduler_afterwards_config is None:
-            scheduler_afterwards_config = {}
         self.scheduler_afterwards = scheduler_afterwards_base(
             optimizer,
             **scheduler_afterwards_config,
@@ -159,15 +157,13 @@ class WarmupScheduler(LRScheduler):
 
     def get_lr(self) -> List[float]:  # type: ignore
         if self.last_epoch > self.warmup_step:  # type: ignore
-            if self.scheduler_afterwards is not None:
-                if not self.finished_warmup:
-                    self.finished_warmup = True
-                    base_lrs = list(
-                        map(self.lr_multiplier_func, self.base_lrs)  # type: ignore
-                    )
-                    self.scheduler_afterwards.base_lrs = base_lrs  # type: ignore
-                return self.scheduler_afterwards.get_lr()  # type: ignore
-            return list(map(self.lr_multiplier_func, self.base_lrs))
+            if not self.finished_warmup:
+                self.finished_warmup = True
+                base_lrs = list(
+                    map(self.lr_multiplier_func, self.base_lrs)  # type: ignore
+                )
+                self.scheduler_afterwards.base_lrs = base_lrs  # type: ignore
+            return self.scheduler_afterwards.get_lr()  # type: ignore
         return list(map(self.lr_warmup_func, self.base_lrs))  # type: ignore
 
     def get_last_lr(self) -> List[float]:
