@@ -1150,10 +1150,11 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         train_steps = self.train_steps
         if not train_steps:
             return StepOutputs(get_fw(), {})
-        for i, train_step in enumerate(self.train_steps):
+        fw = None
+        for train_step in self.train_steps:
             if train_step.should_skip(self, None):
                 continue
-            if i == 0 or train_step.requires_new_forward:
+            if fw is None or train_step.requires_new_forward:
                 fw = get_fw()
                 if recover_labels_fn is not None:
                     fw = recover_labels_fn(fw)
@@ -1164,6 +1165,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                 else:
                     i_losses = {k: v.detach() for k, v in loss_res.loss_tensors.items()}
                 loss_tensors.update(i_losses)
+        if fw is None:
+            fw = get_fw()
         return StepOutputs(fw, loss_tensors)
 
     def train(
