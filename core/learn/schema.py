@@ -198,7 +198,7 @@ class IDataset(Dataset):
 
     @abstractmethod
     def __getitems__(self, indices: List[int]) -> Any:
-        pass
+        """this method should return a collated batch of data"""
 
     # optional callbacks
 
@@ -497,7 +497,7 @@ class IData(  # type: ignore
 
     @abstractmethod
     def to_datasets(self, bundle: DataBundle, *, for_inference: Optional[bool]) -> TDs:
-        pass
+        """this method should return a tuple of datasets (train dataset, Optional[valid dataset])"""
 
     # inheritance
 
@@ -722,7 +722,7 @@ class ILoss(nn.Module, metaclass=ABCMeta):
         batch: tensor_dict_type,
         state: Optional["TrainerState"] = None,
     ) -> losses_type:
-        pass
+        """this method should return the loss, it could be a tensor or a tensor dict"""
 
 
 # metrics
@@ -757,7 +757,7 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
         np_outputs: np_dict_type,
         loader: Optional[DataLoader] = None,
     ) -> float:
-        pass
+        """this method should return the metric value, which should be a float"""
 
     # optional callbacks
 
@@ -919,7 +919,7 @@ class IInference(ABC):
         verbose: bool = True,
         **kwargs: Any,
     ) -> InferenceOutputs:
-        pass
+        """this is an internal interface and will be implemented internally"""
 
 
 # general model
@@ -1018,7 +1018,7 @@ class TrainStep(ABC):
         forward_results: tensor_dict_type,
         **kwargs: Any,
     ) -> TrainStepLoss:
-        pass
+        """this method should return the `TrainStepLoss` object based on the given inputs"""
 
     # optional callbacks
 
@@ -1077,16 +1077,16 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
     @property
     @abstractmethod
     def train_steps(self) -> List[TrainStep]:
-        pass
+        """this property should return a list of `TrainStep` objects, which will be used in the training loop"""
 
     @property
     @abstractmethod
     def all_modules(self) -> List[nn.Module]:
-        pass
+        """this property should return a list of all modules in the model, so we can manage the states (e.g., .eval()) of them"""
 
     @abstractmethod
     def build(self, config: "Config") -> None:
-        pass
+        """this method should build the model based on the given config"""
 
     # optional callbacks
 
@@ -1479,7 +1479,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                         if name in final_input_names
                     },
                 )
-            except Exception as err:
+            except Exception as err:  # pragma: no cover
                 if verbose:
                     console.warn(f"failed to simplify ONNX model ({err})")
                 model_simplified = None
@@ -1660,11 +1660,11 @@ class TrainerMonitor(WithRegister["TrainerMonitor"], metaclass=ABCMeta):
 
     @abstractmethod
     def should_snapshot(self, new_score: float) -> bool:
-        pass
+        """return `True` if you want to save the checkpoint"""
 
     @abstractmethod
     def should_terminate(self, new_score: float) -> bool:
-        pass
+        """return `True` if you want to terminate the training process"""
 
     # optional callbacks
 
@@ -1880,22 +1880,22 @@ class ITrainer(ABC):
     @property
     @abstractmethod
     def device(self) -> torch.device:
-        pass
+        """return the device of the trainer"""
 
     @property
     @abstractmethod
     def workspace(self) -> str:
-        pass
+        """return the workspace of the trainer"""
 
     @property
     @abstractmethod
     def checkpoint_folder(self) -> str:
-        pass
+        """return the checkpoint folder of the trainer"""
 
     @property
     @abstractmethod
     def should_autocast(self) -> bool:
-        pass
+        """return whether to use autocast or not"""
 
     @abstractmethod
     def fit(
@@ -1916,7 +1916,7 @@ class ITrainer(ABC):
         device: device_type = None,
         p: Optional[profile] = None,
     ) -> "ITrainer":
-        pass
+        """the training loop"""
 
     @abstractmethod
     def save_checkpoint(
@@ -1927,7 +1927,7 @@ class ITrainer(ABC):
         no_history: bool = False,
         check_rank_0: bool = True,
     ) -> None:
-        pass
+        """method to save the checkpoint"""
 
     @abstractmethod
     def restore_checkpoint(
@@ -1936,7 +1936,7 @@ class ITrainer(ABC):
         strict: bool = True,
         state_dict_callback: Optional[Callable[[tensor_dict_type], None]] = None,
     ) -> bool:
-        pass
+        """method to restore the checkpoint"""
 
 
 # configs
