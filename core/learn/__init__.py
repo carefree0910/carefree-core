@@ -10,11 +10,18 @@ from .trainer import *
 
 from .data import *
 from .modules import *
-from .losses import *
 from .metrics import *
 from .models import *
 from .monitors import *
 from .callbacks import *
-from .pipeline import *
+
+from .losses.schema import *
+from .losses.basic import *
+
+from .pipeline.api import *
+from .pipeline.blocks import *
+from .pipeline.common import *
+from .pipeline.schema import *
+from .pipeline.third_party import *
 
 from . import testing
