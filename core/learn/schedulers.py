@@ -29,7 +29,7 @@ TTScheduler = TypeVar("TTScheduler", bound=Type[LRScheduler])
 class ISchedulerOp:
     @abstractmethod
     def schedule(self, step: int, **kwargs: Any) -> float:
-        pass
+        """returns the new learning rate at the given step"""
 
 
 scheduler_ops: Dict[str, Type[ISchedulerOp]] = {}
