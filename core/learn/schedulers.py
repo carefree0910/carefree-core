@@ -67,9 +67,6 @@ class LinearInverseScheduler(LRScheduler):
         super().__init__(optimizer)
 
     def get_lr(self) -> List[float]:
-        return self._get_closed_form_lr()
-
-    def _get_closed_form_lr(self) -> List[float]:
         denom = 1.0 + self.decay * self._step_count
         return [base_lr / denom for base_lr in self.base_lrs]
 
@@ -91,10 +88,6 @@ class StepLRWithFloor(StepLR):
         lrs = super().get_lr()
         return [max(lr, self.lr_floor) for lr in lrs]  # type: ignore
 
-    def _get_closed_form_lr(self) -> List[float]:  # type: ignore
-        lrs = super()._get_closed_form_lr()  # type: ignore
-        return [max(lr, self.lr_floor) for lr in lrs]
-
 
 @register_scheduler("exponential")
 class ExponentialLRWithFloor(ExponentialLR):
@@ -111,10 +104,6 @@ class ExponentialLRWithFloor(ExponentialLR):
     def get_lr(self) -> List[float]:  # type: ignore
         lrs = super().get_lr()
         return [max(lr, self.lr_floor) for lr in lrs]  # type: ignore
-
-    def _get_closed_form_lr(self) -> List[float]:  # type: ignore
-        lrs = super()._get_closed_form_lr()  # type: ignore
-        return [max(lr, self.lr_floor) for lr in lrs]
 
 
 @register_scheduler("plateau")
