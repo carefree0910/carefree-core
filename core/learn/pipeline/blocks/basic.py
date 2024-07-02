@@ -372,7 +372,7 @@ class OptimizerSettings(DataClassBase):
     optimizer_config: Optional[Dict[str, Any]] = None
     scheduler_config: Optional[Dict[str, Any]] = None
 
-    def get_opt_pack(self, state_info: Optional[StateInfo]) -> OptimizerPack:
+    def get_opt_pack(self, info: StateInfo) -> OptimizerPack:
         optimizer_config = shallow_copy_dict(self.optimizer_config or {})
         scheduler_config = shallow_copy_dict(self.scheduler_config or {})
         if self.scheduler_name != "warmup":
@@ -380,14 +380,11 @@ class OptimizerSettings(DataClassBase):
         else:
             multiplier = scheduler_config.setdefault("multiplier", 3)
             optimizer_config.setdefault("lr", self.lr / multiplier)
-            if state_info is None:
-                scheduler_config.setdefault("warmup_step", 1000)
-            else:
-                default_max_warmup_step = int(round(3.0e5 / state_info.batch_size))
-                scheduler_config.setdefault(
-                    "warmup_step",
-                    min(default_max_warmup_step, 10 * state_info.num_batches),
-                )
+            default_max_warmup_step = int(round(3.0e5 / info.batch_size))
+            scheduler_config.setdefault(
+                "warmup_step",
+                min(default_max_warmup_step, 10 * info.num_batches),
+            )
         return OptimizerPack(
             "all",
             self.optimizer_name,
@@ -396,12 +393,8 @@ class OptimizerSettings(DataClassBase):
             scheduler_config,
         )
 
-    def update_opt_pack(
-        self,
-        state_info: Optional[StateInfo],
-        pack: OptimizerPack,
-    ) -> OptimizerPack:
-        self_pack = self.get_opt_pack(state_info)
+    def update_opt_pack(self, info: StateInfo, pack: OptimizerPack) -> OptimizerPack:
+        self_pack = self.get_opt_pack(info)
         opt_name = pack.optimizer_name
         sch_name = pack.scheduler_name
         opt_config = shallow_copy_dict(pack.optimizer_config or {})
