@@ -1226,15 +1226,13 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         """
 
         state = trainer.state
-        forward: tensor_dict_type = {}
-        loss_tensors = {}
-        update_fn = get_update_fn(trainer)
-        any_update = False
         # sanity check
         fw_has_grad = True
-        fw_train_step: Any = ()
-        for i, train_step in enumerate(self.train_steps):
-            if i == 0 or train_step.requires_new_forward:
+        fw_train_step: Optional[TrainStep] = None
+        for train_step in self.train_steps:
+            if train_step.should_skip(self, state):
+                continue
+            if fw_train_step is None or train_step.requires_new_forward:
                 fw_has_grad = train_step.requires_grad_in_forward
                 fw_train_step = train_step
             if not fw_has_grad and train_step.requires_grad_in_forward:
@@ -1247,9 +1245,13 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                     f"`requires_new_forward` of '{current_name}' to True."
                 )
         # run train steps
+        forward: Optional[tensor_dict_type] = None
+        loss_tensors = {}
+        update_fn = get_update_fn(trainer)
+        any_update = False
         get_fw = lambda: self.run(batch_idx, batch, state, **forward_kwargs)
         autocast_ctx = autocast(enabled=trainer.should_autocast)
-        for i, train_step in enumerate(self.train_steps):
+        for train_step in self.train_steps:
             if train_step.should_skip(self, state):
                 continue
             update = (
@@ -1258,7 +1260,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                 == 0
             )
             with no_sync_context(update, trainer):
-                if i == 0 or train_step.requires_new_forward:
+                if forward is None or train_step.requires_new_forward:
                     no_grad = not train_step.requires_grad_in_forward
                     with no_grad_context(enabled=no_grad), autocast_ctx:
                         forward = get_fw()
@@ -1273,6 +1275,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                     loss_tensors.update(i_losses)
             if update:
                 any_update = True
+        if forward is None:
+            forward = get_fw()
         for c in trainer.callbacks:
             c.after_gradient_update(trainer, batch, forward, loss_tensors, any_update)
         # train step callbacks
