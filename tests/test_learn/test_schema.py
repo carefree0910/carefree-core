@@ -6,12 +6,30 @@ import unittest
 import numpy as np
 import core.learn as cflearn
 
+from enum import Enum
 from typing import Any
 from typing import Dict
-from core.learn.schema import DataBundle
+from core.learn.schema import *
 
 
 class TestSchema(unittest.TestCase):
+    def test_functions(self):
+        class Foo(Enum):
+            A = 1
+            B = 2
+
+        sws = np.random.random([3, 5]), np.random.random([3, 5])
+        tsw, vsw = split_sw(sws)
+        np.testing.assert_allclose(tsw, norm_sw(sws[0]))
+        np.testing.assert_allclose(vsw, norm_sw(sws[1]))
+        self.assertFalse(check_data_is_info(Foo.A))
+        cfg = cflearn.TrainerConfig()
+        self.assertEqual(weighted_loss_score(cfg, {}), 0.0)
+        self.assertEqual(weighted_loss_score(cfg, {"foo": 1.0, "bar": 2.0}), -1.5)
+        cfg.loss_metrics_weights = dict(foo=1.0, bar=2.0)
+        self.assertEqual(weighted_loss_score(cfg, {}), 0.0)
+        self.assertEqual(weighted_loss_score(cfg, {"foo": 1.0, "bar": 2.0}), -5)
+
     def test_data_loader(self):
         class MockArray:
             def __init__(self, value):
@@ -29,7 +47,26 @@ class TestSchema(unittest.TestCase):
         loader.get_full_batch("cpu")
         x = dict(a=MockArray(0), b=MockArray([]))
         data = cflearn.ArrayDictData.init().fit(x)
-        data.build_loaders()[0].get_input_sample()
+        loader = data.build_loaders()[0]
+        loader.get_input_sample()
+        loader.dataset[0]
+        data = cflearn.ArrayDictData.init()
+        with self.assertRaises(RuntimeError):
+            data.build_loaders()
+        data.is_ready = True
+        with self.assertRaises(RuntimeError):
+            data.build_loaders()
+        data.from_npd(dict(x=dict(a=MockArray(0))))
+        data_config = cflearn.DataConfig(valid_loader_configs=dict(num_workers=7))
+        data = cflearn.ArrayDictData.init(data_config).fit(x, x_valid=x)
+        loader = data.to_loader(
+            data.to_datasets(cflearn.DataBundle(x, x_valid=x), for_inference=False)[1],
+            shuffle=False,
+            batch_size=1,
+            for_inference=False,
+            is_validation=True,
+        )
+        self.assertEqual(loader.num_workers, 7)
 
     def test_data_config(self):
         config = cflearn.DataConfig()
@@ -119,8 +156,32 @@ class TestSchema(unittest.TestCase):
         cflearn.Config(module_name="foo").sanity_check()
         with self.assertRaises(ValueError):
             cflearn.Config().sanity_check()
+        with self.assertRaises(ValueError):
+            cflearn.Config(mixed_precision=1)
         self.assertTrue(cflearn.Config().to_debug().is_debug)
         self.assertEqual(cflearn.Config().trainer_config, cflearn.TrainerConfig())
+        config = cflearn.Config(mixed_precision=cflearn.PrecisionType.FP16)
+        self.assertEqual(config.mixed_precision, "fp16")
+
+    def test_trainer_state(self):
+        state = TrainerState(
+            num_epoch=1,
+            batch_size=2,
+            loader_length=10,
+            min_num_sample=9,
+            enable_logging=False,
+            min_snapshot_epoch_gap=2,
+            manual_snapshot_epochs=[1],
+        )
+        self.assertEqual(state.snapshot_start_step, 5)
+        self.assertEqual(state.num_step_per_snapshot, 5)
+        self.assertSetEqual(state.manual_snapshot_steps, {10})
+        self.assertFalse(state.should_terminate)
+        self.assertFalse(state.should_log_losses)
+        self.assertFalse(state.should_log_metrics_msg)
+        self.assertFalse(state.can_snapshot)
+        state.epoch = -1
+        self.assertTrue(state.can_snapshot)
 
 
 if __name__ == "__main__":

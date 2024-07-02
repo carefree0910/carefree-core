@@ -28,6 +28,14 @@ class TestONNX(unittest.TestCase):
 
         onnx_file = "test.onnx"
         model.to_onnx(onnx_file, loader.get_input_sample())
+        model.to_onnx(
+            onnx_file,
+            loader.get_input_sample(),
+            dynamic_axes=[0],
+            simplify=False,
+            forward_fn=lambda d: model.onnx_forward(d)[cflearn.PREDICTIONS_KEY],
+            num_samples=1,
+        )
         onnx_inference = cflearn.Inference(onnx=onnx_file)
         onnx_outputs = onnx_inference.get_outputs(loader).forward_results
 

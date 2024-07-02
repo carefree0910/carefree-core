@@ -12,6 +12,10 @@ class TestMetrics(unittest.TestCase):
         x = torch.randn(11, 1)
         y = torch.randn(11, 1)
         metric = cflearn.IMetric.fuse(["mae", "mse", "corr"])
+        with self.assertRaises(NotImplementedError):
+            metric.is_positive
+        with self.assertRaises(NotImplementedError):
+            metric.forward(None, None)
         outputs = metric.evaluate(
             {cflearn.LABEL_KEY: y.numpy()},
             {cflearn.PREDICTIONS_KEY: x.numpy()},
@@ -33,6 +37,30 @@ class TestMetrics(unittest.TestCase):
             torch.tensor(outputs.final_score),
             (-gt_mae - gt_mse + gt_corr) / 3.0,
         )
+        # weighted score
+        metric = cflearn.IMetric.fuse("mae", metric_weights=dict(mae=0.123))
+        outputs = metric.evaluate(
+            {cflearn.LABEL_KEY: y.numpy()},
+            {cflearn.PREDICTIONS_KEY: x.numpy()},
+        )
+        torch.testing.assert_close(torch.tensor(outputs.final_score), -gt_mae)
+        metric = cflearn.IMetric.fuse(
+            ["mae", "mse", "corr"],
+            metric_weights=dict(mae=0.1, mse=0.2, corr=0.7),
+        )
+        outputs = metric.evaluate(
+            {cflearn.LABEL_KEY: y.numpy()},
+            {cflearn.PREDICTIONS_KEY: x.numpy()},
+        )
+        torch.testing.assert_close(
+            torch.tensor(outputs.final_score),
+            -gt_mae * 0.1 - gt_mse * 0.2 + gt_corr * 0.7,
+        )
+        # empty
+        metric = cflearn.IMetric.fuse([])
+        outputs = metric.evaluate(None, None)
+        self.assertEqual(outputs.final_score, 0.0)
+        self.assertDictEqual(outputs.metric_values, {})
 
 
 if __name__ == "__main__":
