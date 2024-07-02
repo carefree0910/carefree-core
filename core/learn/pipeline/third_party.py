@@ -17,7 +17,7 @@ from ..constants import PREDICTIONS_KEY
 class IPredictor(ABC):
     @abstractmethod
     def predict(self, x: np.ndarray) -> np.ndarray:
-        pass
+        """return predictions for input `x`"""
 
 
 class GeneralEvaluationPipeline(IEvaluationPipeline):

@@ -8,7 +8,7 @@ from ..schema import InferenceOutputs
 class IEvaluationPipeline(ABC):
     @abstractmethod
     def evaluate(self, loader: DataLoader) -> InferenceOutputs:
-        pass
+        """return evaluation results for `loader`"""
 
 
 __all__ = [

@@ -27,15 +27,15 @@ class TryLoadBlock(Block, metaclass=ABCMeta):
 
     @abstractmethod
     def try_load(self, folder: TPath) -> bool:
-        pass
+        """return `True` if can be successfully loaded"""
 
     @abstractmethod
     def from_scratch(self, config: Config) -> None:
-        pass
+        """initialize from scratch, will be called if `try_load` returns `False`"""
 
     @abstractmethod
     def dump_to(self, folder: TPath) -> None:
-        pass
+        """dump necessary information to folder"""
 
     # inheritance
 
