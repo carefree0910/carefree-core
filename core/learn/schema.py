@@ -651,7 +651,7 @@ class IData(  # type: ignore
     def build_loaders(self, *, for_inference: Optional[bool] = None) -> TDataLoaders:
         self._check_ready("build_loaders")
         if self.bundle is None:
-            raise ValueError(
+            raise RuntimeError(
                 "`bundle` property is not initialized, "
                 "did you forget to call the `fit` method first?"
             )
@@ -703,7 +703,7 @@ class IData(  # type: ignore
 
     def _check_ready(self, method_name: str) -> None:
         if not self.is_ready:
-            raise ValueError(
+            raise RuntimeError(
                 f"`{self.__class__.__name__}` should be ready before calling "
                 f"`{method_name}`, did you forget to call the `fit` method first?"
             )
@@ -1206,7 +1206,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         forward pass (`fw_train_step`). This is done by looping through each training step and checking its
         `requires_new_forward` and `requires_grad_in_forward` attributes.
         3. If `fw_has_grad` is `False` and a subsequent training step requires gradients in the forward pass, raise a
-        ValueError with a message indicating which training steps have conflicting requirements.
+        RuntimeError with a message indicating which training steps have conflicting requirements.
         4. Loop through each training step and execute the following steps for each:
           1) Check whether the current training step should be skipped. If so, move on to the next training step.
           2) If this is the first training step, or if `requires_new_forward` is `True` for the current training step,
@@ -1238,7 +1238,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             if not fw_has_grad and train_step.requires_grad_in_forward:
                 fw_name = fw_train_step.__class__.__name__
                 current_name = train_step.__class__.__name__
-                raise ValueError(
+                raise RuntimeError(
                     f"current forward pass comes from '{fw_name}' and has no grad, "
                     f"but '{current_name}' requires grad in forward. You can either set "
                     f"`requires_grad_in_forward` of '{fw_name}' to True, or set "
