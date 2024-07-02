@@ -6,8 +6,8 @@ import core.learn as cflearn
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import Mock
 from unittest.mock import patch
+from unittest.mock import Mock
 
 
 class TestTrainer(unittest.TestCase):

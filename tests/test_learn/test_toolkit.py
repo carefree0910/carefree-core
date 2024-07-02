@@ -1,8 +1,8 @@
 import unittest
 
 from core.learn.toolkit import *
-from unittest.mock import Mock
 from unittest.mock import patch
+from unittest.mock import Mock
 from safetensors.torch import save_file
 from core.toolkit.misc import random_hash
 

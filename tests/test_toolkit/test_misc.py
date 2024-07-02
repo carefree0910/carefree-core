@@ -9,8 +9,8 @@ from typing import Any
 from typing import Dict
 from unittest import mock
 from dataclasses import field
-from unittest.mock import Mock
 from unittest.mock import patch
+from unittest.mock import Mock
 from core.toolkit.misc import *
 
 
