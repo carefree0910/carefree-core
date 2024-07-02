@@ -1556,20 +1556,6 @@ class TrainerState:
         self._previous_snapshot_epoch = self.epoch
 
     @property
-    def config(self) -> Dict[str, Any]:
-        return {
-            "num_epoch": self.num_epoch,
-            "num_steps": self.num_steps,
-            "enable_logging": self.enable_logging,
-            "min_num_sample": self.min_num_sample,
-            "snapshot_start_step": self.snapshot_start_step,
-            "max_snapshot_file": self.max_snapshot_file,
-            "num_snapshot_per_epoch": self.num_snapshot_per_epoch,
-            "num_step_per_snapshot": self.num_step_per_snapshot,
-            "max_step_per_snapshot": self.max_step_per_snapshot,
-        }
-
-    @property
     def last_step(self) -> int:
         return self.step if self._last_step is None else self._last_step
 
