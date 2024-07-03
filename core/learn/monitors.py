@@ -1,5 +1,3 @@
-import math
-
 import numpy as np
 
 from typing import List
@@ -55,21 +53,21 @@ class MeanStdMonitor(BasicMonitor):
         super().__init__(num_keep=num_keep)
         self.patience = patience
         self.overfit_tolerance = overfit_tolerance
-        self.best_score = -math.inf
         self.overfit_level = 0.0
         self._incrementer = Incrementer(window_size)
 
     def should_snapshot(self, new_score: float) -> bool:
+        if len(self.history) >= self.num_keep:
+            mean, std = self._incrementer.mean, self._incrementer.std
+            std = max(std, 1.0e-8)
+            if new_score < mean - std:
+                max_decrease = self.overfit_tolerance / self.patience
+                decrease = min(max_decrease, (mean - new_score) / std + 1.0)
+                self.overfit_level += decrease
+            elif new_score > mean + std:
+                improvement = (new_score - mean) / std - 1.0
+                self.overfit_level = max(0.0, self.overfit_level - improvement)
         self._incrementer.update(new_score)
-        mean, std = self._incrementer.mean, self._incrementer.std
-        std = max(std, 1.0e-8)
-        if new_score < mean - std:
-            max_decrease = self.overfit_tolerance / self.patience
-            decrease = min(max_decrease, (mean - new_score) / std + 1.0)
-            self.overfit_level += decrease
-        elif new_score > mean + std:
-            improvement = (new_score - mean) / std - 1.0
-            self.overfit_level = max(0.0, self.overfit_level - improvement)
         return super().should_snapshot(new_score)
 
     def should_terminate(self, new_score: float) -> bool:
