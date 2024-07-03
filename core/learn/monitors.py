@@ -118,11 +118,11 @@ class PlateauMonitor(BasicMonitor):
                 self.plateau_level += plateau
         return self.plateau_level >= self.plateau_tolerance
 
+    def get_extension(self, state: TrainerState) -> int:
+        return self.extension
+
     def punish_extension(self) -> None:
         self.plateau_level += self.max_plateau_increase / 5.0
-
-    def handle_extension(self, state: TrainerState) -> int:
-        return self.extension
 
 
 @TrainerMonitor.register("conservative")

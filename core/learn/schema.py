@@ -1643,9 +1643,9 @@ class TrainerMonitor(WithRegister["TrainerMonitor"], metaclass=ABCMeta):
 
     - `should_snapshot` is called when a new score is obtained, and it should return whether to save the checkpoint.
     - `should_terminate` is called when a new score is obtained, and it should return whether to terminate the training.
-    - `punish_extension` is called when the training is about to be extended, and it should do some punishment if needed.
-    - `handle_extension` is called when the training is about to be extended, and it should return the number of epochs
+    - `get_extension` is called when the training is about to be extended, and it should return the number of epochs
     to extend. `0` means no extension.
+    - `punish_extension` is called when the training is about to be extended, and it should do some punishment if needed.
 
     > Examples could be found at `core/learn/monitors.py`.
 
@@ -1668,10 +1668,7 @@ class TrainerMonitor(WithRegister["TrainerMonitor"], metaclass=ABCMeta):
 
     # optional callbacks
 
-    def punish_extension(self) -> None:
-        pass
-
-    def handle_extension(self, state: TrainerState) -> int:
+    def get_extension(self, state: TrainerState) -> int:
         """
         Returns
         -------
@@ -1681,6 +1678,9 @@ class TrainerMonitor(WithRegister["TrainerMonitor"], metaclass=ABCMeta):
         """
 
         return 0
+
+    def punish_extension(self) -> None:
+        pass
 
 
 class MonitorResults(NamedTuple):

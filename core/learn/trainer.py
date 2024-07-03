@@ -500,7 +500,7 @@ class Trainer(ITrainer):
         for monitor in self.monitors:
             if self.state.should_extend_epoch:
                 monitor.punish_extension()
-                extension = max(extension, monitor.handle_extension(self.state))
+                extension = max(extension, monitor.get_extension(self.state))
         if extension:
             self.state.num_epoch += extension
         if (
