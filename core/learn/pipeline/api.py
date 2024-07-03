@@ -656,8 +656,6 @@ class PipelineSerializer:
             # load
             pipeline = Serializer.load_empty(folder_path, Pipeline, swap_id=swap_id)
             pipeline.serialize_folder = folder_path
-            if info is None:
-                info = Serializer.load_info(folder_path)
             pipeline.from_info(info)
             for block in pipeline.blocks:
                 block.load_from(folder_path / block.__identifier__)
