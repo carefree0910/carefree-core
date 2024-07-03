@@ -107,7 +107,7 @@ class PlateauMonitor(BasicMonitor):
         if super().should_terminate(new_score):
             return True
         self._incrementer.update(new_score)
-        if self._incrementer.num_record > self.window_size:
+        if self._incrementer.is_full:
             mean, std = self._incrementer.mean, self._incrementer.std
             ratio = max(abs(new_score - mean) / max(std, 1.0e-8), 1.0e-8)
             if ratio < self.plateau_threshold:
@@ -122,7 +122,7 @@ class PlateauMonitor(BasicMonitor):
         return self.extension
 
     def punish_extension(self) -> None:
-        self.plateau_level += self.max_plateau_increase / 5.0
+        self.plateau_level += self.max_plateau_increase
 
 
 @TrainerMonitor.register("conservative")
