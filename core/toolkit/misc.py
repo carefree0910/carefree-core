@@ -1299,6 +1299,10 @@ class Incrementer:
         return self.num_record == 0
 
     @property
+    def is_full(self) -> bool:
+        return self.num_record >= self.window_size
+
+    @property
     def mean(self) -> float:
         return self.running_sum / self.num_record
 
