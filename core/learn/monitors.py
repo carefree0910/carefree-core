@@ -17,15 +17,17 @@ class BasicMonitor(TrainerMonitor):
         self.history: List[float] = []
         self.num_keep = num_keep
         self.worst_score: Optional[float] = None
+        self.start_terminate = False
 
     def should_snapshot(self, new_score: float) -> bool:
-        self.history.append(new_score)
         if self.worst_score is None:
             self.worst_score = new_score
         else:
             self.worst_score = min(new_score, self.worst_score)
-        if len(self.history) <= self.num_keep:
+        if len(self.history) < self.num_keep:
+            self.history.append(new_score)
             return True
+        self.start_terminate = True
         min_idx = np.argmin(self.history).item()
         if new_score >= self.history[min_idx]:
             self.history[min_idx] = new_score
@@ -33,9 +35,7 @@ class BasicMonitor(TrainerMonitor):
         return False
 
     def should_terminate(self, new_score: float) -> bool:
-        if len(self.history) <= self.num_keep:
-            return False
-        if self.worst_score is None:
+        if not self.start_terminate or self.worst_score is None:
             return False
         return new_score <= self.worst_score
 
