@@ -805,7 +805,7 @@ class PipelineSerializer:
         states_callback: states_callback_type = None,
         verbose: bool = True,
     ) -> Union[InferencePipeline, EvaluationPipeline]:
-        if pack_type == PackType.TRAINING:
+        if pack_type == PackType.TRAINING:  # pragma: no cover
             raise ValueError("should not pack to training pipeline when fusing")
         device = get_torch_device(device)
         workspace = to_path(workspace)

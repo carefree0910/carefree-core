@@ -756,7 +756,7 @@ class TrainingBlock(Block):
 
         def trace_handler(p: profile) -> None:
             workspace = self.training_workspace
-            if workspace is None:
+            if workspace is None:  # pragma: no cover
                 return
             trace_folder = os.path.join(workspace, "traces")
             trace_path = os.path.join(trace_folder, f"trace_{p.step_num}.json")
