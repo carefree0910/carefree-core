@@ -90,7 +90,7 @@ class WithStateModel(CommonModel):
 
 class EnsembleFn(Protocol):
     def __call__(self, key: str, tensors: List[Tensor]) -> Tensor:
-        pass
+        """the ensemble function, which should reduce the list of tensors to a single tensor"""
 
 
 class EnsembleModule(nn.ModuleList):
