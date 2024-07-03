@@ -167,12 +167,12 @@ def get_load_balance_loss(forward_results: tensor_dict_type) -> Tensor:
     importances = forward_results.get("importances")
     load = forward_results.get("load")
     if importances is None:
-        raise ValueError(
+        raise RuntimeError(
             f"`importances`, which should be `gates.sum(0)`, is not found in "
             f"`forward_results` ({forward_results})"
         )
     if load is None:
-        raise ValueError(
+        raise RuntimeError(
             f"`load`, which should be calculated in the `dispatch` method, "
             f"is not found in `forward_results` ({forward_results})"
         )
