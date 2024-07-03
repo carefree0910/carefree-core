@@ -14,6 +14,8 @@ from ..toolkit.misc import Incrementer
 class BasicMonitor(TrainerMonitor):
     def __init__(self, *, num_keep: int = 25):
         super().__init__()
+        if num_keep <= 0:
+            raise ValueError("`num_keep` should be a positive integer")
         self.history: List[float] = []
         self.num_keep = num_keep
         self.worst_score: Optional[float] = None
