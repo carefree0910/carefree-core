@@ -43,6 +43,9 @@ class TestModel(unittest.TestCase):
         naive_out /= 3.0
         ensemble_out = ensemble.run(0, batch)[cflearn.PREDICTIONS_KEY]
         torch.testing.assert_close(naive_out, ensemble_out)
+        ensemble.ensemble_fn = lambda tensors: torch.ones_like(tensors[0])
+        ensemble_out = ensemble.run(0, batch)[cflearn.PREDICTIONS_KEY]
+        torch.testing.assert_close(torch.ones_like(ensemble_out), ensemble_out)
         with self.assertRaises(ValueError):
             models[0].postprocess(0, batch, "foo")
         with patch("core.learn.schema.is_fsdp") as mock:
@@ -176,6 +179,26 @@ class TestModel(unittest.TestCase):
             get_train_outputs(GradBuggyModel1)
         with self.assertRaises(RuntimeError):
             get_train_outputs(GradBuggyModel2)
+
+    def test_with_state_model(self):
+        @cflearn.register_module("foo", allow_duplicate=True)
+        class _(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.param = torch.nn.Parameter(torch.ones(1))
+
+            def forward(self, batch, state):
+                return self.param * torch.zeros_like(batch[cflearn.LABEL_KEY])
+
+        data = cflearn.testing.linear_data(10)[0]
+        config = cflearn.Config(model="with_state", module_name="foo", loss_name="mse")
+        config.to_debug()
+        p = cflearn.TrainingPipeline.init(config).fit(data)
+        m = p.training.build_model.model
+        ensemble = cflearn.EnsembleModel(m, 3)
+        self.assertEqual(len(ensemble.all_modules), 2)
+        ensemble.loss = None
+        self.assertEqual(len(ensemble.all_modules), 1)
 
 
 if __name__ == "__main__":
