@@ -271,26 +271,14 @@ class Inference(IInference):
             else:
                 scores = []
                 metric_values: Dict[str, List[float]] = {}
-                is_positive: Dict[str, bool] = {}
                 for metric_outputs in metric_outputs_list:
                     scores.append(metric_outputs.final_score)
                     for k, v in metric_outputs.metric_values.items():
                         metric_values.setdefault(k, []).append(v)
-                        existing_is_positive = is_positive.get(k)
-                        k_is_positive = metric_outputs.is_positive[k]
-                        if (
-                            existing_is_positive is not None
-                            and existing_is_positive != k_is_positive
-                        ):
-                            raise ValueError(
-                                f"the `is_positive` property of '{k}' collides: "
-                                f"{existing_is_positive} (previous) != {k_is_positive}"
-                            )
-                        is_positive[k] = k_is_positive
                 final_metric_outputs = MetricsOutputs(
                     sum(scores) / len(scores),
                     {k: sum(vl) / len(vl) for k, vl in metric_values.items()},
-                    is_positive,
+                    metric_outputs_list[0].is_positive,
                 )
             # handle accelerator stuffs
             if accelerator is not None:
