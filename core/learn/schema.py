@@ -1781,13 +1781,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     def before_monitor_logging(self, trainer: "ITrainer") -> None:
         pass
 
-    def log_metrics(
-        self,
-        metric_outputs: MetricsOutputs,
-        state: TrainerState,
-        *,
-        prefix: Optional[str] = None,
-    ) -> None:
+    def log_metrics(self, metric_outputs: MetricsOutputs, state: TrainerState) -> None:
         pass
 
     def log_metrics_msg(

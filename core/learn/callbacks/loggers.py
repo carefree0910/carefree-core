@@ -72,17 +72,9 @@ class WandBCallback(TrainerCallback):
         if state.should_log_losses:
             wandb.log(prefix_dict(step_outputs.loss_items, "tr"), step=state.step)
 
-    def log_metrics(
-        self,
-        metric_outputs: MetricsOutputs,
-        state: TrainerState,
-        *,
-        prefix: Optional[str] = None,
-    ) -> None:
+    def log_metrics(self, metric_outputs: MetricsOutputs, state: TrainerState) -> None:
         metrics = shallow_copy_dict(metric_outputs.metric_values)
         metrics["score"] = metric_outputs.final_score
-        if prefix is not None:
-            metrics = prefix_dict(metrics, prefix)
         wandb.log(metrics, step=self._wandb_step(state))
 
     def log_artifacts(self, trainer: ITrainer) -> None:
