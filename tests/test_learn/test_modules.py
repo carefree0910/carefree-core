@@ -11,6 +11,8 @@ from typing import Optional
 from core.learn.schema import losses_type
 from core.learn.schema import TrainerState
 from core.toolkit.types import tensor_dict_type
+from core.learn.modules.moe import squared_coef
+from core.learn.modules.moe import get_load_balance_loss
 
 
 class TestModules(unittest.TestCase):
@@ -37,6 +39,20 @@ class TestModules(unittest.TestCase):
         num_experts = 47
         output_dim = 23
         batch_size = 29
+
+        with self.assertRaises(RuntimeError):
+            get_load_balance_loss({})
+        with self.assertRaises(RuntimeError):
+            get_load_balance_loss({"importances": "foo"})
+        with self.assertRaises(ValueError):
+            cflearn.MoE(
+                "fcnn",
+                dict(input_dim=dim, output_dim=output_dim),
+                dim=dim,
+                top_k=5,
+                num_experts=3,
+            )
+        torch.testing.assert_close(squared_coef(torch.randn(1)), torch.zeros(1))
 
         moe = cflearn.MoE(
             "fcnn",
@@ -102,6 +118,8 @@ class TestModules(unittest.TestCase):
             num_steps=10**4,
         )
         config.to_debug()  # comment this line to disable debug mode
+        cflearn.TrainingPipeline.init(config).fit(data)
+        config.module_config["router_config"] = dict(noisy_gating=False)
         cflearn.TrainingPipeline.init(config).fit(data)
 
     def test_prefix_modules(self) -> None:
@@ -204,10 +222,17 @@ class TestModules(unittest.TestCase):
 
     def test_residual(self) -> None:
         dim = 11
-        m = cflearn.build_module("fcnn", input_dim=dim, output_dim=dim)
         x = torch.randn(7, 5, dim)
+        m_config = dict(input_dim=dim, output_dim=dim, batch_norm=True, dropout=0.1)
+        m = cflearn.build_module("fcnn", **m_config)
         rm = cflearn.Residual(m)
-        torch.testing.assert_close(m(x) + x, rm(x))
+        with cflearn.eval_context(rm):
+            torch.testing.assert_close(m(x) + x, rm(x))
+        m_config["highway"] = True
+        m = cflearn.build_module("fcnn", **m_config)
+        rm = cflearn.Residual(m)
+        with cflearn.eval_context(rm):
+            torch.testing.assert_close(m(x) + x, rm(x))
 
     def test_zero_module(self) -> None:
         dim = 11
