@@ -1295,6 +1295,10 @@ class Incrementer:
         self.running_sum = self.running_square_sum = 0.0
 
     @property
+    def is_empty(self) -> bool:
+        return self.num_record == 0
+
+    @property
     def mean(self) -> float:
         return self.running_sum / self.num_record
 
