@@ -766,6 +766,7 @@ class TestMisc(unittest.TestCase):
         sequence = np.random.random(100)
         incrementer = Incrementer()
         self.assertTrue(incrementer.is_empty)
+        self.assertFalse(incrementer.is_full)
         for i, n in enumerate(sequence):
             incrementer.update(n)
             sub_sequence = sequence[: i + 1]

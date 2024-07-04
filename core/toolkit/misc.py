@@ -1300,6 +1300,8 @@ class Incrementer:
 
     @property
     def is_full(self) -> bool:
+        if self.window_size is None:
+            return False
         return self.num_record >= self.window_size
 
     @property
