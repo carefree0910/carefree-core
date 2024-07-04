@@ -89,8 +89,6 @@ class LoopNode(Node):
 
     async def execute(self) -> Dict[str, List[Dict[str, Any]]]:
         t_node = Node.get(self.data["base_node"])
-        if t_node is None:
-            raise ValueError(f"node `{self.data['base_node']}` is not defined")
         base_data = self.data["base_data"]
         loop_values = self.data["loop_values"]
         loop_back_injections = self.data["loop_back_injections"]
