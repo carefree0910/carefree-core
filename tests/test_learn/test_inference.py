@@ -7,6 +7,9 @@ import torch.nn as nn
 
 from torch import Tensor
 from typing import Optional
+from accelerate import Accelerator
+from unittest.mock import patch
+from unittest.mock import PropertyMock
 from core.learn.schema import DataLoader
 from core.toolkit.types import np_dict_type
 
@@ -48,13 +51,15 @@ class TestInference(unittest.TestCase):
                 self.assertEqual(vv.shape, (batch_size, output_dim))
         self.assertIsNone(model_outputs.labels.get(cflearn.LABEL_KEY))
 
+        mae = cflearn.MAE()
         model_outputs = inference.get_outputs(loader, return_labels=True)
+        model_outputs = inference.get_outputs(loader, metrics=mae, return_labels=True)
         for v in model_outputs.forward_results.values():
             self.assertEqual(v.shape, (num_samples, output_dim))
         labels = model_outputs.labels[cflearn.LABEL_KEY]
         self.assertEqual(labels.shape, (num_samples, output_dim))
 
-        @cflearn.IMetric.register("foo")
+        @cflearn.IMetric.register("foo", allow_duplicate=True)
         class FooMetric(cflearn.IMetric):
             @property
             def is_positive(self) -> bool:
@@ -77,7 +82,7 @@ class TestInference(unittest.TestCase):
                     case.assertNotIn(cflearn.INPUT_KEY, np_batch)
                 return 0.12
 
-        @cflearn.IMetric.register("bar")
+        @cflearn.IMetric.register("bar", allow_duplicate=True)
         class BarMetric(cflearn.IMetric):
             @property
             def is_positive(self) -> bool:
@@ -106,7 +111,8 @@ class TestInference(unittest.TestCase):
         case = self
         is_multiple = False
 
-        model_outputs = inference.get_outputs(loader, metrics=FooMetric())
+        foo = FooMetric()
+        model_outputs = inference.get_outputs(loader, metrics=foo, return_labels=True)
         self.assertEqual(model_outputs.metric_outputs.metric_values["foo"], 0.12)
         self.assertEqual(model_outputs.metric_outputs.final_score, 0.12)
 
@@ -122,6 +128,49 @@ class TestInference(unittest.TestCase):
         self.assertEqual(metric_values["bar"], 3.45)
         final_score = model_outputs.metric_outputs.final_score
         self.assertAlmostEqual(final_score, 0.5 * (0.12 - 3.45))
+
+        with patch(
+            "accelerate.Accelerator.is_main_process",
+            new_callable=PropertyMock,
+        ) as mock:
+            mock.return_value = False
+            inference.get_outputs(loader, metrics=metrics, accelerator=Accelerator())
+
+        @cflearn.IMetric.register("ve", allow_duplicate=True)
+        class ValueErrorMetric(cflearn.IMetric):
+            @property
+            def is_positive(self) -> bool:
+                return True
+
+            def forward(
+                self,
+                np_batch: np_dict_type,
+                np_outputs: np_dict_type,
+                loader: Optional[DataLoader] = None,
+            ) -> float:
+                raise ValueError
+
+        @cflearn.IModel.register("kim", allow_duplicate=True)
+        class KeyboardInterruptModel(cflearn.CommonModel):
+            def step(self, *args, **kwargs) -> cflearn.StepOutputs:
+                raise KeyboardInterrupt
+
+        @cflearn.IModel.register("vem", allow_duplicate=True)
+        class ValueErrorModel(cflearn.CommonModel):
+            def step(self, *args, **kwargs) -> cflearn.StepOutputs:
+                raise ValueError
+
+        def run(model: str, metrics: cflearn.IMetric) -> None:
+            config.model = model
+            inference = cflearn.Inference(model=cflearn.IModel.from_config(config))
+            inference.get_outputs(loader, metrics=metrics)
+
+        with self.assertRaises(KeyboardInterrupt):
+            run("kim", cflearn.MAE())
+        with self.assertRaises(ValueError):
+            run("vem", cflearn.MAE())
+        with self.assertRaises(ValueError):
+            run("vem", ValueErrorMetric())
 
     def test_pad(self) -> None:
         @cflearn.register_module("identity", allow_duplicate=True)
@@ -144,26 +193,36 @@ class TestInference(unittest.TestCase):
         inference = cflearn.Inference(model=cflearn.IModel.from_config(config))
         with self.assertRaises(ValueError):
             inference.get_outputs(loader)
-        outputs = inference.get_outputs(loader, pad_dim=1)
-        np.testing.assert_array_equal(
-            outputs.forward_results[cflearn.PREDICTIONS_KEY],
-            np.array(
-                [
-                    [0, 0, 0],
-                    [1, 0, 0],
-                    [2, 0, 0],
-                    [3, 4, 0],
-                    [5, 6, 0],
-                    [7, 8, 0],
-                    [9, 10, 11],
-                    [12, 13, 14],
-                    [15, 16, 17],
-                    [18, 0, 0],
-                    [19, 0, 0],
-                    [20, 0, 0],
-                ]
-            ),
+        with self.assertRaises(ValueError):
+            inference.get_outputs(loader, pad_dim=0)
+        with self.assertRaises(ValueError):
+            inference.get_outputs(loader, pad_dim={"foo": 0}, accelerator=Accelerator())
+        o0 = inference.get_outputs(loader, pad_dim=1)
+        o1 = inference.get_outputs(loader, pad_dim=1, accelerator=Accelerator())
+        o2 = inference.get_outputs(
+            loader,
+            pad_dim={cflearn.PREDICTIONS_KEY: 1},
+            accelerator=Accelerator(),
         )
+        gt = np.array(
+            [
+                [0, 0, 0],
+                [1, 0, 0],
+                [2, 0, 0],
+                [3, 4, 0],
+                [5, 6, 0],
+                [7, 8, 0],
+                [9, 10, 11],
+                [12, 13, 14],
+                [15, 16, 17],
+                [18, 0, 0],
+                [19, 0, 0],
+                [20, 0, 0],
+            ]
+        )
+        np.testing.assert_array_equal(o0.forward_results[cflearn.PREDICTIONS_KEY], gt)
+        np.testing.assert_array_equal(o1.forward_results[cflearn.PREDICTIONS_KEY], gt)
+        np.testing.assert_array_equal(o2.forward_results[cflearn.PREDICTIONS_KEY], gt)
 
 
 if __name__ == "__main__":

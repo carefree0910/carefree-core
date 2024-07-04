@@ -41,6 +41,7 @@ class TestTrainer(unittest.TestCase):
     def test_training(self):
         config = self.config.copy()
         config.num_steps = 10
+        config.update_scheduler_per_epoch = True
         p = cflearn.TrainingPipeline.init(config).fit(self.data)
         trainer = p.training.build_trainer.trainer
         ckpt_folder = Path(trainer.checkpoint_folder)
@@ -102,6 +103,9 @@ class TestTrainer(unittest.TestCase):
                 cflearn.TrainingPipeline.init(config).fit(self.data)
             config.finetune_config.pop("freeze")
             cflearn.TrainingPipeline.init(config).fit(self.data)
+            config.finetune_config = {}
+            with self.assertRaises(ValueError):
+                cflearn.TrainingPipeline.init(config).fit(self.data)
 
     def test_monitor(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data(4)

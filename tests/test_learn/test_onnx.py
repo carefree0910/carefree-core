@@ -3,6 +3,10 @@ import unittest
 import numpy as np
 import core.learn as cflearn
 
+from typing import Optional
+from core.learn.schema import DataLoader
+from core.toolkit.types import np_dict_type
+
 
 class TestONNX(unittest.TestCase):
     def test_onnx(self) -> None:
@@ -36,7 +40,27 @@ class TestONNX(unittest.TestCase):
             forward_fn=lambda d: model.onnx_forward(d)[cflearn.PREDICTIONS_KEY],
             num_samples=1,
         )
+
+        @cflearn.IMetric.register("foo", allow_duplicate=True)
+        class FooMetric(cflearn.IMetric):
+            @property
+            def is_positive(self) -> bool:
+                return True
+
+            @property
+            def requires_all(self) -> bool:
+                return True
+
+            def forward(
+                self,
+                np_batch: np_dict_type,
+                np_outputs: np_dict_type,
+                loader: Optional[DataLoader] = None,
+            ) -> float:
+                return 0.12
+
         onnx_inference = cflearn.Inference(onnx=onnx_file)
+        onnx_inference.get_outputs(loader, metrics=FooMetric(), return_labels=True)
         onnx_outputs = onnx_inference.get_outputs(loader).forward_results
 
         for k in model_outputs:
