@@ -294,6 +294,12 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
     # runtime attribute, should not be touched and will not be serialized
     executing: bool = False
 
+    # abstract
+
+    @abstractmethod
+    async def execute(self) -> Any:
+        pass
+
     # optional
 
     @classmethod
@@ -353,12 +359,6 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
             offload=self.offload,
             lock_key=self.lock_key,
         )
-
-    # abstract
-
-    @abstractmethod
-    async def execute(self) -> Any:
-        pass
 
     # internal
 
