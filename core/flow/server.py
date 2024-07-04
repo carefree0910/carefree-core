@@ -106,12 +106,11 @@ def register_nodes_api(app: FastAPI) -> None:
 
 def register_workflow_api(app: FastAPI) -> None:
     @app.post(f"/{WORKFLOW_ENDPOINT_NAME}")
-    async def workflow(data: WorkflowModel) -> Dict[str, Any]:
+    async def workflow(data: WorkflowModel) -> Dict[str, Any]:  # type: ignore
         try:
             return await data.run(return_api_response=True)
         except Exception as err:
             raise_err(err)
-            return {}
 
 
 class ServerStatus(BaseModel):
