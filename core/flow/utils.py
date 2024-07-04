@@ -64,7 +64,7 @@ def toposort(workflow: Flow) -> ToposortResult:
                     ready.append(node)
 
     if len(workflow) != sum(map(len, result)):
-        raise ValueError("cyclic dependency detected")
+        raise RuntimeError("cyclic dependency detected")
 
     hierarchy = [list(map(workflow.get, layer)) for layer in result]
     reachable = {item.key for item in workflow}
@@ -181,7 +181,7 @@ def to_data_model(
     for node_item in flow:
         node = node_item.data
         if node.key is None:
-            raise ValueError(f"node key cannot be None ({node})")
+            raise ValueError(f"node key cannot be `None` ({node})")
         nodes.append(
             NodeModel(
                 key=node.key,
