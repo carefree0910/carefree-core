@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from .. import flow as cflow
 from ..toolkit import console
+from ..toolkit.misc import to_path
 
 
 RAG_SEPARATOR = "__RAG__"
@@ -111,9 +112,14 @@ def generate_document(t_node: Type[cflow.Node], rag: bool) -> Optional[Document]
     return document
 
 
-def generate_documents(output: str, *, rag: bool = False) -> None:
+def generate_documents(
+    output: str,
+    *,
+    rag: bool = False,
+    examples_root: Optional[Path] = None,
+) -> None:
     def get_example_title_and_eof(path: Path, title_prefix: str) -> Tuple[str, str]:
-        relative = str(path.relative_to(root))
+        relative = str(path.relative_to(examples_root))
         if not rag:
             eof = "\n"
             title = f"### `{relative}`"
@@ -145,11 +151,14 @@ def generate_documents(output: str, *, rag: bool = False) -> None:
     t_nodes = cflow.use_all_t_nodes()
     gen_doc = lambda t_node: generate_document(t_node, rag)
     documents: List[Document] = list(filter(bool, map(gen_doc, t_nodes)))  # type: ignore
-    root = Path(__file__).parent.parent
-    examples_dir = root / "examples"
-    workflows_dir = examples_dir / "workflows"
-    code_snippets = examples_dir.glob("*.py")
-    workflow_jsons = workflows_dir.rglob("*.json")
+    if examples_root is None:
+        code_snippets = []
+        workflow_jsons = []
+    else:
+        examples_root = to_path(examples_root)
+        workflows_dir = examples_root / "workflows"
+        code_snippets = examples_root.glob("*.py")
+        workflow_jsons = workflows_dir.rglob("*.json")
     code_example_docs = "\n".join(map(get_code_example, code_snippets))[:-1]
     workflow_example_docs = "\n".join(map(get_json_example, workflow_jsons))[:-1]
     workflow_model_source = inspect.getsource(cflow.WorkflowModel).replace("`", "'")
