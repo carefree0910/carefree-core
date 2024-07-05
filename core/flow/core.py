@@ -232,11 +232,11 @@ class Schema:
 class Hook:
     @classmethod
     async def initialize(cls, shared_pool: Dict[str, Any]) -> None:
-        pass
+        """Will be called everytime before the execution. `shared_pool` is a global shared pool."""
 
     @classmethod
     async def cleanup(cls, shared_pool: Dict[str, Any]) -> None:
-        pass
+        """Will be called everytime after the execution. `shared_pool` is a global shared pool."""
 
 
 @dataclass
@@ -298,7 +298,11 @@ class Node(ISerializableDataClass["Node"], metaclass=ABCMeta):
 
     @abstractmethod
     async def execute(self) -> Any:
-        pass
+        """
+        the main logic of the node, should return the results.
+        * in most cases, you will need to access the `data` attribute to get the inputs,
+          and return the results as a `dict`.
+        """
 
     # optional
 
