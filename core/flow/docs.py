@@ -83,7 +83,7 @@ def fetch_doc_sources(t_base: type) -> List[str]:
     return sources
 
 
-def genearte_document(t_node: Type[cflow.Node], rag: bool) -> Optional[Document]:
+def generate_document(t_node: Type[cflow.Node], rag: bool) -> Optional[Document]:
     schema = t_node.get_schema()
     source = inspect.getsource(t_node)
     document = Document(name=t_node.__name__, source_codes=source, rag=rag)
@@ -143,7 +143,7 @@ def generate_documents(output: str, *, rag: bool = False) -> None:
         raise ValueError(f"`dst` should be a markdown file, '{output}' found")
     console.rule("Generating Documents")
     t_nodes = cflow.use_all_t_nodes()
-    gen_doc = lambda t_node: genearte_document(t_node, rag)
+    gen_doc = lambda t_node: generate_document(t_node, rag)
     documents: List[Document] = list(filter(bool, map(gen_doc, t_nodes)))  # type: ignore
     root = Path(__file__).parent.parent
     examples_dir = root / "examples"
