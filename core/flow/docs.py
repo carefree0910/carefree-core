@@ -119,6 +119,7 @@ def generate_documents(
     examples_root: Optional[Path] = None,
 ) -> None:
     def get_example_title_and_eof(path: Path, title_prefix: str) -> Tuple[str, str]:
+        assert examples_root is not None
         relative = str(path.relative_to(examples_root))
         if not rag:
             eof = "\n"
@@ -157,8 +158,8 @@ def generate_documents(
     else:
         examples_root = to_path(examples_root)
         workflows_dir = examples_root / "workflows"
-        code_snippets = examples_root.glob("*.py")
-        workflow_jsons = workflows_dir.rglob("*.json")
+        code_snippets = list(examples_root.glob("*.py"))
+        workflow_jsons = list(workflows_dir.rglob("*.json"))
     code_example_docs = "\n".join(map(get_code_example, code_snippets))[:-1]
     workflow_example_docs = "\n".join(map(get_json_example, workflow_jsons))[:-1]
     workflow_model_source = inspect.getsource(cflow.WorkflowModel).replace("`", "'")
