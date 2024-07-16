@@ -40,6 +40,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import Dataset
 from torch.utils.data import WeightedRandomSampler
 from torch.utils.data import DataLoader as TorchDataLoader
+from torch.utils.checkpoint import checkpoint
 
 from .toolkit import device_type
 from .toolkit import get_device
@@ -1049,7 +1050,32 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
     __repr__ = __str__
 
     def __call__(self, *args: Any, **kwargs: Any) -> raw_forward_results_type:
-        return self.forward(*args, **kwargs)
+        use_checkpoint = kwargs.pop("use_checkpoint", False)
+        with self.checkpoint_context(enable=use_checkpoint):
+            return self.forward(*args, **kwargs)
+
+    def checkpoint_context(self, *, enable: bool = True) -> ContextManager:
+
+        class ctx:
+            m: nn.Module
+
+            def __enter__(self) -> None:
+                def ckpt_fw(*args: Any, **kwargs: Any) -> raw_forward_results_type:
+                    kwargs.setdefault("use_reentrant", False)
+                    return checkpoint(self.m, *args, **kwargs)
+
+                if not enable:
+                    return None
+                self.m = model.m
+                model.m = ckpt_fw
+
+            def __exit__(self, *args: Any) -> None:
+                if not enable:
+                    return None
+                model.m = self.m
+
+        model = self
+        return ctx()
 
     # constructors
     ## this class is not supposed to be instantiated directly, but to be constructed
@@ -1112,11 +1138,12 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
     ) -> raw_forward_results_type:
         return self.m(batch[INPUT_KEY], **kwargs)
 
-    def onnx_forward(self, batch: tensor_dict_type) -> Any:
-        return self.run(0, batch)
+    def onnx_forward(self, batch: tensor_dict_type, **kwargs: Any) -> Any:
+        return self.run(0, batch, **kwargs)
 
-    def summary_forward(self, batch: tensor_dict_type) -> None:
-        self.onnx_forward(batch)
+    def summary_forward(self, batch: tensor_dict_type, **kwargs: Any) -> None:
+        kwargs.setdefault("use_checkpoint", True)
+        self.onnx_forward(batch, **kwargs)
 
     def postprocess(
         self,
