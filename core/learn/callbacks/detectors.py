@@ -114,7 +114,7 @@ class GradientDetectorCallback(TrainerCallback):
         for k, p in m.named_parameters():
             p_grad = p.grad
             if p_grad is None:
-                continue
+                continue  # pragma: no cover
             if torch.isnan(p_grad).any().item():
                 record("NaN", p_grad)
                 need_raise = True

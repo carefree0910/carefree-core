@@ -505,6 +505,8 @@ class TestWeightsStrategy(unittest.TestCase):
         self.assertIsNone(weights)
 
     def test_decay_visualize(self) -> None:
+        with self.assertRaises(RuntimeError):
+            WeightsStrategy(None).visualize()
         ws = WeightsStrategy("linear_decay")
         try:
             import matplotlib.pyplot

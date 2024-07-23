@@ -1074,6 +1074,12 @@ class TestBatchManager(unittest.TestCase):
         np.testing.assert_allclose(batches[1][1], np.arange(2, 4) + 1)
         np.testing.assert_allclose(batches[2][0], np.arange(4, 5))
         np.testing.assert_allclose(batches[2][1], np.arange(4, 5) + 1)
+        bm = batch_manager(np.arange(5), batch_size=2)
+        batches = list(bm)
+        self.assertEqual(len(batches), 3)
+        np.testing.assert_allclose(batches[0], np.arange(2))
+        np.testing.assert_allclose(batches[1], np.arange(2, 4))
+        np.testing.assert_allclose(batches[2], np.arange(4, 5))
 
     def test_len(self):
         self.assertEqual(len(self.batch_manager), 3)
