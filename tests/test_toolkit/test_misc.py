@@ -228,7 +228,7 @@ class TestMisc(unittest.TestCase):
                 tmp_dir, (datetime.now() - timedelta(31)).strftime(TIME_FORMAT)
             )
             os.makedirs(old_dir)
-            new_workspace = prepare_workspace_from(tmp_dir)
+            new_workspace = prepare_workspace_from(tmp_dir, timeout=timedelta(30))
             self.assertFalse(os.path.exists(old_dir))
             self.assertTrue(os.path.exists(new_workspace))
 

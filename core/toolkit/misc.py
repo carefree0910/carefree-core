@@ -307,11 +307,11 @@ def get_num_positional_args(fn: Callable) -> Union[int, float]:
 def prepare_workspace_from(
     workspace: str,
     *,
-    timeout: timedelta = timedelta(30),
+    timeout: Optional[timedelta] = None,
     make: bool = True,
 ) -> str:
     current_time = datetime.now()
-    if os.path.isdir(workspace):
+    if timeout is not None and os.path.isdir(workspace):
         for stuff in os.listdir(workspace):
             if not os.path.isdir(os.path.join(workspace, stuff)):
                 continue  # pragma: no cover
