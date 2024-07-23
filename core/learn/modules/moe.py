@@ -10,6 +10,7 @@ from torch import Tensor
 from typing import Any
 from typing import List
 from typing import Type
+from typing import Tuple
 from typing import TypeVar
 from typing import Callable
 from typing import Optional
@@ -48,7 +49,7 @@ def register_moe_router(name: str, **kwargs: Any) -> Callable[[TRouter], TRouter
 
 
 def build_moe_router(name: str, *, config: TConfig = None, **kwargs: Any) -> IMoERouter:
-    return moe_routers.build(name, config=config, **kwargs)
+    return moe_routers.build(name, config=config, **kwargs)  # type: ignore
 
 
 @register_moe_router("basic")
@@ -85,7 +86,7 @@ class MoEBasicRouter(IMoERouter):
 
 class MoEDispatchOutputs(NamedTuple):
     gates: Tensor
-    inputs: List[Tensor]
+    inputs: Tuple[Tensor, ...]
     indices: Tensor
     gates_gahtered: Tensor
     load: Tensor

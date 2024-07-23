@@ -7,6 +7,7 @@ from typing import Union
 from typing import Optional
 from typing import NamedTuple
 from typing import TYPE_CHECKING
+from typing import no_type_check
 from dataclasses import dataclass
 
 from .array import to_torch
@@ -45,6 +46,7 @@ def to_rgb(image: "TImage", color: Tuple[int, int, int] = (255, 255, 255)) -> "T
     return background
 
 
+@no_type_check
 def to_uint8(normalized_img: TArray) -> TArray:
     import torch
     import numpy as np

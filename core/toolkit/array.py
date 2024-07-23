@@ -9,6 +9,7 @@ from typing import Callable
 from typing import Optional
 from typing import NamedTuple
 from typing import TYPE_CHECKING
+from typing import no_type_check
 from collections import Counter
 
 from .misc import to_path
@@ -55,6 +56,7 @@ def is_real_numeric(arr: arr_type) -> bool:
     return is_float(arr) or is_int(arr)
 
 
+@no_type_check
 def sigmoid(arr: TArray) -> TArray:
     import torch
     import numpy as np
@@ -64,6 +66,7 @@ def sigmoid(arr: TArray) -> TArray:
     return torch.sigmoid(arr)
 
 
+@no_type_check
 def softmax(arr: TArray) -> TArray:
     import numpy as np
     import torch.nn.functional as F
@@ -75,14 +78,16 @@ def softmax(arr: TArray) -> TArray:
     return F.softmax(arr, dim=1)
 
 
+@no_type_check
 def l2_normalize(arr: TArray) -> TArray:
     import numpy as np
 
     if isinstance(arr, np.ndarray):
         return arr / np.linalg.norm(arr, axis=-1, keepdims=True)
-    return arr / arr.norm(dim=-1, keepdim=True)  # type: ignore
+    return arr / arr.norm(dim=-1, keepdim=True)
 
 
+@no_type_check
 def normalize(
     arr: TArray,
     *,
@@ -104,7 +109,7 @@ def normalize(
         arr_mean, arr_std = arr.mean(axis=0), arr.std(axis=0)
         std = np.maximum(eps, arr_std)
     else:
-        arr_mean, arr_std = arr.mean(dim=0), arr.std(dim=0)  # type: ignore
+        arr_mean, arr_std = arr.mean(dim=0), arr.std(dim=0)
         std = torch.clip(arr_std, min=eps)
     out = (arr - arr_mean) / std
     if not return_stats:
@@ -122,6 +127,7 @@ def recover_normalize_from(arr: TArray, stats: Dict[str, Any]) -> TArray:
     return arr * std + mean
 
 
+@no_type_check
 def min_max_normalize(
     arr: TArray,
     *,
@@ -143,7 +149,7 @@ def min_max_normalize(
         arr_min, arr_max = arr.min(axis=0), arr.max(axis=0)
         diff = np.maximum(eps, arr_max - arr_min)
     else:
-        arr_min, arr_max = arr.min(dim=0).values, arr.max(dim=0).values  # type: ignore
+        arr_min, arr_max = arr.min(dim=0).values, arr.max(dim=0).values
         diff = torch.clip(arr_max - arr_min, min=eps)
     out = (arr - arr_min) / diff
     if not return_stats:
@@ -161,6 +167,7 @@ def recover_min_max_normalize_from(arr: TArray, stats: Dict[str, Any]) -> TArray
     return arr * diff + arr_min
 
 
+@no_type_check
 def quantile_normalize(
     arr: TArray,
     *,
@@ -183,8 +190,8 @@ def quantile_normalize(
         arr_min = quantile_fn(arr, q)
         arr_max = quantile_fn(arr, 1.0 - q)
     else:
-        arr_min = quantile_fn(arr, q, **kw)  # type: ignore
-        arr_max = quantile_fn(arr, 1.0 - q, **kw)  # type: ignore
+        arr_min = quantile_fn(arr, q, **kw)
+        arr_max = quantile_fn(arr, 1.0 - q, **kw)
     # diff
     if global_norm:
         diff = max(eps, arr_max - arr_min)
@@ -227,11 +234,12 @@ def clip_normalize(arr: TArray) -> TArray:
 
 
 # will return at least 2d
+@no_type_check
 def squeeze(arr: TArray) -> TArray:
     n = arr.shape[0]
-    arr = arr.squeeze()  # type: ignore
+    arr = arr.squeeze()
     if n == 1:
-        arr = arr[None, ...]  # type: ignore
+        arr = arr[None, ...]
     return arr
 
 
@@ -276,6 +284,7 @@ def to_device(
     return {k: to(v) for k, v in batch.items()}
 
 
+@no_type_check
 def iou(logits: TArray, labels: TArray) -> TArray:
     import numpy as np
 
@@ -284,7 +293,7 @@ def iou(logits: TArray, labels: TArray) -> TArray:
     if num_classes == 1:
         heat_map = sigmoid(logits)
     elif num_classes == 2:
-        heat_map = softmax(logits)[:, [1]]  # type: ignore
+        heat_map = softmax(logits)[:, [1]]
     else:
         raise ValueError("`IOU` only supports binary situations")
     intersect = heat_map * labels
@@ -293,6 +302,7 @@ def iou(logits: TArray, labels: TArray) -> TArray:
     return intersect.sum(**kwargs) / union.sum(**kwargs)
 
 
+@no_type_check
 def corr(
     predictions: TArray,
     target: TArray,

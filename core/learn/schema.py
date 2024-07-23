@@ -198,6 +198,10 @@ class IDataset(Dataset):
     """
 
     @abstractmethod
+    def __len__(self) -> int:
+        """this method should return the number of samples of the dataset"""
+
+    @abstractmethod
     def __getitems__(self, indices: List[int]) -> Any:
         """this method should return a collated batch of data"""
 
@@ -224,7 +228,7 @@ class DataLoader(TorchDataLoader):
     dataset: IDataset
     for_inference: bool
 
-    def __iter__(self) -> Iterator[tensor_dict_type]:
+    def __iter__(self) -> Iterator[tensor_dict_type]:  # type: ignore
         self.dataset.reset(for_inference=self.for_inference)
         for batch in super().__iter__():
             yield self.data.process_batch(batch, for_inference=self.for_inference)
@@ -556,7 +560,7 @@ class IData(  # type: ignore
             sampler = None
         else:
             shuffle = False
-            sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
+            sampler = WeightedRandomSampler(sample_weights, len(sample_weights))  # type: ignore
         loader_configs = shallow_copy_dict(self.config.loader_configs or {})
         if is_validation and self.config.valid_loader_configs is not None:
             valid_loader_configs = shallow_copy_dict(self.config.valid_loader_configs)
@@ -657,7 +661,7 @@ class IData(  # type: ignore
                 "did you forget to call the `fit` method first?"
             )
         datasets = self.to_datasets(self.bundle, for_inference=for_inference)
-        self.train_dataset, self.valid_dataset = datasets
+        self.train_dataset, self.valid_dataset = datasets  # type: ignore
         train_loader = self.to_loader(
             self.train_dataset,
             shuffle=self.config.shuffle_train,
@@ -1067,7 +1071,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                 if not enable:
                     return None
                 self.m = model.m
-                model.m = ckpt_fw
+                model.m = ckpt_fw  # type: ignore
 
             def __exit__(self, *args: Any) -> None:
                 if not enable:

@@ -149,7 +149,7 @@ class Inference(IInference):
             metric_outputs_list: List[MetricsOutputs] = []
             loss_tensors_lists: Dict[str, List[Tensor]] = {}
 
-            device = None if self.model is None else get_device(self.model)
+            device = None if self.model is None else get_device(self.model.m)
             iterator = enumerate(loader)
             if use_tqdm:
                 iterator = tqdm(iterator, **tqdm_kwargs)

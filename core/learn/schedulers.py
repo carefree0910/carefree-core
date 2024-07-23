@@ -10,6 +10,7 @@ from typing import Type
 from typing import TypeVar
 from typing import Callable
 from typing import Optional
+from typing import no_type_check
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.optim.lr_scheduler import StepLR
@@ -66,6 +67,7 @@ class LinearInverseScheduler(LRScheduler):
         self.decay = decay
         super().__init__(optimizer)
 
+    @no_type_check
     def get_lr(self) -> List[float]:
         denom = 1.0 + self.decay * self._step_count
         return [base_lr / denom for base_lr in self.base_lrs]
@@ -84,9 +86,10 @@ class StepLRWithFloor(StepLR):
         self.lr_floor = lr_floor
         super().__init__(optimizer, step_size, gamma, last_epoch)
 
-    def get_lr(self) -> List[float]:  # type: ignore
+    @no_type_check
+    def get_lr(self) -> List[float]:
         lrs = super().get_lr()
-        return [max(lr, self.lr_floor) for lr in lrs]  # type: ignore
+        return [max(lr, self.lr_floor) for lr in lrs]
 
 
 @register_scheduler("exponential")
@@ -101,15 +104,17 @@ class ExponentialLRWithFloor(ExponentialLR):
         self.lr_floor = lr_floor
         super().__init__(optimizer, gamma, last_epoch)
 
-    def get_lr(self) -> List[float]:  # type: ignore
+    @no_type_check
+    def get_lr(self) -> List[float]:
         lrs = super().get_lr()
-        return [max(lr, self.lr_floor) for lr in lrs]  # type: ignore
+        return [max(lr, self.lr_floor) for lr in lrs]
 
 
 @register_scheduler("plateau")
 class ReduceLROnPlateauWithGet(ReduceLROnPlateau):
+    @no_type_check
     def get_lr(self) -> List[float]:
-        return [group["lr"] for group in self.optimizer.param_groups]  # type: ignore
+        return [group["lr"] for group in self.optimizer.param_groups]
 
     def get_last_lr(self) -> List[float]:
         return self.get_lr()
@@ -144,21 +149,21 @@ class WarmupScheduler(LRScheduler):
     def lr_multiplier_func(self) -> Callable[[float], float]:
         return lambda lr: lr * self.multiplier
 
-    def get_lr(self) -> List[float]:  # type: ignore
-        if self.last_epoch > self.warmup_step:  # type: ignore
+    @no_type_check
+    def get_lr(self) -> List[float]:
+        if self.last_epoch > self.warmup_step:
             if not self.finished_warmup:
                 self.finished_warmup = True
-                base_lrs = list(
-                    map(self.lr_multiplier_func, self.base_lrs)  # type: ignore
-                )
-                self.scheduler_afterwards.base_lrs = base_lrs  # type: ignore
-            return self.scheduler_afterwards.get_lr()  # type: ignore
-        return list(map(self.lr_warmup_func, self.base_lrs))  # type: ignore
+                base_lrs = list(map(self.lr_multiplier_func, self.base_lrs))
+                self.scheduler_afterwards.base_lrs = base_lrs
+            return self.scheduler_afterwards.get_lr()
+        return list(map(self.lr_warmup_func, self.base_lrs))
 
+    @no_type_check
     def get_last_lr(self) -> List[float]:
         if not self.finished_warmup:
-            return super().get_last_lr()  # type: ignore
-        return self.scheduler_afterwards.get_last_lr()  # type: ignore
+            return super().get_last_lr()
+        return self.scheduler_afterwards.get_last_lr()
 
     def step(self, metrics: Optional[float] = None) -> None:
         if not self.finished_warmup or self.scheduler_afterwards is None:

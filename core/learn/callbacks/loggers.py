@@ -3,6 +3,7 @@ import wandb
 from typing import Any
 from typing import Dict
 from typing import List
+from typing import Literal
 from typing import Optional
 
 from ..schema import ITrainer
@@ -29,7 +30,7 @@ class WandBCallback(TrainerCallback):
         name: Optional[str] = None,
         notes: Optional[str] = None,
         relogin: Optional[bool] = None,
-        anonymous: str = "allow",
+        anonymous: Literal["must", "allow", "never"] = "allow",
         log_histograms: bool = True,
         log_artifacts: bool = False,
     ):
@@ -53,7 +54,7 @@ class WandBCallback(TrainerCallback):
     def initialize(self) -> None:
         if self.is_local_rank_0:
             wandb.login(anonymous=self._anonymous, relogin=self._relogin)
-            wandb.init(**self.init_kwargs)
+            wandb.init(**self.init_kwargs)  # type: ignore
 
     def _wandb_step(self, state: TrainerState) -> int:
         step = state.last_step

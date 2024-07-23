@@ -110,7 +110,7 @@ def render_workflow(
         figsize = (fig_w, fig_h)
     plt.figure(figsize=figsize, dpi=dpi)
     box = plt.gca().get_position()
-    plt.gca().set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    plt.gca().set_position((box.x0, box.y0, box.width * 0.8, box.height))
     # map key to indices
     key2idx: Dict[str, int] = {}
     for layer in hierarchy:

@@ -79,7 +79,7 @@ class Point:
     def __sub__(self, other: "Point") -> "Point":
         return Point(self.x - other.x, self.y - other.y)
 
-    def __rmatmul__(self, other: "Matrix2D") -> "Point":
+    def __rmatmul__(self, other: "Matrix2D") -> "Point":  # type: ignore
         x, y = self.x, self.y
         a, b, c, d, e, f = other.tuple
         return Point(x=a * x + c * y + e, y=b * x + d * y + f)

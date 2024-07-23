@@ -13,7 +13,6 @@ from PIL import Image
 from torch import device
 from torch import Tensor
 from typing import Any
-from typing import Set
 from typing import Dict
 from typing import List
 from typing import Tuple
@@ -22,13 +21,15 @@ from typing import TypeVar
 from typing import Callable
 from typing import Optional
 from typing import NamedTuple
+from typing import ContextManager
+from typing import no_type_check
 from pathlib import Path
 from contextlib import nullcontext
 from collections import defaultdict
 from collections import OrderedDict
 from onnxruntime import InferenceSession
 from torch.optim import Optimizer
-from matplotlib.pyplot import figure as Figure
+from matplotlib.figure import Figure
 from safetensors.torch import load_file
 
 from .constants import INPUT_KEY
@@ -194,7 +195,7 @@ def show_or_save(
     export_path : {None, str}
     * If None, the figure will be shown.
     * If str, it represents the path where the figure should be saved to.
-    fig : {None, plt.Figure}
+    fig : {None, Figure}
     * If None, default figure contained in plt will be executed.
     * If plt.figure, it will be executed
 
@@ -362,6 +363,8 @@ class WeightsStrategy:
         n = 1000
         x = np.linspace(0, 1, n)
         y = self(n)
+        if y is None:
+            raise RuntimeError("no strategy is set")
         plt.figure()
         plt.plot(x, y)
         show_or_save(export_path)
@@ -432,7 +435,7 @@ def get_tensors(inp: Union[TPath, tensor_dict_type]) -> tensor_dict_type:
         raise ValueError(f"unrecognized input type ({type(inp)})")
     if "state_dict" in inp:
         inp = inp["state_dict"]
-    return shallow_copy_dict(inp)
+    return shallow_copy_dict(inp)  # type: ignore
 
 
 def get_dtype(m: nn.Module) -> torch.dtype:
@@ -687,6 +690,7 @@ def safe_clip_(net: Tensor) -> None:
     net.clamp_(finfo.min, finfo.max)
 
 
+@no_type_check
 def insert_intermediate_dims(net: TArray, ref: TArray) -> TArray:
     """
     Insert intermediate dimensions into a tensor or numpy array.
@@ -722,9 +726,10 @@ def insert_intermediate_dims(net: TArray, ref: TArray) -> TArray:
     new_shape = net.shape[0], *((1,) * dim_diff), net.shape[1]
     if isinstance(net, Tensor):
         return net.view(*new_shape)
-    return net.reshape(new_shape)  # type: ignore
+    return net.reshape(new_shape)
 
 
+@no_type_check
 def fix_denormal_states(
     states: tensor_dict_type,
     *,
@@ -1418,6 +1423,8 @@ class mode_context:
     ):
         self._to_train = to_train
         self._module, self._training = module, module.training
+        self._grad_context: ContextManager
+        self._inference_context: ContextManager
         if use_grad is None:
             self._grad_context = nullcontext()
         else:

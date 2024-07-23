@@ -57,11 +57,11 @@ class ArrayDictDataset(IDataset):
 @IData.register("array")
 class ArrayData(IData["ArrayData", ArrayDataset]):
     def to_datasets(self, bundle: DataBundle, *, for_inference: Optional[bool]) -> TDs:
-        train_dataset = ArrayDataset(bundle.x_train, bundle.y_train)
+        train_dataset = ArrayDataset(bundle.x_train, bundle.y_train)  # type: ignore
         if bundle.x_valid is None:
             valid_dataset = None
         else:
-            valid_dataset = ArrayDataset(bundle.x_valid, bundle.y_valid)
+            valid_dataset = ArrayDataset(bundle.x_valid, bundle.y_valid)  # type: ignore
         return train_dataset, valid_dataset
 
 

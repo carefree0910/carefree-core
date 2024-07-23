@@ -211,9 +211,9 @@ class Trainer(ITrainer):
         n_optim = len(optimizers)
         optim_keys = sorted(optimizers)
         train_loader, valid_loader = data.build_loaders()
-        prepared = prepare_dataloaders(self.accelerator, train_loader, valid_loader)
-        distributed_train_loader = prepared[0]
-        distributed_valid_loader = prepared[1]
+        prepared_lds = prepare_dataloaders(self.accelerator, train_loader, valid_loader)
+        distributed_train_loader = prepared_lds[0]
+        distributed_valid_loader = prepared_lds[1]
         assert distributed_train_loader is not None
         prepared = self.accelerator.prepare(
             *model.all_modules,
@@ -222,7 +222,7 @@ class Trainer(ITrainer):
         self.state = TrainerState(
             num_epoch=self.config.num_epoch,
             num_steps=self.config.num_steps,
-            batch_size=train_loader.batch_size,
+            batch_size=train_loader.batch_size,  # type: ignore
             loader_length=len(distributed_train_loader),
             **(self.config.state_config or {}),
         )
@@ -512,7 +512,7 @@ class Trainer(ITrainer):
             window = max(3, self.state.num_step_per_snapshot)
             for k, v in step_outputs.loss_tensors.items():
                 k_inc = self.loss_incrementers.setdefault(k, Incrementer(window))
-                k_inc.update(v)
+                k_inc.update(v)  # type: ignore
         if self.state.should_monitor:
             # get metrics
             valid_portion = self.config.valid_portion

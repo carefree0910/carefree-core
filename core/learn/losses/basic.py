@@ -135,7 +135,7 @@ class MultiLoss(ILoss):
             k_losses = loss_fn(forward_results, batch, state)
             if isinstance(k_losses, Tensor):
                 losses[k] = k_losses
-                loss += self.weights[k] * k_losses
+                loss += self.weights[k] * k_losses  # type: ignore
             else:
                 k_loss = k_losses.pop(LOSS_KEY)
                 loss += self.weights[k] * k_loss

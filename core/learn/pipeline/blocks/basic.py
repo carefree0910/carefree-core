@@ -159,7 +159,7 @@ class ExtractStateInfoBlock(TryLoadBlock):
             raise ValueError(f"`data` should be provided for `ExtractStateInfoBlock`")
         # from loader
         loader = self.data.build_loaders()[0]
-        batch_size = loader.batch_size
+        batch_size: int = loader.batch_size  # type: ignore
         ddp_info = get_ddp_info()
         if ddp_info is None:
             num_batches = len(loader)

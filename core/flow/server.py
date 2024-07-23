@@ -85,7 +85,7 @@ def register_api(app: FastAPI, t_node: Type[Node], focus: str) -> None:
     @app.post(
         endpoint,
         name=name,
-        responses=get_responses(output_model),
+        responses=get_responses(output_model),  # type: ignore
         description=description,
     )
     async def _(data: input_model) -> output_model:  # type: ignore
@@ -126,7 +126,7 @@ class ServerStatus(BaseModel):
 
 
 def register_server_api(app: FastAPI) -> None:
-    @app.get("/server_status", responses=get_responses(ServerStatus))
+    @app.get("/server_status", responses=get_responses(ServerStatus))  # type: ignore
     async def server_status() -> ServerStatus:
         return ServerStatus(num_nodes=len(use_all_t_nodes()))
 

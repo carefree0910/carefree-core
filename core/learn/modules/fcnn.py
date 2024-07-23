@@ -81,7 +81,7 @@ class FCNN(nn.Module):
                     )
                 )
             else:
-                i_blocks = [nn.Linear(input_dim, hidden_unit, bias)]
+                i_blocks: List[nn.Module] = [nn.Linear(input_dim, hidden_unit, bias)]
                 if batch_norm:
                     i_blocks.append(BN(hidden_unit))
                 i_blocks.append(build_activation(activation))

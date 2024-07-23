@@ -480,7 +480,7 @@ class PipelineSerializer:
             if loader_sample is None:
                 msg = "either `input_sample` or `loader_sample` should be provided"
                 raise ValueError(msg)
-            input_sample = loader_sample.get_input_sample(get_device(model))
+            input_sample = loader_sample.get_input_sample(get_device(model.m))
         model.to_onnx(
             export_file,
             input_sample,
