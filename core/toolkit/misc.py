@@ -885,7 +885,7 @@ class DataClassBase:
                 return {k: _to_item(v) for k, v in ins.items()}
             if isinstance(ins, list):
                 return [_to_item(item) for item in ins]
-            if is_dataclass(ins):
+            if is_dataclass(ins) and not isinstance(ins, type):
                 return asdict(ins)
             return ins
 
