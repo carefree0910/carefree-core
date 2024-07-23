@@ -99,9 +99,9 @@ class GradientDetectorCallback(TrainerCallback):
         loss_res: TrainStepLoss,
         update: bool,
     ) -> None:
-        def record(msg: str) -> None:
+        def record(msg: str, grad: torch.Tensor) -> None:
             errors[k] = msg
-            err_grads[k] = p.grad
+            err_grads[k] = grad
             err_parameters[k] = p
 
         m = trainer.model.m
@@ -112,16 +112,19 @@ class GradientDetectorCallback(TrainerCallback):
         debug_folder = Path(trainer.workspace) / "debugging" / str(trainer.state.step)
         need_raise = False
         for k, p in m.named_parameters():
-            if torch.isnan(p.grad).any().item():
-                record("NaN")
+            p_grad = p.grad
+            if p_grad is None:
+                continue
+            if torch.isnan(p_grad).any().item():
+                record("NaN", p_grad)
                 need_raise = True
-            elif torch.isinf(p.grad).any().item():
-                record("Inf")
+            elif torch.isinf(p_grad).any().item():
+                record("Inf", p_grad)
                 need_raise = True
             else:
-                max_grad = torch.abs(p.grad).max().item()
+                max_grad = torch.abs(p_grad).max().item()
                 if max_grad >= self.threshold:
-                    record(f"Too Large ({max_grad})")
+                    record(f"Too Large ({max_grad})", p_grad)
         if errors:
             debug_folder.mkdir(exist_ok=True, parents=True)
             appendix = dump_problematic(
