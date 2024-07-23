@@ -99,7 +99,7 @@ from typing import Optional
 from accelerate import Accelerator
 from tqdm.autonotebook import tqdm
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import _LRScheduler
+from torch.optim.lr_scheduler import LRScheduler
 
 from .schema import device_type
 from .schema import weighted_loss_score

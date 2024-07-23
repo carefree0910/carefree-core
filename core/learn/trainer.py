@@ -15,7 +15,7 @@ from accelerate import DataLoaderConfiguration
 from tqdm.autonotebook import tqdm
 from torch.optim import Optimizer
 from torch.profiler import profile
-from torch.optim.lr_scheduler import _LRScheduler
+from torch.optim.lr_scheduler import LRScheduler
 
 from .schema import device_type
 from .schema import prepare_dataloaders
@@ -154,7 +154,7 @@ class Trainer(ITrainer):
         metrics: Optional[IMetric],
         inference: IInference,
         optimizers: Dict[str, Optimizer],
-        schedulers: Dict[str, Optional[_LRScheduler]],
+        schedulers: Dict[str, Optional[LRScheduler]],
         monitors: List[TrainerMonitor],
         callbacks: List[TrainerCallback],
         schedulers_requires_metric: Set[str],

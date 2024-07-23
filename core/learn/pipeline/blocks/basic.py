@@ -21,7 +21,7 @@ from torch.optim import Optimizer
 from torch.profiler import profile
 from torch.profiler import schedule
 from accelerate.utils import gather_object
-from torch.optim.lr_scheduler import _LRScheduler
+from torch.optim.lr_scheduler import LRScheduler
 
 from .utils import TryLoadBlock
 from .utils import InjectDefaultsMixin
@@ -412,7 +412,7 @@ class OptimizerSettings(DataClassBase):
 class BuildOptimizersBlock(InjectDefaultsMixin, Block):
     config: Config
     optimizers: Dict[str, Optimizer]
-    schedulers: Dict[str, Optional[_LRScheduler]]
+    schedulers: Dict[str, Optional[LRScheduler]]
     schedulers_requires_metric: Set[str]
 
     def build(self, config: Config) -> None:

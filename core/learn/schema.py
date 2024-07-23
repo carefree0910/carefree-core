@@ -36,7 +36,7 @@ from torch.profiler import profile
 from accelerate.utils import PrecisionType
 from accelerate.utils import extract_model_from_parallel
 from torch.cuda.amp import autocast
-from torch.optim.lr_scheduler import _LRScheduler
+from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import Dataset
 from torch.utils.data import WeightedRandomSampler
 from torch.utils.data import DataLoader as TorchDataLoader
@@ -1890,7 +1890,7 @@ class ITrainer(ABC):
     monitors: List[TrainerMonitor]
     callbacks: List[TrainerCallback]
     optimizers: Dict[str, Optimizer]
-    schedulers: Dict[str, Optional[_LRScheduler]]
+    schedulers: Dict[str, Optional[LRScheduler]]
     accelerator: Accelerator
     pipeline: ITrainerPipeline
 
@@ -1929,7 +1929,7 @@ class ITrainer(ABC):
         metrics: Optional[IMetric],
         inference: IInference,
         optimizers: Dict[str, Optimizer],
-        schedulers: Dict[str, Optional[_LRScheduler]],
+        schedulers: Dict[str, Optional[LRScheduler]],
         monitors: List[TrainerMonitor],
         callbacks: List[TrainerCallback],
         schedulers_requires_metric: Set[str],
