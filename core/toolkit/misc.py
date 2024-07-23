@@ -197,6 +197,7 @@ def wait_for_everyone() -> None:
 
 
 T = TypeVar("T")
+TGrouped = List[Tuple[T, ...]]
 FAny = TypeVar("FAny", bound=Callable[..., Any])
 FNone = TypeVar("FNone", bound=Callable[..., None])
 T_co = TypeVar("T_co", covariant=True)
@@ -546,16 +547,24 @@ def truncate_string_to_length(string: str, length: int) -> str:
     return f"{head}{'.' * (length - 2 * half_length)}{tail}"
 
 
-def grouped(iterable: Iterable, n: int, *, keep_tail: bool = False) -> List[tuple]:
+def grouped(iterable: Iterable[T], n: int, *, keep_tail: bool = False) -> TGrouped:
     """Group an iterable every `n` elements."""
 
+    chunks = []
+    sub_chunk = []
+    for i, item in enumerate(iterable):
+        sub_chunk.append(item)
+        if i % n == n - 1:
+            chunks.append(tuple(sub_chunk))
+            sub_chunk = []
     if not keep_tail:
-        return list(zip(*[iter(iterable)] * n))
-    with batch_manager(iterable, batch_size=n, max_batch_size=n) as manager:
-        return [tuple(batch) for batch in manager]
+        return chunks
+    if sub_chunk:
+        chunks.append(tuple(sub_chunk))
+    return chunks
 
 
-def grouped_into(iterable: Iterable, n: int) -> List[tuple]:
+def grouped_into(iterable: Iterable[T], n: int) -> TGrouped:
     """Group an iterable into `n` groups."""
 
     elements = list(iterable)
