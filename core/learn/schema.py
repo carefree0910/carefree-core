@@ -1746,7 +1746,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
 
     overall:
 
-       `initialize` -> `before_summary` -> `before_loop` -> training loop -> `finalize`
+       `initialize` -> `after_workspace_prepared` -> `before_summary` -> `before_loop` -> training loop -> `finalize`
 
     * training loop:
 
@@ -1785,6 +1785,9 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
         return is_local_rank_0()
 
     def initialize(self) -> None:
+        pass
+
+    def after_workspace_prepared(self, trainer: "ITrainer") -> None:
         pass
 
     def before_summary(self, trainer: "ITrainer") -> None:

@@ -187,6 +187,8 @@ class Trainer(ITrainer):
         # initialize artifact structure
         if self.is_local_rank_0:
             os.makedirs(self.workspace, exist_ok=True)
+            for callback in callbacks:
+                callback.after_workspace_prepared(self)
             self.metrics_log_path = os.path.join(self.workspace, self.metrics_log_file)
             with open(self.metrics_log_path, "w"):
                 pass
