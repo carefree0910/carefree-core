@@ -344,6 +344,7 @@ class Trainer(ITrainer):
         else:
             loader = distributed_valid_loader or distributed_train_loader
             self.final_results = self.get_metrics(loader, self.config.valid_portion)
+        if self.final_results is not None:
             self.log_with(self.final_results)
         if not has_ckpt:
             if self.final_results is None:
