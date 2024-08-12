@@ -423,8 +423,6 @@ class PipelineSerializer:
         export_folder: str,
         *,
         pack_type: PackType = PackType.INFERENCE,
-        sort_ckpt_by: SortMethod = SortMethod.BEST,
-        target_ckpt_step: Optional[int] = None,
         compress: bool = True,
     ) -> None:
         excludes: Optional[List[Type[Block]]]
@@ -448,26 +446,16 @@ class PipelineSerializer:
             swap_id=swap_id,
             focuses=focuses,
             excludes=excludes,
-            sort_ckpt_by=sort_ckpt_by,
-            target_ckpt_step=target_ckpt_step,
         )
         cls._save(pipeline, export_folder, compress=compress)
 
     @classmethod
-    def pack_and_load_inference(
-        cls,
-        workspace: str,
-        *,
-        sort_ckpt_by: SortMethod = SortMethod.BEST,
-        target_ckpt_step: Optional[int] = None,
-    ) -> InferencePipeline:
+    def pack_and_load_inference(cls, workspace: str) -> InferencePipeline:
         with TemporaryDirectory() as tmp_folder:
             cls.pack(
                 workspace,
                 export_folder=tmp_folder,
                 pack_type=PackType.INFERENCE,
-                sort_ckpt_by=sort_ckpt_by,
-                target_ckpt_step=target_ckpt_step,
                 compress=False,
             )
             return cls._load_inference(tmp_folder)
@@ -479,8 +467,6 @@ class PipelineSerializer:
         export_file: str = "model.onnx",
         dynamic_axes: Optional[Union[List[int], Dict[int, str]]] = None,
         *,
-        sort_ckpt_by: SortMethod = SortMethod.BEST,
-        target_ckpt_step: Optional[int] = None,
         input_sample: Optional[tensor_dict_type] = None,
         loader_sample: Optional[DataLoader] = None,
         opset: int = 11,
@@ -489,11 +475,7 @@ class PipelineSerializer:
         verbose: bool = True,
         **kwargs: Any,
     ) -> InferencePipeline:
-        p = cls.pack_and_load_inference(
-            workspace,
-            sort_ckpt_by=sort_ckpt_by,
-            target_ckpt_step=target_ckpt_step,
-        )
+        p = cls.pack_and_load_inference(workspace)
         model = p.build_model.model
         if input_sample is None:
             if loader_sample is None:
@@ -514,18 +496,9 @@ class PipelineSerializer:
 
     @classmethod
     def pack_scripted(
-        cls,
-        workspace: str,
-        export_file: str = "model.pt",
-        *,
-        sort_ckpt_by: SortMethod = SortMethod.BEST,
-        target_ckpt_step: Optional[int] = None,
+        cls, workspace: str, export_file: str = "model.pt"
     ) -> InferencePipeline:
-        p = cls.pack_and_load_inference(
-            workspace,
-            sort_ckpt_by=sort_ckpt_by,
-            target_ckpt_step=target_ckpt_step,
-        )
+        p = cls.pack_and_load_inference(workspace)
         model = torch.jit.script(p.build_model.model.m)
         torch.jit.save(model, export_file)
         return p
@@ -575,51 +548,20 @@ class PipelineSerializer:
         )
 
     @classmethod
-    def load_training(
-        cls,
-        workspace: str,
-        *,
-        sort_ckpt_by: SortMethod = SortMethod.BEST,
-        target_ckpt_step: Optional[int] = None,
-    ) -> TrainingPipeline:
+    def load_training(cls, workspace: str) -> TrainingPipeline:
         folder = os.path.join(workspace, cls.pipeline_folder)
         swap_id = TrainingPipeline.__identifier__
-        return cls._load(  # type: ignore
-            folder,
-            swap_id=swap_id,
-            sort_ckpt_by=sort_ckpt_by,
-            target_ckpt_step=target_ckpt_step,
-        )
+        return cls._load(folder, swap_id=swap_id)  # type: ignore
 
     @classmethod
-    def load_inference(
-        cls,
-        workspace: str,
-        *,
-        sort_ckpt_by: SortMethod = SortMethod.BEST,
-        target_ckpt_step: Optional[int] = None,
-    ) -> InferencePipeline:
+    def load_inference(cls, workspace: str) -> InferencePipeline:
         folder = os.path.join(workspace, cls.pipeline_folder)
-        return cls._load_inference(
-            folder,
-            sort_ckpt_by=sort_ckpt_by,
-            target_ckpt_step=target_ckpt_step,
-        )
+        return cls._load_inference(folder)
 
     @classmethod
-    def load_evaluation(
-        cls,
-        workspace: str,
-        *,
-        sort_ckpt_by: SortMethod = SortMethod.BEST,
-        target_ckpt_step: Optional[int] = None,
-    ) -> EvaluationPipeline:
+    def load_evaluation(cls, workspace: str) -> EvaluationPipeline:
         folder = os.path.join(workspace, cls.pipeline_folder)
-        return cls._load_evaluation(
-            folder,
-            sort_ckpt_by=sort_ckpt_by,
-            target_ckpt_step=target_ckpt_step,
-        )
+        return cls._load_evaluation(folder)
 
     @classmethod
     def self_ensemble_inference(
@@ -701,8 +643,6 @@ class PipelineSerializer:
         swap_id: Optional[str] = None,
         focuses: Optional[List[Type[Block]]] = None,
         excludes: Optional[List[Type[Block]]] = None,
-        sort_ckpt_by: SortMethod = SortMethod.BEST,
-        target_ckpt_step: Optional[int] = None,
     ) -> Pipeline:
         with get_folder(folder) as folder_path:
             # handle info
@@ -730,9 +670,6 @@ class PipelineSerializer:
             pipeline.serialize_folder = folder_path
             pipeline.from_info(info)
             for block in pipeline.blocks:
-                if isinstance(block, SerializeModelBlock):
-                    block.sort_ckpt_by = sort_ckpt_by
-                    block.target_ckpt_step = target_ckpt_step
                 block.load_from(folder_path / block.__identifier__)
             pipeline.after_load()
             # hijacks
@@ -747,16 +684,12 @@ class PipelineSerializer:
         cls,
         folder: TPath,
         excludes: Optional[List[Type[Block]]] = None,
-        sort_ckpt_by: SortMethod = SortMethod.BEST,
-        target_ckpt_step: Optional[int] = None,
     ) -> InferencePipeline:
         return cls._load(  # type: ignore
             folder,
             swap_id=InferencePipeline.__identifier__,
             focuses=InferencePipeline.focuses,
             excludes=excludes,
-            sort_ckpt_by=sort_ckpt_by,
-            target_ckpt_step=target_ckpt_step,
         )
 
     @classmethod
@@ -764,16 +697,12 @@ class PipelineSerializer:
         cls,
         folder: TPath,
         excludes: Optional[List[Type[Block]]] = None,
-        sort_ckpt_by: SortMethod = SortMethod.BEST,
-        target_ckpt_step: Optional[int] = None,
     ) -> EvaluationPipeline:
         return cls._load(  # type: ignore
             folder,
             swap_id=EvaluationPipeline.__identifier__,
             focuses=EvaluationPipeline.focuses,
             excludes=excludes,
-            sort_ckpt_by=sort_ckpt_by,
-            target_ckpt_step=target_ckpt_step,
         )
 
     @classmethod
