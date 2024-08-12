@@ -3,6 +3,7 @@ import json
 import math
 import torch
 
+from enum import Enum
 from typing import Any
 from typing import Set
 from typing import Dict
@@ -55,25 +56,35 @@ from ..toolkit.types import tensor_dict_type
 T_Lo = Optional[DataLoader]
 
 
+class SortMethod(str, Enum):
+    BEST = "best"
+    LATEST = "latest"
+
+
 def get_scores(checkpoint_folder: TPath) -> Dict[str, float]:
-    checkpoint_folder = to_path(checkpoint_folder)
-    scores_path = checkpoint_folder / SCORES_FILE
+    scores_path = to_path(checkpoint_folder) / SCORES_FILE
     if not scores_path.is_file():
         return {}
     with scores_path.open("r") as f:
         return json.load(f)
 
 
-def get_sorted_checkpoints(checkpoint_folder: TPath) -> List[str]:
+def get_sorted_checkpoints(
+    checkpoint_folder: TPath,
+    *,
+    sort_by: SortMethod = SortMethod.BEST,
+) -> List[str]:
     """
-    better checkpoints will be placed earlier,
-    which means `checkpoints[0]` is the best checkpoint
+    'better' checkpoints will be placed earlier, which means `checkpoints[0]` is the 'best' checkpoint
+    > which checkpoint is 'better' is determined by the `sort_by` parameter
     """
 
     scores = get_scores(checkpoint_folder)
     if not scores:
         return []
-    return list(sort_dict_by_value(scores, reverse=True).keys())
+    if sort_by == SortMethod.BEST:
+        return list(sort_dict_by_value(scores, reverse=True).keys())
+    return sorted(scores.keys(), key=lambda k: int(Path(k).stem.split("_")[1]))[::-1]
 
 
 def get_metrics_path(workspace: TPath) -> Path:

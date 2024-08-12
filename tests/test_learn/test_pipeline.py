@@ -228,7 +228,8 @@ class TestPipeline(unittest.TestCase):
         re = pe.predict(test_loader)[cflearn.PREDICTIONS_KEY]
         np.testing.assert_array_almost_equal(r, re)
         states = {k: 0 for k in p.build_model.model.state_dict()}
-        for ckpt_file in cflearn.get_sorted_checkpoints(ckpt_folder)[:3]:
+        ckpt_files = cflearn.get_sorted_checkpoints(ckpt_folder, sort_by="latest")
+        for ckpt_file in ckpt_files[:3]:
             i_states = torch.load(os.path.join(ckpt_folder, ckpt_file))["states"]
             for k, v in i_states.items():
                 states[k] += v
@@ -237,8 +238,15 @@ class TestPipeline(unittest.TestCase):
         p.build_model.model.load_state_dict(states)
         r = p.predict(test_loader)[cflearn.PREDICTIONS_KEY]
         sc = lambda _, d: d
-        pe = self_ensemble(3, workspace, ensemble_weights=True, states_callback=sc)
+        pe = self_ensemble(
+            3,
+            workspace,
+            ensemble_weights=True,
+            states_callback=sc,
+            sort_ckpt_by="latest",
+        )
         re = pe.predict(test_loader)[cflearn.PREDICTIONS_KEY]
+        np.testing.assert_array_almost_equal(r, re)
         cflearn.PipelineSerializer.self_ensemble_evaluation(4, workspace)
         with self.assertRaises(RuntimeError):
             cflearn.PipelineSerializer.self_ensemble_inference(5, workspace)

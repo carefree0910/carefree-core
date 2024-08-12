@@ -50,6 +50,7 @@ from ..schema import DataLoader
 from ..schema import InferenceOutputs
 from ..toolkit import get_device
 from ..toolkit import get_torch_device
+from ..trainer import SortMethod
 from ..trainer import get_scores
 from ..trainer import get_sorted_checkpoints
 from ..constants import LABEL_KEY
@@ -422,6 +423,7 @@ class PipelineSerializer:
         export_folder: str,
         *,
         pack_type: PackType = PackType.INFERENCE,
+        sort_ckpt_by: SortMethod = SortMethod.BEST,
         compress: bool = True,
     ) -> None:
         excludes: Optional[List[Type[Block]]]
@@ -445,16 +447,23 @@ class PipelineSerializer:
             swap_id=swap_id,
             focuses=focuses,
             excludes=excludes,
+            sort_ckpt_by=sort_ckpt_by,
         )
         cls._save(pipeline, export_folder, compress=compress)
 
     @classmethod
-    def pack_and_load_inference(cls, workspace: str) -> InferencePipeline:
+    def pack_and_load_inference(
+        cls,
+        workspace: str,
+        *,
+        sort_ckpt_by: SortMethod = SortMethod.BEST,
+    ) -> InferencePipeline:
         with TemporaryDirectory() as tmp_folder:
             cls.pack(
                 workspace,
                 export_folder=tmp_folder,
                 pack_type=PackType.INFERENCE,
+                sort_ckpt_by=sort_ckpt_by,
                 compress=False,
             )
             return cls._load_inference(tmp_folder)
@@ -466,6 +475,7 @@ class PipelineSerializer:
         export_file: str = "model.onnx",
         dynamic_axes: Optional[Union[List[int], Dict[int, str]]] = None,
         *,
+        sort_ckpt_by: SortMethod = SortMethod.BEST,
         input_sample: Optional[tensor_dict_type] = None,
         loader_sample: Optional[DataLoader] = None,
         opset: int = 11,
@@ -474,7 +484,7 @@ class PipelineSerializer:
         verbose: bool = True,
         **kwargs: Any,
     ) -> InferencePipeline:
-        p = cls.pack_and_load_inference(workspace)
+        p = cls.pack_and_load_inference(workspace, sort_ckpt_by=sort_ckpt_by)
         model = p.build_model.model
         if input_sample is None:
             if loader_sample is None:
@@ -498,8 +508,10 @@ class PipelineSerializer:
         cls,
         workspace: str,
         export_file: str = "model.pt",
+        *,
+        sort_ckpt_by: SortMethod = SortMethod.BEST,
     ) -> InferencePipeline:
-        p = cls.pack_and_load_inference(workspace)
+        p = cls.pack_and_load_inference(workspace, sort_ckpt_by=sort_ckpt_by)
         model = torch.jit.script(p.build_model.model.m)
         torch.jit.save(model, export_file)
         return p
@@ -512,6 +524,7 @@ class PipelineSerializer:
         device: device_type = None,
         num_picked: Optional[Union[int, float]] = None,
         states_callback: states_callback_type = None,
+        sort_ckpt_by: SortMethod = SortMethod.BEST,
     ) -> InferencePipeline:
         src_folders = [os.path.join(w, cls.pipeline_folder) for w in workspaces]
         return cls._fuse_multiple(
@@ -520,6 +533,7 @@ class PipelineSerializer:
             device,
             num_picked,
             states_callback,
+            sort_ckpt_by,
         )
 
     @classmethod
@@ -530,6 +544,7 @@ class PipelineSerializer:
         device: device_type = None,
         num_picked: Optional[Union[int, float]] = None,
         states_callback: states_callback_type = None,
+        sort_ckpt_by: SortMethod = SortMethod.BEST,
     ) -> EvaluationPipeline:
         src_folders = [os.path.join(w, cls.pipeline_folder) for w in workspaces]
         return cls._fuse_multiple(  # type: ignore
@@ -538,22 +553,39 @@ class PipelineSerializer:
             device,
             num_picked,
             states_callback,
+            sort_ckpt_by,
         )
 
     @classmethod
-    def load_training(cls, workspace: str) -> TrainingPipeline:
+    def load_training(
+        cls,
+        workspace: str,
+        *,
+        sort_ckpt_by: SortMethod = SortMethod.BEST,
+    ) -> TrainingPipeline:
         folder = os.path.join(workspace, cls.pipeline_folder)
-        return cls._load(folder, swap_id=TrainingPipeline.__identifier__)  # type: ignore
+        swap_id = TrainingPipeline.__identifier__
+        return cls._load(folder, swap_id=swap_id, sort_ckpt_by=sort_ckpt_by)  # type: ignore
 
     @classmethod
-    def load_inference(cls, workspace: str) -> InferencePipeline:
+    def load_inference(
+        cls,
+        workspace: str,
+        *,
+        sort_ckpt_by: SortMethod = SortMethod.BEST,
+    ) -> InferencePipeline:
         folder = os.path.join(workspace, cls.pipeline_folder)
-        return cls._load_inference(folder)
+        return cls._load_inference(folder, sort_ckpt_by=sort_ckpt_by)
 
     @classmethod
-    def load_evaluation(cls, workspace: str) -> EvaluationPipeline:
+    def load_evaluation(
+        cls,
+        workspace: str,
+        *,
+        sort_ckpt_by: SortMethod = SortMethod.BEST,
+    ) -> EvaluationPipeline:
         folder = os.path.join(workspace, cls.pipeline_folder)
-        return cls._load_evaluation(folder)
+        return cls._load_evaluation(folder, sort_ckpt_by=sort_ckpt_by)
 
     @classmethod
     def self_ensemble_inference(
@@ -564,6 +596,7 @@ class PipelineSerializer:
         ensemble_weights: bool = False,
         device: device_type = None,
         states_callback: states_callback_type = None,
+        sort_ckpt_by: SortMethod = SortMethod.BEST,
         verbose: bool = True,
     ) -> InferencePipeline:
         return cls._self_ensemble(
@@ -573,6 +606,7 @@ class PipelineSerializer:
             ensemble_weights,
             device,
             states_callback,
+            sort_ckpt_by,
             verbose,
         )
 
@@ -585,6 +619,7 @@ class PipelineSerializer:
         ensemble_weights: bool = False,
         device: device_type = None,
         states_callback: states_callback_type = None,
+        sort_ckpt_by: SortMethod = SortMethod.BEST,
         verbose: bool = True,
     ) -> EvaluationPipeline:
         return cls._self_ensemble(  # type: ignore
@@ -594,6 +629,7 @@ class PipelineSerializer:
             ensemble_weights,
             device,
             states_callback,
+            sort_ckpt_by,
             verbose,
         )
 
@@ -631,6 +667,7 @@ class PipelineSerializer:
         swap_id: Optional[str] = None,
         focuses: Optional[List[Type[Block]]] = None,
         excludes: Optional[List[Type[Block]]] = None,
+        sort_ckpt_by: SortMethod = SortMethod.BEST,
     ) -> Pipeline:
         with get_folder(folder) as folder_path:
             # handle info
@@ -658,6 +695,8 @@ class PipelineSerializer:
             pipeline.serialize_folder = folder_path
             pipeline.from_info(info)
             for block in pipeline.blocks:
+                if isinstance(block, SerializeModelBlock):
+                    block.sort_ckpt_by = sort_ckpt_by
                 block.load_from(folder_path / block.__identifier__)
             pipeline.after_load()
             # hijacks
@@ -672,12 +711,14 @@ class PipelineSerializer:
         cls,
         folder: TPath,
         excludes: Optional[List[Type[Block]]] = None,
+        sort_ckpt_by: SortMethod = SortMethod.BEST,
     ) -> InferencePipeline:
         return cls._load(  # type: ignore
             folder,
             swap_id=InferencePipeline.__identifier__,
             focuses=InferencePipeline.focuses,
             excludes=excludes,
+            sort_ckpt_by=sort_ckpt_by,
         )
 
     @classmethod
@@ -685,12 +726,14 @@ class PipelineSerializer:
         cls,
         folder: TPath,
         excludes: Optional[List[Type[Block]]] = None,
+        sort_ckpt_by: SortMethod = SortMethod.BEST,
     ) -> EvaluationPipeline:
         return cls._load(  # type: ignore
             folder,
             swap_id=EvaluationPipeline.__identifier__,
             focuses=EvaluationPipeline.focuses,
             excludes=excludes,
+            sort_ckpt_by=sort_ckpt_by,
         )
 
     @classmethod
@@ -747,6 +790,7 @@ class PipelineSerializer:
         device: device_type = None,
         num_picked: Optional[Union[int, float]] = None,
         states_callback: states_callback_type = None,
+        sort_ckpt_by: SortMethod = SortMethod.BEST,
     ) -> Union[InferencePipeline, EvaluationPipeline]:
         if pack_type == PackType.TRAINING:
             raise ValueError("should not pack to training pipeline when fusing")
@@ -782,9 +826,9 @@ class PipelineSerializer:
         ckpt_paths = []
         for folder in src_folders:
             with get_folder(folder) as i_folder:
-                i_ckpt_folder = i_folder / SerializeModelBlock.__identifier__
-                checkpoints = get_sorted_checkpoints(i_ckpt_folder)
-                ckpt_paths.append(i_ckpt_folder / checkpoints[0])
+                i_ckpt_dir = i_folder / SerializeModelBlock.__identifier__
+                checkpoints = get_sorted_checkpoints(i_ckpt_dir, sort_by=sort_ckpt_by)
+                ckpt_paths.append(i_ckpt_dir / checkpoints[0])
         merged_states = cls._get_merged_states(p, device, ckpt_paths, states_callback)
         # load state dict
         model = p.build_model.model
@@ -803,6 +847,7 @@ class PipelineSerializer:
         ensemble_weights: bool = False,
         device: device_type = None,
         states_callback: states_callback_type = None,
+        sort_ckpt_by: SortMethod = SortMethod.BEST,
         verbose: bool = True,
     ) -> Union[InferencePipeline, EvaluationPipeline]:
         if pack_type == PackType.TRAINING:  # pragma: no cover
@@ -811,7 +856,7 @@ class PipelineSerializer:
         workspace = to_path(workspace)
         # pick ckpts
         ckpt_folder = workspace / CHECKPOINTS_FOLDER
-        sorted_ckpt_files = get_sorted_checkpoints(ckpt_folder)
+        sorted_ckpt_files = get_sorted_checkpoints(ckpt_folder, sort_by=sort_ckpt_by)
         if num_ensemble > len(sorted_ckpt_files):
             raise RuntimeError(
                 f"only {len(sorted_ckpt_files)} checkpoints are available, "

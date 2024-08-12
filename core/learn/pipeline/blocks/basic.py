@@ -41,6 +41,7 @@ from ...losses import losses
 from ...models import EnsembleModel
 from ...toolkit import get_environ_workspace
 from ...toolkit import scheduler_requires_metric
+from ...trainer import SortMethod
 from ...trainer import get_scores
 from ...trainer import get_sorted_checkpoints
 from ...trainer import Trainer
@@ -825,6 +826,7 @@ class SerializeModelBlock(Block):
     verbose: bool = True
     ckpt_folder: Optional[Path] = None
     ckpt_scores: Optional[Dict[str, float]] = None
+    sort_ckpt_by: SortMethod = SortMethod.BEST
 
     def build(self, config: Config) -> None:
         self.config = config
@@ -843,18 +845,18 @@ class SerializeModelBlock(Block):
         verbose = self.verbose and self.is_local_rank_0
         warn_msg = "no checkpoints found at {}, current model states will be saved"
         if self.training_workspace is not None:
-            ckpt_folder = os.path.join(self.training_workspace, CHECKPOINTS_FOLDER)
-            sorted_ckpts = get_sorted_checkpoints(ckpt_folder)
+            ckpt_dir = os.path.join(self.training_workspace, CHECKPOINTS_FOLDER)
+            sorted_ckpts = get_sorted_checkpoints(ckpt_dir, sort_by=self.sort_ckpt_by)
             if not sorted_ckpts:
                 if verbose:
-                    console.warn(warn_msg.format(ckpt_folder))
+                    console.warn(warn_msg.format(ckpt_dir))
                 self._save_current(folder)
             elif self.is_local_rank_0:
                 best_ckpt = sorted_ckpts[0]
-                src_path = os.path.join(ckpt_folder, sorted_ckpts[0])
+                src_path = os.path.join(ckpt_dir, sorted_ckpts[0])
                 dst_path = os.path.join(folder, best_ckpt)
                 shutil.copyfile(src_path, dst_path)
-                scores = get_scores(ckpt_folder)
+                scores = get_scores(ckpt_dir)
                 with open(os.path.join(folder, SCORES_FILE), "w") as f:
                     json.dump({best_ckpt: scores.get(best_ckpt, 0.0)}, f)
                 if self.verbose:
@@ -892,7 +894,7 @@ class SerializeModelBlock(Block):
     def load_from(self, folder: TPath) -> None:
         model = self.build_model.model
         folder = to_path(folder)
-        best_file = get_sorted_checkpoints(folder)[0]
+        best_file = get_sorted_checkpoints(folder, sort_by=self.sort_ckpt_by)[0]
         states = torch.load(folder / best_file, map_location="cpu")
         # check if the loaded `states` is a full state dict
         # this check makes it compatible with 'pure' states, for which
