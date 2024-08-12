@@ -573,6 +573,7 @@ class PipelineSerializer:
         device: device_type = None,
         states_callback: states_callback_type = None,
         sort_ckpt_by: SortMethod = SortMethod.BEST,
+        target_ckpt_step: Optional[int] = None,
         verbose: bool = True,
     ) -> InferencePipeline:
         return cls._self_ensemble(
@@ -583,6 +584,7 @@ class PipelineSerializer:
             device,
             states_callback,
             sort_ckpt_by,
+            target_ckpt_step,
             verbose,
         )
 
@@ -596,6 +598,7 @@ class PipelineSerializer:
         device: device_type = None,
         states_callback: states_callback_type = None,
         sort_ckpt_by: SortMethod = SortMethod.BEST,
+        target_ckpt_step: Optional[int] = None,
         verbose: bool = True,
     ) -> EvaluationPipeline:
         return cls._self_ensemble(  # type: ignore
@@ -606,6 +609,7 @@ class PipelineSerializer:
             device,
             states_callback,
             sort_ckpt_by,
+            target_ckpt_step,
             verbose,
         )
 
@@ -822,6 +826,7 @@ class PipelineSerializer:
         device: device_type = None,
         states_callback: states_callback_type = None,
         sort_ckpt_by: SortMethod = SortMethod.BEST,
+        target_ckpt_step: Optional[int] = None,
         verbose: bool = True,
     ) -> Union[InferencePipeline, EvaluationPipeline]:
         if pack_type == PackType.TRAINING:  # pragma: no cover
@@ -830,7 +835,11 @@ class PipelineSerializer:
         workspace = to_path(workspace)
         # pick ckpts
         ckpt_folder = workspace / CHECKPOINTS_FOLDER
-        sorted_ckpt_files = get_sorted_checkpoints(ckpt_folder, sort_by=sort_ckpt_by)
+        sorted_ckpt_files = get_sorted_checkpoints(
+            ckpt_folder,
+            sort_by=sort_ckpt_by,
+            target_ckpt_step=target_ckpt_step,
+        )
         if num_ensemble > len(sorted_ckpt_files):
             raise RuntimeError(
                 f"only {len(sorted_ckpt_files)} checkpoints are available, "
