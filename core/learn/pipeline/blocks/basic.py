@@ -822,14 +822,12 @@ class SerializeDataBlock(Block):
 @Block.register("serialize_model")
 class SerializeModelBlock(Block):
     config: Config
-
     verbose: bool = True
     ckpt_folder: Optional[Path] = None
     ckpt_scores: Optional[Dict[str, float]] = None
 
     def build(self, config: Config) -> None:
         self.config = config
-        self.best_score = 0.0
 
     @property
     def requirements(self) -> List[Type[Block]]:
