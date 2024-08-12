@@ -23,6 +23,12 @@ class TestLinear(unittest.TestCase):
         config.to_debug().num_steps = 10  # comment this line to disable debug mode
         pipeline = cflearn.TrainingPipeline.init(config).fit(data)
 
+        ckpt_dir = pipeline.training.build_trainer.trainer.checkpoint_folder
+        ckpt_files = cflearn.get_sorted_checkpoints(ckpt_dir, target_ckpt_step=7)
+        self.assertListEqual(ckpt_files, [f"{cflearn.PT_PREFIX}7.pt"])
+        with self.assertRaises(RuntimeError):
+            cflearn.get_sorted_checkpoints(ckpt_dir, target_ckpt_step=17)
+
         learned_w = pipeline.build_model.model.m.net.weight.view(-1).detach().numpy()
         evaluations = pipeline.evaluate(data.build_loaders()[0]).metric_outputs
         console.log(f"> evaluation {evaluations}")

@@ -73,6 +73,7 @@ def get_sorted_checkpoints(
     checkpoint_folder: TPath,
     *,
     sort_by: SortMethod = SortMethod.BEST,
+    target_ckpt_step: Optional[int] = None,
 ) -> List[str]:
     """
     'better' checkpoints will be placed earlier, which means `checkpoints[0]` is the 'best' checkpoint
@@ -82,6 +83,14 @@ def get_sorted_checkpoints(
     scores = get_scores(checkpoint_folder)
     if not scores:
         return []
+    if target_ckpt_step is not None:
+        target_file = f"{PT_PREFIX}{target_ckpt_step}.pt"
+        if target_file in scores:
+            return [target_file]
+        raise RuntimeError(
+            f"checkpoint '{target_file}' is not found under '{checkpoint_folder}' "
+            f"(available: {', '.join(sorted(scores))})"
+        )
     if sort_by == SortMethod.BEST:
         return list(sort_dict_by_value(scores, reverse=True).keys())
     return sorted(scores.keys(), key=lambda k: int(Path(k).stem.split("_")[1]))[::-1]

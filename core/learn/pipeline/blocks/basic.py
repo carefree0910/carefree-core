@@ -827,6 +827,7 @@ class SerializeModelBlock(Block):
     ckpt_folder: Optional[Path] = None
     ckpt_scores: Optional[Dict[str, float]] = None
     sort_ckpt_by: SortMethod = SortMethod.BEST
+    target_ckpt_step: Optional[int] = None
 
     def build(self, config: Config) -> None:
         self.config = config
@@ -846,7 +847,11 @@ class SerializeModelBlock(Block):
         warn_msg = "no checkpoints found at {}, current model states will be saved"
         if self.training_workspace is not None:
             ckpt_dir = os.path.join(self.training_workspace, CHECKPOINTS_FOLDER)
-            sorted_ckpts = get_sorted_checkpoints(ckpt_dir, sort_by=self.sort_ckpt_by)
+            sorted_ckpts = get_sorted_checkpoints(
+                ckpt_dir,
+                sort_by=self.sort_ckpt_by,
+                target_ckpt_step=self.target_ckpt_step,
+            )
             if not sorted_ckpts:
                 if verbose:
                     console.warn(warn_msg.format(ckpt_dir))
@@ -894,7 +899,11 @@ class SerializeModelBlock(Block):
     def load_from(self, folder: TPath) -> None:
         model = self.build_model.model
         folder = to_path(folder)
-        best_file = get_sorted_checkpoints(folder, sort_by=self.sort_ckpt_by)[0]
+        best_file = get_sorted_checkpoints(
+            folder,
+            sort_by=self.sort_ckpt_by,
+            target_ckpt_step=self.target_ckpt_step,
+        )[0]
         states = torch.load(folder / best_file, map_location="cpu")
         # check if the loaded `states` is a full state dict
         # this check makes it compatible with 'pure' states, for which
