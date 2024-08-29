@@ -463,6 +463,10 @@ class IDataBlock(  # type: ignore
         return y
 
 
+def collate_placeholder(x: Any) -> Any:
+    return x
+
+
 class IData(  # type: ignore
     Generic[TData, TDataset],
     ISerializableArrays[TData],
@@ -577,7 +581,7 @@ class IData(  # type: ignore
         loader.for_inference = for_inference
         if self.config.bypass_collate_fn:
             # this is useful when collation is already done in the `__getitems__` method
-            loader.collate_fn = lambda x: x
+            loader.collate_fn = collate_placeholder
         return loader
 
     def get_bundle(
