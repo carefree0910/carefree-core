@@ -31,11 +31,11 @@ from accelerate import Accelerator
 from accelerate import InitProcessGroupKwargs
 from contextlib import nullcontext
 from dataclasses import dataclass
+from torch.amp import autocast
 from torch.optim import Optimizer
 from torch.profiler import profile
 from accelerate.utils import PrecisionType
 from accelerate.utils import extract_model_from_parallel
-from torch.cuda.amp import autocast
 from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import Dataset
 from torch.utils.data import WeightedRandomSampler
@@ -1285,7 +1285,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         update_fn = get_update_fn(trainer)
         any_update = False
         get_fw = lambda: self.run(batch_idx, batch, state, **forward_kwargs)
-        autocast_ctx = autocast(enabled=trainer.should_autocast)
+        autocast_ctx = trainer.get_autocast_ctx()
         for train_step in self.train_steps:
             if train_step.should_skip(self, state):
                 continue
@@ -1969,6 +1969,10 @@ class ITrainer(ABC):
         state_dict_callback: Optional[Callable[[tensor_dict_type], None]] = None,
     ) -> bool:
         """method to restore the checkpoint"""
+
+    @abstractmethod
+    def get_autocast_ctx(self) -> autocast:
+        """return the proper autocast context manager"""
 
 
 # configs

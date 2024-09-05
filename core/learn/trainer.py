@@ -14,6 +14,7 @@ from pathlib import Path
 from accelerate import Accelerator
 from accelerate import DataLoaderConfiguration
 from tqdm.autonotebook import tqdm
+from torch.amp import autocast
 from torch.optim import Optimizer
 from torch.profiler import profile
 from torch.optim.lr_scheduler import LRScheduler
@@ -375,6 +376,9 @@ class Trainer(ITrainer):
         for callback in self.callbacks:
             callback.finalize(self)
         return self
+
+    def get_autocast_ctx(self) -> autocast:
+        return autocast(self.device.type, enabled=self.should_autocast)
 
     ## checkpointing
 
