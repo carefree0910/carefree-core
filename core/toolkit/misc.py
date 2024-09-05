@@ -520,7 +520,9 @@ def fix_float_to_length(num: float, length: int) -> str:
 
     ctx = decimal.Context()
     ctx.prec = 2 * length
-    d = ctx.create_decimal(repr(num))
+    # here we explicitly convert `num` to `float`,
+    # because sometimes an `np.float` might be passed in
+    d = ctx.create_decimal(repr(float(num)))
     str_num = format(d, "f").lower()
     if str_num == "nan":
         return f"{str_num:^{length}s}"
