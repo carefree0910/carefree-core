@@ -259,12 +259,13 @@ class Trainer(ITrainer):
             callback.before_summary(self)
         ## should always summary to sync the statuses in distributed training
         input_sample = train_loader.get_input_sample(self.device)
-        summary_msg = summary(
-            self.model.m,
-            input_sample,
-            return_only=not show_summary or not self.is_local_rank_0 or only_touch,
-            summary_forward=self.model.summary_forward,
-        )
+        with self.get_autocast_ctx():
+            summary_msg = summary(
+                self.model.m,
+                input_sample,
+                return_only=not show_summary or not self.is_local_rank_0 or only_touch,
+                summary_forward=self.model.summary_forward,
+            )
         if self.is_local_rank_0:
             with open(os.path.join(self.workspace, self.summary_log_file), "w") as f:
                 f.write(summary_msg)
