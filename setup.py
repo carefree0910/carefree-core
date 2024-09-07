@@ -28,7 +28,7 @@ setup(
         "numpy>=1.22.3",
         "pydantic>=2.0.0",
         "websockets>=12.0",
-        "accelerate>=0.28.0",
+        "accelerate==0.28.0",
         "onnx-simplifier>=0.4.1",
     ],
     author="carefree0910",
