@@ -2023,7 +2023,7 @@ class TrainerConfig:
     optimizer_settings: Optional[Dict[str, Optional[Dict[str, Any]]]] = None
     use_zero: bool = False
     finetune_config: Optional[Dict[str, Any]] = None
-    tqdm_settings: Optional[Dict[str, Any]] = None
+    tqdm_settings: Optional[Union[TqdmSettings, Dict[str, Any]]] = None
     save_pipeline_in_realtime: bool = False
     # profile settings
     profile: bool = False
@@ -2057,6 +2057,8 @@ class DLSettings:
 @dataclass
 class Config(TrainerConfig, DLSettings, ISerializableDataClass["Config"]):  # type: ignore
     def __post_init__(self) -> None:
+        if isinstance(self.tqdm_settings, TqdmSettings):
+            self.tqdm_settings = self.tqdm_settings.asdict()
         if isinstance(self.mixed_precision, PrecisionType):
             self.mixed_precision = str(self.mixed_precision)
         if not isinstance(self.mixed_precision, str):
