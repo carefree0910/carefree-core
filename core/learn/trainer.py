@@ -509,7 +509,7 @@ class Trainer(ITrainer):
             self.epoch_tqdm.set_postfix(metric_values)
         if self.state.should_log_metrics_msg:
             for c in self.callbacks:
-                c.log_metrics_msg(metrics_outputs, self.metrics_log_path, self.state)
+                c.log_metrics_msg(self, metrics_outputs)
         if self.is_rank_0:
             for c in self.callbacks:
                 c.log_metrics(metrics_outputs, self.state)

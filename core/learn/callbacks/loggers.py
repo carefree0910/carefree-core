@@ -52,10 +52,10 @@ class LogMetricsMsgCallback(TrainerCallback):
 
     def log_metrics_msg(
         self,
+        trainer: ITrainer,
         metrics_outputs: MetricsOutputs,
-        metrics_log_path: str,
-        state: TrainerState,
     ) -> None:
+        state = trainer.state
         final_score = metrics_outputs.final_score
         metric_values = metrics_outputs.metric_values
         core = " | ".join(
@@ -72,12 +72,12 @@ class LogMetricsMsgCallback(TrainerCallback):
         )
         if self.verbose:
             console.log(msg)
-        with open(metrics_log_path, "a") as f:
+        with open(trainer.metrics_log_path, "a") as f:
             if self.metrics_log_path is not None:
                 msg = f"\n{msg}"
             f.write(msg)
         self.timer = time.time()
-        self.metrics_log_path = metrics_log_path
+        self.metrics_log_path = trainer.metrics_log_path
 
 
 @TrainerCallback.register("wandb")

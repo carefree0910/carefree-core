@@ -1824,9 +1824,8 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
 
     def log_metrics_msg(
         self,
-        metric_outputs: MetricsOutputs,
-        metrics_log_path: str,
-        state: TrainerState,
+        trainer: "ITrainer",
+        metrics_outputs: MetricsOutputs,
     ) -> None:
         pass
 
@@ -1910,6 +1909,7 @@ class ITrainer(ABC):
 
     intermediate: Optional[MetricsOutputs]
     tqdm_settings: "TqdmSettings"
+    metrics_log_path: str
     schedulers_requires_metric: Set[str]
 
     @property
