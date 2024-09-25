@@ -1754,7 +1754,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
 
     overall:
 
-       `initialize` -> `after_workspace_prepared` -> `before_summary` -> `before_loop` -> training loop -> `finalize`
+       `initialize` -> `after_workspace_prepared` -> `before_summary` -> `before_loop` -> training loop -> `after_loop` -> `finalize`
 
     * training loop:
 
@@ -1880,6 +1880,9 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
         pass
 
     def at_terminate(self, trainer: "ITrainer") -> None:
+        pass
+
+    def after_loop(self, trainer: "ITrainer") -> None:
         pass
 
     def finalize(self, trainer: "ITrainer") -> None:

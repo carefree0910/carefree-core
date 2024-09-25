@@ -353,6 +353,8 @@ class Trainer(ITrainer):
             if step_tqdm is not None:
                 step_tqdm.close()
             self.epoch_tqdm.close()
+        for callback in self.callbacks:
+            callback.after_loop(self)
         # restore
         self.accelerator.wait_for_everyone()
         if self.has_checkpoint_folder and not only_touch:
