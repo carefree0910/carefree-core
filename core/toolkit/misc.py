@@ -515,6 +515,14 @@ def update_dict(src_dict: dict, tgt_dict: dict) -> dict:
     return tgt_dict
 
 
+def format_float(value: float, precision: int = 6) -> str:
+    magnitude = abs(value)
+    threshold = precision - 2
+    if magnitude <= 10**-threshold or magnitude >= 10**threshold:
+        return f"{value:.{threshold}e}"
+    return f"{value:.{precision}f}"
+
+
 def fix_float_to_length(num: float, length: int) -> str:
     """Change a float number to string format with fixed length."""
 
