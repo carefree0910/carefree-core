@@ -9,11 +9,14 @@ if TYPE_CHECKING:
     from rich.console import Console
 
 
+LOG_TIME_FORMAT = "[%X]"
+
+
 @lru_cache
 def get_console() -> "Console":
     from rich.console import Console
 
-    return Console()
+    return Console(log_time_format=LOG_TIME_FORMAT)
 
 
 def log(msg: str, *args: Any, _stack_offset: int = 2, **kwargs: Any) -> None:
