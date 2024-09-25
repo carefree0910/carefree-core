@@ -110,8 +110,6 @@ class SetDefaultsBlock(InjectDefaultsMixin, Block):
         use_tqdm = tqdm_settings.setdefault("use_tqdm", False)
         tqdm_settings.setdefault("use_step_tqdm", use_tqdm)
         tqdm_settings.setdefault("use_tqdm_in_validation", False)
-        tqdm_settings.setdefault("tqdm_position", 0)
-        tqdm_settings.setdefault("tqdm_desc", "epoch")
         config.tqdm_settings = tqdm_settings
 
 
