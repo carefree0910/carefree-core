@@ -289,7 +289,7 @@ class Trainer(ITrainer):
         while self.state.should_train and not only_touch:
             try:
                 for callback in self.callbacks:
-                    callback.at_epoch_start(self)
+                    callback.at_epoch_start(self, distributed_train_loader)
                 self.state.epoch += 1
                 if not self.is_local_rank_0 or not self.tqdm_settings.use_step_tqdm:
                     step_iterator = distributed_train_loader

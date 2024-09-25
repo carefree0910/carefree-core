@@ -1867,7 +1867,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     def after_save_checkpoint(self, trainer: "ITrainer") -> None:
         pass
 
-    def at_epoch_start(self, trainer: "ITrainer") -> None:
+    def at_epoch_start(self, trainer: "ITrainer", train_loader: DataLoader) -> None:
         pass
 
     def at_step_start(self, batch: tensor_dict_type, trainer: "ITrainer") -> None:
