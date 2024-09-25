@@ -51,9 +51,9 @@ class ProgressCallback(TrainerCallback):
     is built on top of the `tqdm` package for progress bar rendering.
     """
 
-    def __init__(self, settings: TqdmSettings) -> None:
+    def __init__(self, settings: Dict[str, Any]) -> None:
         super().__init__()
-        self.settings = settings
+        self.settings = TqdmSettings(**settings)
         self.time_column = TextColumn("", "log.time")
         self.progress_table = Column()
         self.progress = Progress(

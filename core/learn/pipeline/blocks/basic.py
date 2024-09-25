@@ -34,7 +34,6 @@ from ...schema import Config
 from ...schema import IMetric
 from ...schema import ITrainer
 from ...schema import IInference
-from ...schema import TqdmSettings
 from ...schema import OptimizerPack
 from ...schema import TrainerMonitor
 from ...schema import TrainerCallback
@@ -280,9 +279,11 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
             self._defaults["monitor_names"] = "basic"
         tqdm_settings = config.tqdm_settings
         callback_names = config.callback_names
-        callback_configs = shallow_copy_dict(config.callback_configs or {})
+        callback_configs = config.callback_configs
         if callback_names is None:
             callback_names = []
+        if callback_configs is None:
+            callback_configs = {}
         if isinstance(callback_names, str):
             callback_names = [callback_names]
         auto_callback = config.auto_callback
@@ -308,7 +309,6 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
                 verbose = True
             progress_cfg = callback_configs.setdefault(progress_id, {})
             progress_settings = progress_cfg.setdefault("tqdm_settings", tqdm_settings)
-            progress_settings = TqdmSettings(**progress_settings)
             callback_configs[progress_id] = dict(settings=progress_settings)
             log_metrics_msg_cfg = callback_configs.setdefault(log_metrics_msg_id, {})
             if "verbose" not in log_metrics_msg_cfg:
