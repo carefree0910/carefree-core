@@ -8,6 +8,7 @@ import torch.nn as nn
 from torch import Tensor
 from typing import Optional
 from accelerate import Accelerator
+from rich.progress import Progress
 from unittest.mock import patch
 from unittest.mock import PropertyMock
 from core.learn.schema import DataLoader
@@ -39,7 +40,7 @@ class TestInference(unittest.TestCase):
         )
         inference = cflearn.Inference(model=cflearn.IModel.from_config(config))
 
-        model_outputs = inference.get_outputs(loader, use_tqdm=True)
+        model_outputs = inference.get_outputs(loader, progress=Progress())
         for v in model_outputs.forward_results.values():
             self.assertEqual(v.shape, (num_samples, output_dim))
         self.assertIsNone(model_outputs.labels.get(cflearn.LABEL_KEY))
