@@ -3,7 +3,6 @@ import torch
 
 import numpy as np
 
-from tqdm import tqdm
 from torch import Tensor
 from typing import Any
 from typing import Dict
@@ -13,6 +12,7 @@ from typing import Optional
 from typing import ContextManager
 from accelerate import Accelerator
 from contextlib import nullcontext
+from rich.progress import track
 from accelerate.utils import broadcast_object_list
 
 from .schema import IModel
@@ -152,7 +152,7 @@ class Inference(IInference):
             device = None if self.model is None else get_device(self.model.m)
             iterator = enumerate(loader)
             if use_tqdm:
-                iterator = tqdm(iterator, **tqdm_kwargs)
+                iterator = track(iterator, **tqdm_kwargs)
             metrics_requires_all = metrics is not None and metrics.requires_all
             gather_np_outputs = return_outputs or metrics_requires_all
             remainder = -1
@@ -325,7 +325,7 @@ class Inference(IInference):
         if tqdm_kwargs is None:
             tqdm_kwargs = {}
         tqdm_kwargs = shallow_copy_dict(tqdm_kwargs)
-        tqdm_kwargs.setdefault("desc", "inference")
+        tqdm_kwargs.setdefault("description", "inference")
         tqdm_kwargs.setdefault("total", math.floor(len(loader) * portion))
         try:
             return run()
