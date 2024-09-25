@@ -281,11 +281,11 @@ class Trainer(ITrainer):
             )
         # train
         has_ckpt = terminate = False
-        for callback in self.callbacks:
-            callback.before_loop(self)
         self.accelerator.wait_for_everyone()
         if self.is_local_rank_0 and self.epoch_tqdm is None:
             console.debug("entered training loop")
+        for callback in self.callbacks:
+            callback.before_loop(self)
         while self.state.should_train and not only_touch:
             try:
                 for callback in self.callbacks:
