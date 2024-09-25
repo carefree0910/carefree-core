@@ -6,16 +6,123 @@ from typing import Dict
 from typing import List
 from typing import Literal
 from typing import Optional
+from datetime import datetime
+from rich.table import Column
+from rich.progress import Task
+from rich.progress import TaskID
+from rich.progress import Progress
+from rich.progress import BarColumn
+from rich.progress import TextColumn
+from rich.progress import SpinnerColumn
+from rich.progress import TimeRemainingColumn
 
 from ..schema import ITrainer
+from ..schema import DataLoader
 from ..schema import StepOutputs
+from ..schema import TqdmSettings
 from ..schema import TrainerState
 from ..schema import MetricsOutputs
 from ..schema import TrainerCallback
 from ...toolkit import console
 from ...toolkit.misc import prefix_dict
+from ...toolkit.misc import format_float
 from ...toolkit.misc import shallow_copy_dict
 from ...toolkit.misc import fix_float_to_length
+from ...toolkit.console import LOG_TIME_FORMAT
+
+
+class MetricsFormatter:
+    @staticmethod
+    def format(task: Task) -> str:
+        fields = task.fields
+        if not fields:
+            return ""
+        return (
+            "[yellow]| "
+            + " | ".join([f"{k}: {format_float(v)}" for k, v in fields.items()])
+            + " |"
+        )
+
+
+@TrainerCallback.register("progress")
+class ProgressCallback(TrainerCallback):
+    """
+    we use the `TqdmSettings` for BC, since previously this project
+    is built on top of the `tqdm` package for progress bar rendering.
+    """
+
+    def __init__(self, settings: TqdmSettings) -> None:
+        super().__init__()
+        self.settings = settings
+        self.time_column = TextColumn("", "log.time")
+        self.progress_table = Column()
+        self.progress = Progress(
+            self.time_column,
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn(
+                "[progress.percentage]{task.completed}/{task.total}",
+                table_column=self.progress_table,
+            ),
+            TimeRemainingColumn(),
+            TextColumn(MetricsFormatter),  # type: ignore
+        )
+        self.step_progress: Optional[TaskID] = None
+        self.epoch_progress: Optional[TaskID] = None
+        self.enabled = self.is_local_rank_0 and (
+            self.settings.use_tqdm or self.settings.use_step_tqdm
+        )
+        if self.enabled:
+            self.progress.start()
+
+    def before_loop(self, trainer: ITrainer) -> None:
+        if self.is_local_rank_0 and self.settings.use_tqdm:
+            now = datetime.now().strftime(LOG_TIME_FORMAT)
+            self.time_column.text_format = now
+            self.epoch_progress = self.progress.add_task(
+                f"[green]{self.settings.desc}",
+                total=trainer.state.num_epoch,
+                start=True,
+            )
+
+    def at_epoch_start(self, trainer: ITrainer, train_loader: DataLoader) -> None:
+        num_steps = len(train_loader)
+        self.progress_table.width = len(str(num_steps)) * 2 + 1
+        if self.is_local_rank_0 and self.settings.use_step_tqdm:
+            self.step_progress = self.progress.add_task(
+                "[cyan]running step",
+                total=num_steps,
+                start=True,
+            )
+
+    def at_step_end(self, trainer: ITrainer) -> None:
+        if self.step_progress is not None:
+            self.progress.update(self.step_progress, advance=1)
+
+    def log_metrics_msg(
+        self,
+        trainer: ITrainer,
+        metrics_outputs: MetricsOutputs,
+    ) -> None:
+        if self.epoch_progress is not None:
+            metric_values = shallow_copy_dict(metrics_outputs.metric_values)
+            metric_values["score"] = metrics_outputs.final_score
+            self.progress.update(self.epoch_progress, **metric_values)  # type: ignore
+
+    def at_epoch_end(self, trainer: ITrainer) -> None:
+        if self.epoch_progress is not None:
+            self.progress.update(
+                self.epoch_progress,
+                total=trainer.state.num_epoch,
+                advance=1,
+            )
+        if self.step_progress is not None:
+            self.progress.remove_task(self.step_progress)
+
+    def after_loop(self, trainer: ITrainer) -> None:
+        if self.enabled:
+            self.progress.stop()
 
 
 @TrainerCallback.register("log_metrics_msg")
@@ -163,6 +270,7 @@ class WandBCallback(TrainerCallback):
 
 
 __all__ = [
+    "ProgressCallback",
     "LogMetricsMsgCallback",
     "WandBCallback",
 ]

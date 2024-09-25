@@ -12,7 +12,8 @@ from typing import Optional
 from typing import ContextManager
 from accelerate import Accelerator
 from contextlib import nullcontext
-from rich.progress import track
+from rich.progress import TaskID
+from rich.progress import Progress
 from accelerate.utils import broadcast_object_list
 
 from .schema import IModel
@@ -41,6 +42,11 @@ def no_sync_context(accelerator: Accelerator, model: IModel) -> ContextManager:
     if accelerator is None:
         return nullcontext()
     return accelerator.no_sync(model.m)
+
+
+class Flags:
+    in_step = False
+    progress_task: Optional[TaskID] = None
 
 
 class Inference(IInference):
@@ -74,8 +80,8 @@ class Inference(IInference):
         return_labels: bool = False,
         target_labels: Union[str, List[str]] = LABEL_KEY,
         stack_outputs: bool = True,
-        use_tqdm: bool = False,
-        tqdm_kwargs: Optional[Dict[str, Any]] = None,
+        progress: Optional[Progress] = None,
+        progress_kwargs: Optional[Dict[str, Any]] = None,
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
@@ -142,6 +148,11 @@ class Inference(IInference):
                 tensors = accelerator.gather_for_metrics(tensors)
             return tensor_batch_to_np(tensors)
 
+        def cleanup_progress() -> None:
+            if progress is not None and flags.progress_task is not None:
+                progress.remove_task(flags.progress_task)
+                flags.progress_task = None
+
         def _run() -> InferenceOutputs:
             all_np_outputs: TArrays = {}
             all_labels: TArrays = {}
@@ -151,8 +162,11 @@ class Inference(IInference):
 
             device = None if self.model is None else get_device(self.model.m)
             iterator = enumerate(loader)
-            if use_tqdm:
-                iterator = track(iterator, **tqdm_kwargs)
+            if progress is not None:
+                progress_kw = shallow_copy_dict(progress_kwargs or {})
+                progress_kw.setdefault("total", math.floor(len(loader) * portion))
+                progress_kw.setdefault("description", "[yellow]inference")
+                flags.progress_task = progress.add_task(**progress_kw)
             metrics_requires_all = metrics is not None and metrics.requires_all
             gather_np_outputs = return_outputs or metrics_requires_all
             remainder = -1
@@ -173,7 +187,7 @@ class Inference(IInference):
                     if accelerator is None:
                         tensor_batch = to_device(tensor_batch, device)
                     tensor_batch = recover_labels_of(tensor_batch)
-                    Flag.in_step = True
+                    flags.in_step = True
                     with no_sync_context(accelerator, self.model):
                         step_outputs = self.model.step(
                             i,
@@ -182,7 +196,7 @@ class Inference(IInference):
                             get_losses=use_losses_as_metrics,
                             recover_labels_fn=recover_labels_of,
                         )
-                    Flag.in_step = False
+                    flags.in_step = False
                     tensor_outputs = step_outputs.forward_results
                     if use_losses_as_metrics:
                         for k, v in step_outputs.loss_tensors.items():
@@ -248,6 +262,10 @@ class Inference(IInference):
                             gathered_np_batch.update(to_np_batch(required_tensor_batch))
                         for k, v in gathered_np_batch.items():
                             all_metrics_requires.setdefault(k, []).append(v)
+                # progress
+                if progress is not None and flags.progress_task is not None:
+                    progress.advance(flags.progress_task)
+            cleanup_progress()
 
             # stack
             stacked_np_outputs = stack(all_np_outputs, gather_np_outputs, stack_outputs)
@@ -313,28 +331,22 @@ class Inference(IInference):
             with ctx:
                 return _run()
 
-        class Flag:
-            in_step = False
-
+        flags = Flags()
         use_grad = kwargs.pop("use_grad", self.use_grad_in_predict)
         if isinstance(target_outputs, str):
             target_outputs = [target_outputs]
         if isinstance(target_labels, str):
             target_labels = [target_labels]
         need_recover = target_outputs + target_labels
-        if tqdm_kwargs is None:
-            tqdm_kwargs = {}
-        tqdm_kwargs = shallow_copy_dict(tqdm_kwargs)
-        tqdm_kwargs.setdefault("description", "inference")
-        tqdm_kwargs.setdefault("total", math.floor(len(loader) * portion))
         try:
             return run()
         except KeyboardInterrupt:
             raise
         except:
-            if not Flag.in_step:
+            if not flags.in_step:
                 raise
             use_grad = self.use_grad_in_predict = True
+            cleanup_progress()
             return run()
 
 

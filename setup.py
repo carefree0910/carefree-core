@@ -14,7 +14,6 @@ setup(
     install_requires=[
         "rich",
         "onnx",
-        "tqdm",
         "wandb",
         "pillow",
         "aiohttp",

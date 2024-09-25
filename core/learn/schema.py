@@ -31,6 +31,7 @@ from accelerate import Accelerator
 from accelerate import InitProcessGroupKwargs
 from contextlib import nullcontext
 from dataclasses import dataclass
+from rich.progress import Progress
 from torch.amp import autocast
 from torch.optim import Optimizer
 from torch.profiler import profile
@@ -920,8 +921,8 @@ class IInference(ABC):
         return_labels: bool = False,
         target_labels: Union[str, List[str]] = LABEL_KEY,
         stack_outputs: bool = True,
-        use_tqdm: bool = False,
-        tqdm_kwargs: Optional[Dict[str, Any]] = None,
+        progress: Optional[Progress] = None,
+        progress_kwargs: Optional[Dict[str, Any]] = None,
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
@@ -1333,8 +1334,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         recover_labels: bool = True,
         return_labels: bool = False,
         target_labels: Union[str, List[str]] = LABEL_KEY,
-        use_tqdm: bool = False,
-        tqdm_kwargs: Optional[Dict[str, Any]] = None,
+        progress: Optional[Progress] = None,
+        progress_kwargs: Optional[Dict[str, Any]] = None,
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
@@ -1351,8 +1352,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             recover_labels=recover_labels,
             return_labels=return_labels,
             target_labels=target_labels,
-            use_tqdm=use_tqdm,
-            tqdm_kwargs=tqdm_kwargs,
+            progress=progress,
+            progress_kwargs=progress_kwargs,
             use_inference_mode=use_inference_mode,
             accelerator=accelerator,
             pad_dim=pad_dim,
@@ -1986,8 +1987,8 @@ class TqdmSettings(DataClassBase):
     use_tqdm: bool = False
     use_step_tqdm: bool = False
     use_tqdm_in_validation: bool = False
-    position: int = 0
-    desc: str = "epoch"
+    position: int = 0  # deprecated, will not take effect
+    desc: str = "running epoch"
 
 
 @dataclass
@@ -2023,7 +2024,7 @@ class TrainerConfig:
     optimizer_settings: Optional[Dict[str, Optional[Dict[str, Any]]]] = None
     use_zero: bool = False
     finetune_config: Optional[Dict[str, Any]] = None
-    tqdm_settings: Optional[Union[TqdmSettings, Dict[str, Any]]] = None
+    tqdm_settings: Optional[Dict[str, Any]] = None
     save_pipeline_in_realtime: bool = False
     # profile settings
     profile: bool = False

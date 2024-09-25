@@ -34,6 +34,7 @@ from ...schema import Config
 from ...schema import IMetric
 from ...schema import ITrainer
 from ...schema import IInference
+from ...schema import TqdmSettings
 from ...schema import OptimizerPack
 from ...schema import TrainerMonitor
 from ...schema import TrainerCallback
@@ -46,6 +47,7 @@ from ...trainer import get_scores
 from ...trainer import get_sorted_checkpoints
 from ...trainer import Trainer
 from ...monitors import BasicMonitor
+from ...callbacks import ProgressCallback
 from ...callbacks import TrainingLoopCallback
 from ...callbacks import LogMetricsMsgCallback
 from ...callbacks import UpdateArtifactsCallback
@@ -278,16 +280,17 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
             self._defaults["monitor_names"] = "basic"
         tqdm_settings = config.tqdm_settings
         callback_names = config.callback_names
-        callback_configs = config.callback_configs
+        callback_configs = shallow_copy_dict(config.callback_configs or {})
         if callback_names is None:
             callback_names = []
-        if callback_configs is None:
-            callback_configs = {}
         if isinstance(callback_names, str):
             callback_names = [callback_names]
         auto_callback = config.auto_callback
+        progress_id = ProgressCallback.__identifier__
+        log_metrics_msg_id = LogMetricsMsgCallback.__identifier__
         default_callbacks = [
-            LogMetricsMsgCallback.__identifier__,
+            progress_id,
+            log_metrics_msg_id,
             UpdateArtifactsCallback.__identifier__,
         ]
         if any(c not in callback_names for c in default_callbacks) and auto_callback:
@@ -303,7 +306,11 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
                 and not tqdm_settings.get("use_step_tqdm", False)
             ):
                 verbose = True
-            log_metrics_msg_cfg = callback_configs.setdefault(default_callbacks[0], {})
+            progress_cfg = callback_configs.setdefault(progress_id, {})
+            progress_settings = progress_cfg.setdefault("tqdm_settings", tqdm_settings)
+            progress_settings = TqdmSettings(**progress_settings)
+            callback_configs[progress_id] = dict(settings=progress_settings)
+            log_metrics_msg_cfg = callback_configs.setdefault(log_metrics_msg_id, {})
             if "verbose" not in log_metrics_msg_cfg:
                 log_metrics_msg_cfg["verbose"] = verbose
                 self._defaults["log_metrics_msg_verbose"] = verbose

@@ -5,7 +5,6 @@ import shutil
 import numpy as np
 
 from enum import Enum
-from tqdm import tqdm
 from typing import Any
 from typing import Dict
 from typing import List
@@ -19,6 +18,8 @@ from tempfile import mkdtemp
 from tempfile import TemporaryDirectory
 from accelerate import Accelerator
 from collections import OrderedDict
+from rich.progress import track
+from rich.progress import Progress
 
 from .common import Block
 from .common import Pipeline
@@ -227,8 +228,8 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
         recover_labels: bool = True,
         return_labels: bool = False,
         target_labels: Union[str, List[str]] = LABEL_KEY,
-        use_tqdm: bool = False,
-        tqdm_kwargs: Optional[Dict[str, Any]] = None,
+        progress: Optional[Progress] = None,
+        progress_kwargs: Optional[Dict[str, Any]] = None,
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
@@ -246,8 +247,8 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
             recover_labels=recover_labels,
             return_labels=return_labels,
             target_labels=target_labels,
-            use_tqdm=use_tqdm,
-            tqdm_kwargs=tqdm_kwargs,
+            progress=progress,
+            progress_kwargs=progress_kwargs,
             use_inference_mode=use_inference_mode,
             accelerator=accelerator,
             pad_dim=pad_dim,
@@ -743,7 +744,7 @@ class PipelineSerializer:
         states_callback: states_callback_type = None,
     ) -> OrderedDict:
         merged_states = OrderedDict()
-        for i, ckpt_path in enumerate(tqdm(ckpt_paths, desc="merge states")):
+        for i, ckpt_path in enumerate(track(ckpt_paths, description="merge states")):
             states = torch.load(ckpt_path, map_location=device)["states"]
             current_keys = list(states.keys())
             for k, v in list(states.items()):

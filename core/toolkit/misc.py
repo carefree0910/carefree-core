@@ -216,16 +216,22 @@ def walk(
     hierarchy_callback: Callable[[List[str], str], None],
     filter_extensions: Optional[Set[str]] = None,
 ) -> None:
-    from tqdm import tqdm
+    from rich.progress import Progress
 
     walked = list(os.walk(root))
-    for folder, _, files in tqdm(walked, desc="folders", position=0, mininterval=1):
-        for file in tqdm(files, desc="files", position=1, leave=False, mininterval=1):
-            if filter_extensions is not None:
-                if not any(file.endswith(ext) for ext in filter_extensions):
-                    continue
-            hierarchy = folder.split(os.path.sep) + [file]
-            hierarchy_callback(hierarchy, os.path.join(folder, file))
+    with Progress() as p:
+        task0 = p.add_task("folders", total=len(walked))
+        for folder, _, files in walked:
+            task1 = p.add_task("files", total=len(files))
+            for file in files:
+                if filter_extensions is not None:
+                    if not any(file.endswith(ext) for ext in filter_extensions):
+                        continue
+                hierarchy = folder.split(os.path.sep) + [file]
+                hierarchy_callback(hierarchy, os.path.join(folder, file))
+                p.update(task1, advance=1)
+            p.remove_task(task1)
+            p.update(task0, advance=1)
 
 
 def parse_config(config: TConfig) -> Dict[str, Any]:

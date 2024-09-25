@@ -13,7 +13,7 @@ from typing import Optional
 from pathlib import Path
 from accelerate import Accelerator
 from accelerate import DataLoaderConfiguration
-from tqdm.autonotebook import tqdm
+from rich.progress import Progress
 from torch.amp import autocast
 from torch.optim import Optimizer
 from torch.profiler import profile
@@ -38,6 +38,7 @@ from .schema import TrainerMonitor
 from .schema import TrainerCallback
 from .toolkit import summary
 from .toolkit import get_torch_device
+from .callbacks import ProgressCallback
 from .callbacks import TrainingLoopCallback
 from .constants import PT_PREFIX
 from .constants import SCORES_FILE
@@ -269,20 +270,10 @@ class Trainer(ITrainer):
         if self.is_local_rank_0:
             with open(os.path.join(self.workspace, self.summary_log_file), "w") as f:
                 f.write(summary_msg)
-        # tqdm
-        step_tqdm = None
-        self.epoch_tqdm: Optional[tqdm] = None
-        if self.is_local_rank_0 and self.tqdm_settings.use_tqdm:
-            self.epoch_tqdm = tqdm(
-                list(range(self.state.num_epoch)),
-                position=self.tqdm_settings.position,
-                desc=self.tqdm_settings.desc,
-                leave=False,
-            )
         # train
         has_ckpt = terminate = False
         self.accelerator.wait_for_everyone()
-        if self.is_local_rank_0 and self.epoch_tqdm is None:
+        if self.is_local_rank_0:
             console.debug("entered training loop")
         for callback in self.callbacks:
             callback.before_loop(self)
@@ -291,17 +282,7 @@ class Trainer(ITrainer):
                 for callback in self.callbacks:
                     callback.at_epoch_start(self, distributed_train_loader)
                 self.state.epoch += 1
-                if not self.is_local_rank_0 or not self.tqdm_settings.use_step_tqdm:
-                    step_iterator = distributed_train_loader
-                else:
-                    step_tqdm = step_iterator = tqdm(
-                        distributed_train_loader,
-                        total=len(distributed_train_loader),
-                        position=self.tqdm_settings.position
-                        + int(self.tqdm_settings.use_tqdm),
-                        leave=False,
-                    )
-                for i, batch in enumerate(step_iterator):
+                for i, batch in enumerate(distributed_train_loader):
                     if i == 0:
                         self.accelerator.wait_for_everyone()
                     for callback in self.callbacks:
@@ -346,13 +327,6 @@ class Trainer(ITrainer):
                 terminate = True
             if terminate:
                 break
-            if self.epoch_tqdm is not None:
-                self.epoch_tqdm.total = self.state.num_epoch
-                self.epoch_tqdm.update()
-        if self.epoch_tqdm is not None:
-            if step_tqdm is not None:
-                step_tqdm.close()
-            self.epoch_tqdm.close()
         for callback in self.callbacks:
             callback.after_loop(self)
         # restore
@@ -473,17 +447,14 @@ class Trainer(ITrainer):
     # `loader` is distributed loader
     def get_metrics(self, loader: DataLoader, portion: float = 1.0) -> MetricsOutputs:
         if not self.use_tqdm_in_validation:
-            use_tqdm = False
-            tqdm_kwargs = None
+            progress = None
         else:
-            use_tqdm = True
-            tqdm_kwargs = dict(
-                total=math.ceil(len(loader) * portion),
-                position=self.tqdm_settings.position
-                + int(self.tqdm_settings.use_tqdm)
-                + int(self.tqdm_settings.use_step_tqdm),
-                leave=False,
-            )
+            for c in self.callbacks:
+                if isinstance(c, ProgressCallback):
+                    progress = c.progress
+                    break
+            else:
+                progress = Progress()
         kw = shallow_copy_dict(self.config.metric_forward_kwargs or {})
         kw["return_outputs"] = False
         outputs = self.model.evaluate(
@@ -493,8 +464,7 @@ class Trainer(ITrainer):
             loader,
             portion=portion,
             state=self.state,
-            use_tqdm=use_tqdm,
-            tqdm_kwargs=tqdm_kwargs,
+            progress=progress,
             accelerator=self.accelerator,
             **kw,
         )
@@ -503,10 +473,6 @@ class Trainer(ITrainer):
     def log_with(self, metrics_outputs: MetricsOutputs) -> None:
         if not self.is_local_rank_0:
             return None
-        if self.epoch_tqdm is not None:
-            metric_values = shallow_copy_dict(metrics_outputs.metric_values)
-            metric_values["score"] = metrics_outputs.final_score
-            self.epoch_tqdm.set_postfix(metric_values)
         if self.state.should_log_metrics_msg:
             for c in self.callbacks:
                 c.log_metrics_msg(self, metrics_outputs)
