@@ -454,7 +454,7 @@ class Trainer(ITrainer):
                     progress = c.progress
                     break
             else:
-                progress = Progress()
+                progress = Progress()  # pragma: no cover
         kw = shallow_copy_dict(self.config.metric_forward_kwargs or {})
         kw["return_outputs"] = False
         outputs = self.model.evaluate(

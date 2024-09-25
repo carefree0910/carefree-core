@@ -22,6 +22,7 @@ class TestTrainer(unittest.TestCase):
             loss_name="mse",
             clip_norm=1.0,
             state_config=dict(max_snapshot_file=5),
+            tqdm_settings=cflearn.TqdmSettings(),
         )
         self.data = data
         self.config = config.to_debug()

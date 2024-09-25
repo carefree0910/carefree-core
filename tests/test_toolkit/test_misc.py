@@ -794,6 +794,10 @@ class TestMisc(unittest.TestCase):
                     )
                 )
 
+    def test_format_float(self):
+        self.assertEqual(format_float(1.0), "1.000000")
+        self.assertEqual(format_float(1.0e6), "1.0000e+06")
+
 
 class TestRetry(unittest.TestCase):
     def setUp(self):
