@@ -12,3 +12,5 @@ SCORES_FILE = "scores.json"
 CHECKPOINTS_FOLDER = "checkpoints"
 
 DEFAULT_ZOO_TAG = "default"
+
+INFERENCE_COLOR = "light_goldenrod2"

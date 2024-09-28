@@ -1,5 +1,6 @@
 from typing import Any
 from typing import List
+from typing import Union
 from typing import Optional
 from typing import TYPE_CHECKING
 from functools import lru_cache
@@ -43,7 +44,7 @@ def error(msg: str, *args: Any, prefix: str = "Error: ", **kwargs: Any) -> None:
     log(f"[red]{prefix}{msg}[/red]", *args, **kwargs)
 
 
-def print(msg: str, *args: Any, **kwargs: Any) -> None:
+def print(msg: Union[str, Any], *args: Any, **kwargs: Any) -> None:
     get_console().print(msg, *args, **kwargs)
 
 

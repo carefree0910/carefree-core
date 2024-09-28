@@ -26,6 +26,7 @@ from .toolkit import get_device
 from .toolkit import tensor_batch_to_np
 from .toolkit import ONNX
 from .constants import LABEL_KEY
+from .constants import INFERENCE_COLOR
 from .constants import PREDICTIONS_KEY
 from ..toolkit import console
 from ..toolkit.misc import is_local_rank_0
@@ -165,7 +166,7 @@ class Inference(IInference):
             if progress is not None:
                 progress_kw = shallow_copy_dict(progress_kwargs or {})
                 progress_kw.setdefault("total", math.floor(len(loader) * portion))
-                progress_kw.setdefault("description", "[light_goldenrod2]inference")
+                progress_kw.setdefault("description", f"[{INFERENCE_COLOR}]inference")
                 flags.progress_task = progress.add_task(**progress_kw)
             metrics_requires_all = metrics is not None and metrics.requires_all
             gather_np_outputs = return_outputs or metrics_requires_all

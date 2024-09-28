@@ -1,5 +1,8 @@
 import time
 import wandb
+import shutil
+
+import numpy as np
 
 from typing import Any
 from typing import Dict
@@ -8,6 +11,9 @@ from typing import Literal
 from typing import Optional
 from typing import NamedTuple
 from datetime import datetime
+from rich import box
+from rich.style import Style
+from rich.table import Table
 from rich.table import Column
 from rich.progress import Task
 from rich.progress import TaskID
@@ -24,6 +30,7 @@ from ..schema import TqdmSettings
 from ..schema import TrainerState
 from ..schema import MetricsOutputs
 from ..schema import TrainerCallback
+from ..constants import INFERENCE_COLOR
 from ...toolkit import console
 from ...toolkit.misc import prefix_dict
 from ...toolkit.misc import format_float
@@ -126,6 +133,73 @@ class ProgressCallback(TrainerCallback):
             self.progress.stop()
 
 
+class AutoWrapLine:
+    def __init__(self, **table_kw: Any) -> None:
+        self._table_kw = table_kw
+        self._col_names: List[str] = []
+        self._col_kwargs: List[Dict[str, Any]] = []
+        self._row: Optional[Any] = None
+
+    def add_column(self, name: str, **kwargs: Any) -> None:
+        self._col_names.append(name)
+        self._col_kwargs.append(kwargs)
+
+    def add_row(self, *row: Any) -> None:
+        if self._row is not None:
+            raise RuntimeError("should not add row more than once")
+        self._row = row
+
+    def get_table(self) -> Table:
+        if self._row is None:
+            raise RuntimeError("should add row before getting table")
+        terminal_w = shutil.get_terminal_size().columns
+        pad_tw = lambda nc: terminal_w - nc
+        cell_widths = np.array(
+            [
+                max(len(str(self._row[i])), len(col_name)) + 2
+                for i, col_name in enumerate(self._col_names)
+            ]
+        )
+        ws_cumsum = np.cumsum(cell_widths)
+        # if total width is less than terminal width (with 1 pixel padding
+        # for each column), no need to wrap
+        num_total_cols = len(self._col_names)
+        cumsum_mask = ws_cumsum > pad_tw(num_total_cols)
+        wrap_index = np.argmax(cumsum_mask).item()
+        if wrap_index == 0 and not cumsum_mask[0]:
+            table = Table(**self._table_kw)
+            for name, kwargs in zip(self._col_names, self._col_kwargs):
+                table.add_column(name, **kwargs)
+            table.add_row(*self._row)
+            return table
+        # iteratively decide how many columns can we have, until only 1 column left
+        num_wrapped_cols = wrap_index + 1
+        while num_wrapped_cols > 1:
+            remainder = num_total_cols % num_wrapped_cols
+            padding = num_wrapped_cols - remainder
+            padded_cell_widths = np.concatenate([cell_widths, np.zeros(padding)])
+            padded_cell_widths = padded_cell_widths.reshape(-1, num_wrapped_cols)
+            max_widths = padded_cell_widths.max(axis=0)
+            if max_widths.sum() <= pad_tw(num_wrapped_cols):
+                break
+            num_wrapped_cols -= 1
+        # add multiple tables
+        table = Table(**self._table_kw, show_header=False)
+        num_rows = (num_total_cols + num_wrapped_cols - 1) // num_wrapped_cols
+        for i in range(num_rows):
+            it = Table(**self._table_kw)
+            for j in range(num_wrapped_cols):
+                idx = i * num_wrapped_cols + j
+                if idx >= num_total_cols:
+                    break
+                name = self._col_names[idx]
+                kwargs = self._col_kwargs[idx]
+                it.add_column(name, **kwargs)
+            it.add_row(*self._row[i * num_wrapped_cols : (i + 1) * num_wrapped_cols])
+            table.add_row(it)
+        return table
+
+
 class Metrics(NamedTuple):
     t: float
     state: TrainerState
@@ -159,6 +233,37 @@ class Metrics(NamedTuple):
             msg += f" lr : {fix_float_to_length(self.recorded_lr, 12)} |"
         return msg
 
+    def verbose(self) -> None:
+        columns_kw = dict(justify="center", no_wrap=True)
+        inference_kw = dict(style=Style(color=INFERENCE_COLOR, bold=True))
+        metrics_kw = dict(
+            style=Style(color="turquoise2"),
+            header_style=Style(bold=False, color="sea_green1"),
+        )
+
+        final_score = self.metrics_outputs.final_score
+        metric_values = self.metrics_outputs.metric_values
+        line = AutoWrapLine(box=box.SIMPLE_HEAD)
+        line.add_column("epoch", **columns_kw, **inference_kw)
+        line.add_column("step", **columns_kw, **inference_kw)
+        line.add_column("elapsed", **columns_kw, style=Style(color="bright_magenta"))
+        sorted_keys = sorted(metric_values)
+        for k in sorted_keys:
+            line.add_column(k, **columns_kw, **metrics_kw)
+        line.add_column("score", **columns_kw, **inference_kw)
+        row = [
+            str(self.state.epoch),
+            str(self.state.step),
+            f"{self.t:.4f}",
+            *[format_float(metric_values[k], 4) for k in sorted_keys],
+            format_float(final_score, 4),
+        ]
+        if self.recorded_lr is not None:
+            line.add_column("lr", **columns_kw, **inference_kw)
+            row.append(format_float(self.recorded_lr))
+        line.add_row(*row)
+        console.print(line.get_table())
+
 
 @TrainerCallback.register("log_metrics_msg")
 class LogMetricsMsgCallback(TrainerCallback):
@@ -188,13 +293,12 @@ class LogMetricsMsgCallback(TrainerCallback):
             self.recorded_lr,
             metrics_outputs,
         )
-        msg = metrics.to_msg()
         if self.verbose:
-            console.log(msg)
+            metrics.verbose()
         with open(trainer.metrics_log_path, "a") as f:
             if self.logged:
                 f.write("\n")
-            f.write(msg)
+            f.write(metrics.to_msg())
         self.timer = time.time()
         self.logged = True
 
