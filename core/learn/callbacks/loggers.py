@@ -150,7 +150,7 @@ class LogMetricsMsgCallback(TrainerCallback):
         length = len(str(total_step))
         return f"[{current_step:{length}d} / {total_step}]"
 
-    def log_lr(self, key: str, lr: float, state: TrainerState) -> None:
+    def log_lr(self, key: str, lr: float, trainer: "ITrainer") -> None:
         if self.metrics_log_path is None:
             return None
         with open(self.metrics_log_path, "a") as f:
@@ -238,8 +238,8 @@ class WandBCallback(TrainerCallback):
         if self.is_local_rank_0:
             self.log_artifacts(trainer)
 
-    def log_lr(self, key: str, lr: float, state: TrainerState) -> None:
-        wandb.log({key: lr}, step=self._wandb_step(state))
+    def log_lr(self, key: str, lr: float, trainer: "ITrainer") -> None:
+        wandb.log({key: lr}, step=self._wandb_step(trainer.state))
 
     def log_train_step(self, step_outputs: StepOutputs, state: TrainerState) -> None:
         if state.should_log_losses:

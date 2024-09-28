@@ -140,7 +140,7 @@ class TrainingLoopCallback(TrainerCallback):
                                 callback.log_lr(
                                     f"lr-{k}",
                                     sch.get_last_lr()[0],
-                                    state,
+                                    trainer,
                                 )
                     sch.step(**shallow_copy_dict(kwargs))
             if lr_logged:

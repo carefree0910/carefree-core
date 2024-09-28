@@ -1811,7 +1811,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     def mutate_loss_kwargs(self, kw: Dict[str, Any], trainer: "ITrainer") -> None:
         pass
 
-    def log_lr(self, key: str, lr: float, state: TrainerState) -> None:
+    def log_lr(self, key: str, lr: float, trainer: "ITrainer") -> None:
         pass
 
     def log_train_step(self, step_outputs: StepOutputs, state: TrainerState) -> None:
