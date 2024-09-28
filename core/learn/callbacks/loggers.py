@@ -6,6 +6,7 @@ from typing import Dict
 from typing import List
 from typing import Literal
 from typing import Optional
+from typing import NamedTuple
 from datetime import datetime
 from rich.table import Column
 from rich.progress import Task
@@ -125,6 +126,40 @@ class ProgressCallback(TrainerCallback):
             self.progress.stop()
 
 
+class Metrics(NamedTuple):
+    t: float
+    state: TrainerState
+    recorded_lr: Optional[float]
+    metrics_outputs: MetricsOutputs
+
+    def to_msg(self) -> str:
+        final_score = self.metrics_outputs.final_score
+        metric_values = self.metrics_outputs.metric_values
+        core = " | ".join(
+            [
+                f"{k} : {fix_float_to_length(metric_values[k], 8)}"
+                for k in sorted(metric_values)
+            ]
+        )
+        total_step = self.state.num_step_per_epoch
+        if self.state.step == -1:
+            current_step = -1
+        else:
+            current_step = self.state.step % total_step
+            if current_step == 0:
+                current_step = total_step if self.state.step > 0 else 0
+        length = len(str(total_step))
+        step_str = f"[{current_step:{length}d} / {total_step}]"
+        timer_str = f"[{self.t:.3f}s]"
+        msg = (
+            f"| epoch {self.state.epoch:^4d} {step_str} {timer_str} | {core} | "
+            f"score : {fix_float_to_length(final_score, 8)} |"
+        )
+        if self.recorded_lr is not None:
+            msg += f" lr : {fix_float_to_length(self.recorded_lr, 12)} |"
+        return msg
+
+
 @TrainerCallback.register("log_metrics_msg")
 class LogMetricsMsgCallback(TrainerCallback):
     """
@@ -139,18 +174,6 @@ class LogMetricsMsgCallback(TrainerCallback):
         self.logged = False
         self.recorded_lr: Optional[float] = None
 
-    @staticmethod
-    def _step_str(state: TrainerState) -> str:
-        total_step = state.num_step_per_epoch
-        if state.step == -1:
-            current_step = -1
-        else:
-            current_step = state.step % total_step
-            if current_step == 0:
-                current_step = total_step if state.step > 0 else 0
-        length = len(str(total_step))
-        return f"[{current_step:{length}d} / {total_step}]"
-
     def log_lr(self, key: str, lr: float, trainer: "ITrainer") -> None:
         self.recorded_lr = lr
 
@@ -159,23 +182,13 @@ class LogMetricsMsgCallback(TrainerCallback):
         trainer: ITrainer,
         metrics_outputs: MetricsOutputs,
     ) -> None:
-        state = trainer.state
-        final_score = metrics_outputs.final_score
-        metric_values = metrics_outputs.metric_values
-        core = " | ".join(
-            [
-                f"{k} : {fix_float_to_length(metric_values[k], 8)}"
-                for k in sorted(metric_values)
-            ]
+        metrics = Metrics(
+            time.time() - self.timer,
+            trainer.state,
+            self.recorded_lr,
+            metrics_outputs,
         )
-        step_str = self._step_str(state)
-        timer_str = f"[{time.time() - self.timer:.3f}s]"
-        msg = (
-            f"| epoch {state.epoch:^4d} {step_str} {timer_str} | {core} | "
-            f"score : {fix_float_to_length(final_score, 8)} |"
-        )
-        if self.recorded_lr is not None:
-            msg += f" lr : {fix_float_to_length(self.recorded_lr, 12)} |"
+        msg = metrics.to_msg()
         if self.verbose:
             console.log(msg)
         with open(trainer.metrics_log_path, "a") as f:
