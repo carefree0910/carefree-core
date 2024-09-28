@@ -136,7 +136,8 @@ class LogMetricsMsgCallback(TrainerCallback):
         super().__init__()
         self.verbose = verbose
         self.timer = time.time()
-        self.metrics_log_path: Optional[str] = None
+        self.logged = False
+        self.recorded_lr: Optional[float] = None
 
     @staticmethod
     def _step_str(state: TrainerState) -> str:
@@ -151,11 +152,7 @@ class LogMetricsMsgCallback(TrainerCallback):
         return f"[{current_step:{length}d} / {total_step}]"
 
     def log_lr(self, key: str, lr: float, trainer: "ITrainer") -> None:
-        if self.metrics_log_path is None:
-            return None
-        with open(self.metrics_log_path, "a") as f:
-            f.write(f" lr : {fix_float_to_length(lr, 12)} |\n")
-        self.metrics_log_path = None
+        self.recorded_lr = lr
 
     def log_metrics_msg(
         self,
@@ -177,14 +174,16 @@ class LogMetricsMsgCallback(TrainerCallback):
             f"| epoch {state.epoch:^4d} {step_str} {timer_str} | {core} | "
             f"score : {fix_float_to_length(final_score, 8)} |"
         )
+        if self.recorded_lr is not None:
+            msg += f" lr : {fix_float_to_length(self.recorded_lr, 12)} |"
         if self.verbose:
             console.log(msg)
         with open(trainer.metrics_log_path, "a") as f:
-            if self.metrics_log_path is not None:
-                msg = f"\n{msg}"
+            if self.logged:
+                f.write("\n")
             f.write(msg)
         self.timer = time.time()
-        self.metrics_log_path = trainer.metrics_log_path
+        self.logged = True
 
 
 @TrainerCallback.register("wandb")
