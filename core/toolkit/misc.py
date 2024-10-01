@@ -40,6 +40,7 @@ from pydantic import BaseModel
 from functools import reduce
 from threading import Lock
 from collections import OrderedDict
+from dataclasses import MISSING
 from dataclasses import asdict
 from dataclasses import fields
 from dataclasses import dataclass
@@ -920,10 +921,14 @@ class DataClassBase:
         focuses: Optional[Union[str, List[str]]] = None,
         excludes: Optional[Union[str, List[str]]] = None,
     ) -> Dict[str, Any]:
-        cls = self.__class__
-        requirements = set(get_requirements(cls))
-        d = {k: getattr(self, k) for k in requirements}
-        defaults = cls(**d)
+        fields = self.fields
+        no_defaults = [
+            field.name
+            for field in fields
+            if field.default is MISSING and field.default_factory is MISSING
+        ]
+        d = {k: getattr(self, k) for k in no_defaults}
+        defaults = self.__class__(**d)
         excludes_set = to_set(excludes)
         if focuses is not None:
             focus_set = to_set(focuses)
@@ -934,7 +939,7 @@ class DataClassBase:
             k: getattr(self, k)
             for k in self.field_names
             if k not in excludes_set
-            and (k in requirements or getattr(self, k) != getattr(defaults, k))
+            and (k in no_defaults or getattr(self, k) != getattr(defaults, k))
         }
         modified_dict = {
             k: v.as_modified_dict() if isinstance(v, DataClassBase) else v
