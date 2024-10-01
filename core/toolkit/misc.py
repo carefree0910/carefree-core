@@ -1546,7 +1546,7 @@ class RcProgress:
     props: ProgressProperty
 
     def __init__(self) -> None:
-        self._p = None
+        self._p: Optional["Progress"] = None
         self._counter = 0
         self._lock = Lock()
 
@@ -1574,14 +1574,15 @@ class RcProgress:
 
         class _:
 
-            def __enter__(self):
+            def __enter__(self) -> "Progress":
                 with rc._lock:
                     if rc._p is None:
                         rc.init(disable, leave).start()
                     rc._counter += 1
-                return rc._p
+                return rc._p  # type: ignore
 
-            def __exit__(self, *args):
+            def __exit__(self, *args: Any) -> None:
+                assert rc._p is not None
                 with rc._lock:
                     rc._counter -= 1
                     if rc._counter == 0:

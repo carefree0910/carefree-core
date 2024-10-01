@@ -133,7 +133,7 @@ async def download_image(
         raw_data = await download_raw(session, url, **kw)
         image = Image.open(BytesIO(raw_data))
         try:
-            image = ImageOps.exif_transpose(image)
+            image = ImageOps.exif_transpose(image)  # type: ignore
         finally:
             return image
     except Exception as err:

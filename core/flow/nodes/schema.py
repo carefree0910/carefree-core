@@ -172,10 +172,10 @@ class IWithImageNode(IWithHttpSessionNode):
 
     async def fetch_image(self, tag: str, image: TImage) -> Image.Image:
         if isinstance(image, str):
-            image = await self.download_image(image)
+            image = await self.download_image(image)  # type: ignore
         elif not isinstance(image, Image.Image):
             raise ValueError(f"`{tag}` should be a `PIL.Image` or a url")
-        return image
+        return image  # type: ignore
 
     async def get_image_from(self, field: str) -> Image.Image:
         image = self.data[field]

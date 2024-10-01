@@ -97,7 +97,7 @@ def read_image(
     anchor: Optional[int],
     to_gray: bool = False,
     to_mask: bool = False,
-    resample: "Image.Resampling" = "auto",
+    resample: "Image.Resampling" = "auto",  # type: ignore
     normalize: bool = True,
     to_torch_fmt: bool = True,
 ) -> ReadImageResponse:
@@ -116,7 +116,7 @@ def read_image(
         if to_mask and to_gray:
             raise ValueError("`to_mask` & `to_gray` should not be True simultaneously")
         if to_mask and image.mode == "RGBA":
-            image = alpha
+            image = alpha  # type: ignore
         else:
             image = image.convert("L")
     original_w, original_h = image.size
@@ -133,21 +133,23 @@ def read_image(
         image = image.resize((w, h), resample=resample)
     anchored = image
     anchored_size = w, h
-    image = np.array(image)
+    image_array = np.array(image)
     if normalize:
-        image = image.astype(np.float32) / 255.0
-    if alpha is not None:
-        alpha = np.array(alpha)[None, None]
+        image_array = image_array.astype(np.float32) / 255.0
+    if alpha is None:
+        alpha_array = None
+    else:
+        alpha_array = np.array(alpha)[None, None]
         if normalize:
-            alpha = alpha.astype(np.float32) / 255.0
+            alpha_array = alpha_array.astype(np.float32) / 255.0
     if to_torch_fmt:
         if to_mask or to_gray:
-            image = image[None, None]
+            image_array = image_array[None, None]
         else:
-            image = image[None].transpose(0, 3, 1, 2)
+            image_array = image_array[None].transpose(0, 3, 1, 2)
     return ReadImageResponse(
-        image,
-        alpha,
+        image_array,
+        alpha_array,
         original,
         anchored,
         to_masked,
