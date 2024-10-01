@@ -2032,7 +2032,7 @@ class TrainerConfig:
     profile_schedule_config: Optional[Dict[str, Any]] = None
     # `accelerator` attributes
     split_batches: bool = False
-    mixed_precision: str = "no"
+    mixed_precision: Union[str, PrecisionType] = "no"
     dispatch_batches: Optional[str] = None
     even_batches: bool = True
     timeout: int = 2400
