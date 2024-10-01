@@ -879,7 +879,6 @@ T_sd = TypeVar("T_sd", bound="ISerializableDataClass", covariant=True)
 TSerializable = TypeVar("TSerializable", bound="ISerializable", covariant=True)
 T_sa = TypeVar("T_sa", bound="ISerializableArrays", covariant=True)
 TSArrays = TypeVar("TSArrays", bound="ISerializableArrays", covariant=True)
-TSDataClass = TypeVar("TSDataClass", bound="ISerializableDataClass", covariant=True)
 TDataClass = TypeVar("TDataClass", bound="DataClassBase")
 
 
@@ -1142,11 +1141,7 @@ class ISerializableArrays(
         return copied
 
 
-class ISerializableDataClass(  # type: ignore
-    Generic[TSDataClass],
-    DataClassBase,
-    ISerializable[TSDataClass],
-):
+class ISerializableDataClass(Generic[T_sd], DataClassBase, ISerializable[T_sd]):  # type: ignore
     def to_info(self) -> Dict[str, Any]:
         return self.asdict()
 
