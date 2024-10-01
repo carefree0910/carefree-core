@@ -18,7 +18,6 @@ from tempfile import mkdtemp
 from tempfile import TemporaryDirectory
 from accelerate import Accelerator
 from collections import OrderedDict
-from rich.progress import track
 from rich.progress import Progress
 
 from .common import Block
@@ -59,6 +58,7 @@ from ..constants import PREDICTIONS_KEY
 from ..constants import CHECKPOINTS_FOLDER
 from ...toolkit import console
 from ...toolkit.misc import compress as compress_folder
+from ...toolkit.misc import track
 from ...toolkit.misc import to_path
 from ...toolkit.misc import safe_execute
 from ...toolkit.misc import is_local_rank_0
