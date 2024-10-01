@@ -36,6 +36,7 @@ from ...toolkit.misc import prefix_dict
 from ...toolkit.misc import format_float
 from ...toolkit.misc import shallow_copy_dict
 from ...toolkit.misc import fix_float_to_length
+from ...toolkit.misc import get_console_datetime
 from ...toolkit.console import LOG_TIME_FORMAT
 
 
@@ -153,6 +154,7 @@ class AutoWrapLine:
         if self._row is None:
             raise RuntimeError("should add row before getting table")
         terminal_w = shutil.get_terminal_size().columns
+        terminal_w -= len(get_console_datetime()) + 4
         pad_tw = lambda nc: terminal_w - nc
         cell_widths = np.array(
             [
@@ -168,9 +170,10 @@ class AutoWrapLine:
         wrap_index = np.argmax(cumsum_mask).item()
         if wrap_index == 0 and not cumsum_mask[0]:
             table = Table(**self._table_kw)
+            table.add_column("", style="log.time")
             for name, kwargs in zip(self._col_names, self._col_kwargs):
                 table.add_column(name, **kwargs)
-            table.add_row(*self._row)
+            table.add_row(get_console_datetime(), *self._row)
             return table
         # iteratively decide how many columns can we have, until only 1 column left
         num_wrapped_cols = wrap_index + 1
@@ -188,6 +191,8 @@ class AutoWrapLine:
         num_rows = (num_total_cols + num_wrapped_cols - 1) // num_wrapped_cols
         for i in range(num_rows):
             it = Table(**self._table_kw)
+            if i == 0:
+                it.add_column("", style="log.time")
             for j in range(num_wrapped_cols):
                 idx = i * num_wrapped_cols + j
                 if idx >= num_total_cols:
@@ -195,7 +200,9 @@ class AutoWrapLine:
                 name = self._col_names[idx]
                 kwargs = self._col_kwargs[idx]
                 it.add_column(name, **kwargs)
-            it.add_row(*self._row[i * num_wrapped_cols : (i + 1) * num_wrapped_cols])
+            i_row = [] if i > 0 else [get_console_datetime()]
+            i_row.extend(self._row[i * num_wrapped_cols : (i + 1) * num_wrapped_cols])
+            it.add_row(*i_row)
             table.add_row(it)
         return table
 
