@@ -26,6 +26,7 @@ from typing import Callable
 from typing import Iterable
 from typing import Optional
 from typing import Protocol
+from typing import Sequence
 from typing import Coroutine
 from typing import NamedTuple
 from typing import TYPE_CHECKING
@@ -34,8 +35,10 @@ from pathlib import Path
 from argparse import Namespace
 from datetime import datetime
 from datetime import timedelta
+from operator import length_hint
 from pydantic import BaseModel
 from functools import reduce
+from threading import Lock
 from collections import OrderedDict
 from dataclasses import asdict
 from dataclasses import fields
@@ -51,6 +54,9 @@ from .types import np_dict_type
 from .constants import TIME_FORMAT
 
 if TYPE_CHECKING:
+    from rich.progress import TaskID
+    from rich.progress import Progress
+    from rich.progress import ProgressType
     from accelerate import InitProcessGroupKwargs
 
 
@@ -1519,3 +1525,96 @@ class batch_manager:
 
     def __len__(self) -> int:
         return self.num_epoch
+
+
+# prgress bar
+
+TProgressCtx = ContextManager["Progress"]
+TProgressCallback = Callable[[int, "Progress", "TaskID"], None]
+
+
+def get_console_datetime() -> str:
+    return datetime.now().strftime(console.LOG_TIME_FORMAT)
+
+
+class ProgressProperty(NamedTuple):
+    disable: bool
+    leave: bool
+
+
+class RcProgress:
+    props: ProgressProperty
+
+    def __init__(self) -> None:
+        self._p = None
+        self._counter = 0
+        self._lock = Lock()
+
+    def init(self, disable: bool, leave: bool) -> "Progress":
+        from rich.progress import BarColumn
+        from rich.progress import Progress
+        from rich.progress import TaskProgressColumn
+        from rich.progress import TextColumn
+        from rich.progress import TimeRemainingColumn
+
+        self.props = ProgressProperty(disable=disable, leave=leave)
+        self._p = Progress(
+            TextColumn(get_console_datetime(), "log.time"),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(show_speed=True),
+            TimeRemainingColumn(elapsed_when_finished=True),
+            console=console.get_console(),
+            transient=not leave,
+            disable=disable,
+        )
+        return self._p
+
+    def get(self, disable: bool = False, leave: bool = True) -> TProgressCtx:
+
+        class _:
+
+            def __enter__(self):
+                with rc._lock:
+                    if rc._p is None:
+                        rc.init(disable, leave).start()
+                    rc._counter += 1
+                return rc._p
+
+            def __exit__(self, *args):
+                with rc._lock:
+                    rc._counter -= 1
+                    if rc._counter == 0:
+                        rc._p.stop()
+                        rc._p = None
+
+        rc = self
+        return _()
+
+
+RC_PROGRESS = RcProgress()
+
+
+def track(
+    sequence: Union[Sequence["ProgressType"], Iterable["ProgressType"]],
+    description: str = "",
+    total: Optional[float] = None,
+    disable: bool = False,
+    leave: bool = True,
+    *,
+    update_callback: Optional[TProgressCallback] = None,
+) -> Iterable["ProgressType"]:
+    with RC_PROGRESS.get(disable=disable, leave=leave) as p:
+        if total is None:
+            total = float(length_hint(sequence)) or None
+        task_id = p.add_task(description, total=total)
+        for i, item in enumerate(sequence):
+            yield item
+            p.update(task_id, advance=1)
+            if update_callback is not None:
+                update_callback(i, p, task_id)
+        if not leave:
+            if RC_PROGRESS.props.leave:
+                p.remove_task(task_id)
+            else:
+                p.update(task_id, completed=total)
