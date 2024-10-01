@@ -105,7 +105,8 @@ class SetDefaultsBlock(InjectDefaultsMixin, Block):
         config.callback_names = callback_names
         torch.backends.cudnn.benchmark = config.cudnn_benchmark
         # tqdm settings
-        tqdm_settings = config.tqdm_settings
+        tqdm_settings: Optional[dict]
+        tqdm_settings = config.tqdm_settings  # type: ignore
         if tqdm_settings is None:
             tqdm_settings = {}
         use_tqdm = tqdm_settings.setdefault("use_tqdm", False)
@@ -277,7 +278,8 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
         if config.monitor_names is None:
             config.monitor_names = "basic"
             self._defaults["monitor_names"] = "basic"
-        tqdm_settings = config.tqdm_settings
+        tqdm_settings: Optional[dict]
+        tqdm_settings = config.tqdm_settings  # type: ignore
         callback_names = config.callback_names
         callback_configs = config.callback_configs
         if callback_names is None:
@@ -357,7 +359,7 @@ class BuildCallbacksBlock(Block):
     def build(self, config: Config) -> None:
         cb_names = config.callback_names
         cb_configs = config.callback_configs
-        use_tqdm = (config.tqdm_settings or {}).get("use_tqdm", False)
+        use_tqdm = (config.tqdm_settings or {}).get("use_tqdm", False)  # type: ignore
         if cb_names is not None:
             self.callbacks = TrainerCallback.make_multiple(cb_names, cb_configs)
         else:

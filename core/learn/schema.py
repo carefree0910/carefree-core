@@ -35,6 +35,7 @@ from rich.progress import Progress
 from torch.amp import autocast
 from torch.optim import Optimizer
 from torch.profiler import profile
+from pydantic.dataclasses import dataclass as pydantic_dataclass
 from accelerate.utils import PrecisionType
 from accelerate.utils import extract_model_from_parallel
 from torch.optim.lr_scheduler import LRScheduler
@@ -294,7 +295,7 @@ def prepare_dataloaders(accelerator: Accelerator, *loaders: TL) -> TLs:
     return prepared_loaders
 
 
-@dataclass
+@pydantic_dataclass
 class DataConfig(ISerializableDataClass["DataConfig"]):
     batch_size: int = 1
     valid_batch_size: Optional[int] = None
@@ -1982,16 +1983,15 @@ class ITrainer(ABC):
 # configs
 
 
-@dataclass
+@pydantic_dataclass
 class TqdmSettings(DataClassBase):
     use_tqdm: bool = False
     use_step_tqdm: bool = False
     use_tqdm_in_validation: bool = False
-    position: int = 0  # deprecated, will not take effect
     desc: str = "running epoch"
 
 
-@dataclass
+@pydantic_dataclass
 class TrainerConfig:
     workspace: str = "_logs"
     create_sub_workspace: bool = True
@@ -2024,7 +2024,7 @@ class TrainerConfig:
     optimizer_settings: Optional[Dict[str, Optional[Dict[str, Any]]]] = None
     use_zero: bool = False
     finetune_config: Optional[Dict[str, Any]] = None
-    tqdm_settings: Optional[Dict[str, Any]] = None
+    tqdm_settings: Optional[Union[Dict[str, Any], TqdmSettings]] = None
     save_pipeline_in_realtime: bool = False
     # profile settings
     profile: bool = False
@@ -2042,7 +2042,7 @@ class TrainerConfig:
         init_process_group(cpu=cpu, handler=InitProcessGroupKwargs(timeout=timeout))
 
 
-@dataclass
+@pydantic_dataclass
 class DLSettings:
     model: str = "common"
     model_config: Optional[Dict[str, Any]] = None
@@ -2055,7 +2055,7 @@ class DLSettings:
     cudnn_benchmark: bool = False
 
 
-@dataclass
+@pydantic_dataclass
 class Config(TrainerConfig, DLSettings, ISerializableDataClass["Config"]):  # type: ignore
     def __post_init__(self) -> None:
         if isinstance(self.tqdm_settings, TqdmSettings):
