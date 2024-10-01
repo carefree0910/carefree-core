@@ -46,6 +46,7 @@ from dataclasses import fields
 from dataclasses import dataclass
 from dataclasses import is_dataclass
 from dataclasses import Field
+from pydantic.dataclasses import is_pydantic_dataclass
 
 from . import console
 from .types import TPath
@@ -968,6 +969,8 @@ class DataClassBase:
     @classmethod
     def construct(cls: Type[TDataClass], d: Dict[str, Any]) -> TDataClass:
         def _construct(t: Type, d: Dict[str, Any]) -> Any:
+            if is_pydantic_dataclass(t):
+                return t(**d)
             instance = safe_instantiate(t, d)
             for field in fields(instance):
                 if is_dataclass(field.type):
