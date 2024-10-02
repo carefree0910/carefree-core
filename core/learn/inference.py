@@ -181,6 +181,7 @@ class Inference(IInference):
                 tensor_outputs = None
                 if self.onnx is not None:
                     # will not consider distributed stuffs at onnx inference
+                    tensor_batch = recover_labels_of(tensor_batch)
                     np_batch = tensor_batch_to_np(tensor_batch)
                     np_outputs = self.onnx.predict(np_batch)
                 elif self.model is not None:
