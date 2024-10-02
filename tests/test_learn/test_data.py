@@ -171,6 +171,16 @@ class TestData(unittest.TestCase):
         predictions = outputs.forward_results[cflearn.PREDICTIONS_KEY]
         np.testing.assert_allclose(predictions, np.zeros_like(predictions))
 
+    def test_testing_data(self) -> None:
+        data, in_dim, out_dim = cflearn.testing.arange_data()
+        config = cflearn.Config(
+            module_name="linear",
+            module_config=dict(input_dim=in_dim, output_dim=out_dim, bias=False),
+            loss_name="mse",
+        )
+        config.to_debug()
+        cflearn.TrainingPipeline.init(config).fit(data)
+
 
 if __name__ == "__main__":
     unittest.main()
