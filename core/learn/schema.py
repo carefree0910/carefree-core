@@ -304,6 +304,7 @@ class DataConfig(ISerializableDataClass["DataConfig"]):
     block_configs: Optional[Dict[str, Dict[str, Any]]] = None
     loader_configs: Optional[Dict[str, Any]] = None
     valid_loader_configs: Optional[Dict[str, Any]] = None
+    loader_seed: Optional[int] = None
     bypass_collate_fn: bool = True
 
     def add_blocks(self, *blocks: Type["IDataBlock"]) -> None:
@@ -570,11 +571,18 @@ class IData(  # type: ignore
             valid_loader_configs = shallow_copy_dict(self.config.valid_loader_configs)
             loader_configs = update_dict(valid_loader_configs, loader_configs)
         kwargs = update_dict(kwargs, loader_configs)
+        if self.config.loader_seed is not None:
+            seed = self.config.loader_seed
+        else:
+            seed = int(torch.empty((), dtype=torch.int64).random_().item())
+        generator = torch.Generator()
+        generator.manual_seed(seed)
         loader = DataLoader(
             dataset,
             shuffle=shuffle,
             batch_size=batch_size,
             sampler=sampler,
+            generator=generator,
             **kwargs,
         )
         loader.data = self
