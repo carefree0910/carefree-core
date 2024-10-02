@@ -293,7 +293,7 @@ def prepare_dataloaders(accelerator: Accelerator, *loaders: TL) -> TLs:
             if not cls_prepared:
                 iter_fn = _iter_factory(bdl.__class__.__iter__)
                 bdl.__class__.__iter__ = iter_fn
-                loader.__class__.__iter__ = iter_fn
+                loader.__class__.__iter__ = iter_fn  # type: ignore
                 bdl.__class__._prepared_iter_ = True
     return prepared_loaders
 
