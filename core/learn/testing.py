@@ -6,6 +6,20 @@ from typing import Optional
 from .data import ArrayData
 
 
+def arange_data(
+    n: int = 10,
+    dim: int = 3,
+    *,
+    out_dim: int = 1,
+    batch_size: int = 4,
+) -> Tuple[ArrayData, int, int]:
+    x = np.arange(n * dim).reshape([n, dim]).astype(np.float32)
+    y = np.arange(n * out_dim).reshape([n, out_dim]).astype(np.float32)
+    data = ArrayData.init().fit(x, y)
+    data.config.batch_size = batch_size
+    return data, dim, out_dim
+
+
 def linear_data(
     n: int = 10000,
     dim: int = 10,
