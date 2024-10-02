@@ -181,6 +181,20 @@ class TestData(unittest.TestCase):
         config.to_debug()
         cflearn.TrainingPipeline.init(config).fit(data)
 
+    def test_seeding(self) -> None:
+        data = cflearn.testing.arange_data()[0]
+        loader = data.build_loaders()[0]
+        b0 = next(iter(loader))[cflearn.INPUT_KEY]
+        loader = data.build_loaders()[0]
+        b1 = next(iter(loader))[cflearn.INPUT_KEY]
+        self.assertFalse(np.allclose(b0, b1))
+        data.config.loader_seed = 42
+        loader = data.build_loaders()[0]
+        b0 = next(iter(loader))[cflearn.INPUT_KEY]
+        loader = data.build_loaders()[0]
+        b1 = next(iter(loader))[cflearn.INPUT_KEY]
+        np.testing.assert_allclose(b0, b1)
+
 
 if __name__ == "__main__":
     unittest.main()
