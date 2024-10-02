@@ -911,7 +911,7 @@ class SerializeModelBlock(Block):
             sort_by=self.sort_ckpt_by,
             target_ckpt_step=self.target_ckpt_step,
         )[0]
-        states = torch.load(folder / best_file, map_location="cpu")
+        states = torch.load(folder / best_file, weights_only=False, map_location="cpu")
         # check if the loaded `states` is a full state dict
         # this check makes it compatible with 'pure' states, for which
         # we don't need to extract from the 'states' key

@@ -420,12 +420,13 @@ class Trainer(ITrainer):
             return False
         success = False
         for checkpoint in checkpoints:
-            model_file = folder / checkpoint
-            if not os.path.isfile(model_file):
+            m_path = folder / checkpoint
+            if not os.path.isfile(m_path):
                 continue
             if self.is_local_rank_0:
-                console.debug(f"restoring from '{model_file}'")
-            states = torch.load(model_file, map_location=self.device)["states"]
+                console.debug(f"restoring from '{m_path}'")
+            states = torch.load(m_path, weights_only=False, map_location=self.device)
+            states = states["states"]
             if state_dict_callback is not None:
                 state_dict_callback(states)
             self.model.load_state_dict(states, strict)

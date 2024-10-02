@@ -220,7 +220,8 @@ class TestPipeline(unittest.TestCase):
         ckpt_folder = os.path.join(workspace, cflearn.CHECKPOINTS_FOLDER)
         r = 0.0
         for ckpt_file in cflearn.get_sorted_checkpoints(ckpt_folder)[:3]:
-            states = torch.load(os.path.join(ckpt_folder, ckpt_file))["states"]
+            ckpt_path = os.path.join(ckpt_folder, ckpt_file)
+            states = torch.load(ckpt_path, weights_only=False)["states"]
             p.build_model.model.load_state_dict(states)
             r += p.predict(test_loader)[cflearn.PREDICTIONS_KEY]
         r /= 3
@@ -230,7 +231,8 @@ class TestPipeline(unittest.TestCase):
         states = {k: 0 for k in p.build_model.model.state_dict()}
         ckpt_files = cflearn.get_sorted_checkpoints(ckpt_folder, sort_by="latest")
         for ckpt_file in ckpt_files[:3]:
-            i_states = torch.load(os.path.join(ckpt_folder, ckpt_file))["states"]
+            i_ckpt_path = os.path.join(ckpt_folder, ckpt_file)
+            i_states = torch.load(i_ckpt_path, weights_only=False)["states"]
             for k, v in i_states.items():
                 states[k] += v
         for k in states:

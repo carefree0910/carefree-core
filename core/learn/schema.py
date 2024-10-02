@@ -1093,7 +1093,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
 
     @classmethod
     def load(cls, path: TPath, strict: bool = True) -> "IModel":
-        full = torch.load(path)
+        full = torch.load(path, weights_only=False)
         self = cls.from_config(Config(**full["config"]))
         self.load_state_dict(full["states"], strict)
         return self

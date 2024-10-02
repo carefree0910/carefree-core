@@ -745,7 +745,8 @@ class PipelineSerializer:
     ) -> OrderedDict:
         merged_states = OrderedDict()
         for i, ckpt_path in enumerate(track(ckpt_paths, description="merge states")):
-            states = torch.load(ckpt_path, map_location=device)["states"]
+            states = torch.load(ckpt_path, weights_only=False, map_location=device)
+            states = states["states"]
             current_keys = list(states.keys())
             for k, v in list(states.items()):
                 states[f"{i}.{k}"] = v
@@ -866,7 +867,8 @@ class PipelineSerializer:
                 p = fn(p_folder)
                 merged_states = OrderedDict()
                 for ckpt in ckpts:
-                    states = torch.load(ckpt, map_location=device)["states"]
+                    states = torch.load(ckpt, weights_only=False, map_location=device)
+                    states = states["states"]
                     if states_callback is not None:
                         states = states_callback(p, states)
                     for k, v in states.items():

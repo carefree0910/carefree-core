@@ -54,13 +54,14 @@ class TrainingLoopCallback(TrainerCallback):
         # handle finetune stuffs
         finetune_config = trainer.config.finetune_config
         if finetune_config is not None:
-            pretrained_ckpt = finetune_config.get("pretrained_ckpt")
-            if pretrained_ckpt is None:
+            ckpt = finetune_config.get("pretrained_ckpt")
+            if ckpt is None:
                 raise ValueError(
                     "`pretrained_ckpt` should be provided when `finetune` is triggered"
                 )
-            console.log(f"loading pretrained checkpoint from '{pretrained_ckpt}'...")
-            states = torch.load(pretrained_ckpt, map_location=trainer.device)["states"]
+            console.log(f"loading pretrained checkpoint from '{ckpt}'...")
+            states = torch.load(ckpt, weights_only=False, map_location=trainer.device)
+            states = states["states"]
             model.load_state_dict(states)
             freeze = finetune_config.get("freeze", "")
             freeze_except = finetune_config.get("freeze_except", "")

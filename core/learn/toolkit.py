@@ -430,7 +430,7 @@ def get_tensors(inp: Union[TPath, tensor_dict_type]) -> tensor_dict_type:
         if inp.endswith(".safetensors"):
             inp = load_file(inp)
         else:
-            inp = torch.load(inp, map_location="cpu")
+            inp = torch.load(inp, weights_only=True, map_location="cpu")
     if not isinstance(inp, dict):
         raise ValueError(f"unrecognized input type ({type(inp)})")
     if "state_dict" in inp:
