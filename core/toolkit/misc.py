@@ -37,6 +37,7 @@ from datetime import datetime
 from datetime import timedelta
 from operator import length_hint
 from pydantic import BaseModel
+from pydantic import RootModel
 from functools import reduce
 from threading import Lock
 from collections import OrderedDict
@@ -884,6 +885,13 @@ TSArrays = TypeVar("TSArrays", bound="ISerializableArrays", covariant=True)
 TDataClass = TypeVar("TDataClass", bound="DataClassBase")
 
 
+def pydantic_asdict(ins: Any) -> Optional[Dict[str, Any]]:
+    cls = ins.__class__
+    if not is_pydantic_dataclass(cls):
+        return None
+    return RootModel[cls](ins).model_dump(mode="json")  # type: ignore
+
+
 class DataClassBase:
     """
     To use this base class, you should not only inherit from `DataClassBase`,
@@ -904,6 +912,9 @@ class DataClassBase:
 
     def asdict(self) -> Dict[str, Any]:
         def _to_item(ins: Any) -> Any:
+            d = pydantic_asdict(ins)
+            if d is not None:
+                return d
             if isinstance(ins, DataClassBase):
                 return ins.asdict()
             if isinstance(ins, dict):
@@ -914,6 +925,9 @@ class DataClassBase:
                 return asdict(ins)
             return ins
 
+        d = pydantic_asdict(self)
+        if d is not None:
+            return d
         return {k: _to_item(v) for k, v in zip(self.field_names, self.attributes)}
 
     def as_modified_dict(
