@@ -285,11 +285,11 @@ def prepare_dataloaders(accelerator: Accelerator, *loaders: TL) -> TLs:
 
                 return _iter
 
-            bdl = prepared.base_dataloader
-            bdl.data = loader.data
-            bdl.for_inference = loader.for_inference
-            bdl.recover_labels = loader.recover_labels
-            bdl.__iter__ = lambda: _iter_factory(bdl.__class__.__iter__)(bdl)
+            d = prepared.base_dataloader
+            d.data = loader.data
+            d.for_inference = loader.for_inference
+            d.recover_labels = loader.recover_labels
+            d.__iter__ = (lambda d: lambda: _iter_factory(d.__class__.__iter__)(d))(d)
     return prepared_loaders
 
 
