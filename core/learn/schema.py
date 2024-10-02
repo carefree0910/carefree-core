@@ -289,12 +289,7 @@ def prepare_dataloaders(accelerator: Accelerator, *loaders: TL) -> TLs:
             bdl.data = loader.data
             bdl.for_inference = loader.for_inference
             bdl.recover_labels = loader.recover_labels
-            cls_prepared = getattr(bdl.__class__, "_prepared_iter_", False)
-            if not cls_prepared:
-                iter_fn = _iter_factory(bdl.__class__.__iter__)
-                bdl.__class__.__iter__ = iter_fn
-                loader.__class__.__iter__ = iter_fn  # type: ignore
-                bdl.__class__._prepared_iter_ = True
+            bdl.__iter__ = lambda: _iter_factory(bdl.__class__.__iter__)(bdl)
     return prepared_loaders
 
 
