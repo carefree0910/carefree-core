@@ -285,9 +285,11 @@ def prepare_dataloaders(accelerator: Accelerator, *loaders: TL) -> TLs:
 
                 return _iter
 
-            prepared.data = loader.data
-            prepared.for_inference = loader.for_inference
-            prepared.recover_labels = loader.recover_labels
+            base_dataloader = prepared.base_dataloader
+            for ld in [prepared, base_dataloader]:
+                ld.data = loader.data
+                ld.for_inference = loader.for_inference
+                ld.recover_labels = loader.recover_labels
             cls_prepared = getattr(prepared.__class__, "_prepared_iter_", False)
             if not cls_prepared:
                 prepared.__class__._prepared_iter_ = True
