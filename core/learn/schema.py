@@ -285,7 +285,7 @@ def prepare_dataloaders(accelerator: Accelerator, *loaders: TL) -> TLs:
 
                 return _iter
 
-            d = prepared.base_dataloader
+            d = prepared
             d.data = loader.data
             d.for_inference = loader.for_inference
             d.recover_labels = loader.recover_labels
