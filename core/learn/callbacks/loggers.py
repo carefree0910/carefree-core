@@ -12,6 +12,7 @@ from typing import Optional
 from typing import NamedTuple
 from datetime import datetime
 from rich import box
+from rich.text import Text
 from rich.style import Style
 from rich.table import Table
 from rich.table import Column
@@ -21,6 +22,7 @@ from rich.progress import Progress
 from rich.progress import BarColumn
 from rich.progress import TextColumn
 from rich.progress import SpinnerColumn
+from rich.progress import ProgressColumn
 from rich.progress import TimeRemainingColumn
 
 from ..schema import ITrainer
@@ -38,6 +40,18 @@ from ...toolkit.misc import shallow_copy_dict
 from ...toolkit.misc import fix_float_to_length
 from ...toolkit.misc import get_console_datetime
 from ...toolkit.console import LOG_TIME_FORMAT
+
+
+class ItpsColumn(ProgressColumn):
+    def render(self, task: "Task") -> Text:
+        speed = task.finished_speed or task.speed
+        if speed is None:
+            return Text("?", style="progress.data.speed")
+        if speed >= 1:
+            msg = f"{format_float(speed, 4)}it/s"
+        else:
+            msg = f"{format_float(1.0 / speed, 4)}s/it"
+        return Text(msg, style="progress.data.speed")
 
 
 class MetricsFormatter:
@@ -74,6 +88,7 @@ class ProgressCallback(TrainerCallback):
                 "[progress.percentage]{task.completed}/{task.total}",
                 table_column=self.progress_table,
             ),
+            ItpsColumn(),
             TimeRemainingColumn(),
             TextColumn(MetricsFormatter),  # type: ignore
         )
