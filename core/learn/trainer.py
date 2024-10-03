@@ -155,7 +155,7 @@ class Trainer(ITrainer):
         return os.path.isdir(self.checkpoint_folder)
 
     @property
-    def workspace(self) -> str:
+    def workspace(self) -> TPath:
         return self.config.workspace
 
     @property

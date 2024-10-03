@@ -396,7 +396,7 @@ class PipelineSerializer:
     def save(
         cls,
         pipeline: Pipeline,
-        workspace: str,
+        workspace: TPath,
         *,
         compress: bool = False,
         verbose: bool = True,
@@ -405,7 +405,7 @@ class PipelineSerializer:
         cls._save(pipeline, folder, compress=compress, verbose=verbose)
 
     @classmethod
-    def update(cls, p: Pipeline, workspace: str, verbose: bool = True) -> None:
+    def update(cls, p: Pipeline, workspace: TPath, verbose: bool = True) -> None:
         folder = os.path.join(workspace, cls.pipeline_folder)
         if os.path.isdir(folder):
             compress = False
@@ -420,8 +420,8 @@ class PipelineSerializer:
     @classmethod
     def pack(
         cls,
-        workspace: str,
-        export_folder: str,
+        workspace: TPath,
+        export_folder: TPath,
         *,
         pack_type: PackType = PackType.INFERENCE,
         compress: bool = True,

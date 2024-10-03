@@ -321,11 +321,11 @@ def get_num_positional_args(fn: Callable) -> Union[int, float]:
 
 
 def prepare_workspace_from(
-    workspace: str,
+    workspace: TPath,
     *,
     timeout: Optional[timedelta] = None,
     make: bool = True,
-) -> str:
+) -> TPath:
     current_time = datetime.now()
     if timeout is not None and os.path.isdir(workspace):
         for stuff in os.listdir(workspace):

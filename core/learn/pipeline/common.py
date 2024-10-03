@@ -37,7 +37,7 @@ class Block(IBlock):
     """
 
     data: Optional[IData]
-    training_workspace: Optional[str]
+    training_workspace: Optional[TPath]
     serialize_folder: Optional[Path]
     previous: Dict[str, "Block"]
     pipeline: "Pipeline"
@@ -105,7 +105,7 @@ class Pipeline(Generic[TPipeline], IPipeline[Block, Config, TPipeline]):
     _defaults: OrderedDict
 
     data: Optional[IData] = None
-    training_workspace: Optional[str] = None
+    training_workspace: Optional[TPath] = None
     serialize_folder: Optional[Path] = None
     config_file = "config.json"
 

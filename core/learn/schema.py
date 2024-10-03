@@ -1931,7 +1931,7 @@ class ITrainer(ABC):
 
     @property
     @abstractmethod
-    def workspace(self) -> str:
+    def workspace(self) -> TPath:
         """return the workspace of the trainer"""
 
     @property
@@ -2003,7 +2003,7 @@ class TqdmSettings(DataClassBase):
 
 @pydantic_dataclass
 class TrainerConfig:
-    workspace: str = "_logs"
+    workspace: TPath = "_logs"
     create_sub_workspace: bool = True
     state_config: Optional[Dict[str, Any]] = None
     num_epoch: int = 40

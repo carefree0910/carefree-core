@@ -651,7 +651,7 @@ class ReportBlock(Block):
         self,
         title: str,
         messages: Dict[str, Any],
-        report_folder: str,
+        report_folder: TPath,
     ) -> None:
         def _stringify_item(
             item: Tuple[str, Any],
