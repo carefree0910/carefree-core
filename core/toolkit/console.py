@@ -34,6 +34,10 @@ def warn(msg: str, *args: Any, prefix: str = "Warning: ", **kwargs: Any) -> None
     log(f"[yellow]{prefix}{msg}[/yellow]", *args, **kwargs)
 
 
+def warning(msg: str, *args: Any, prefix: str = "Warning: ", **kwargs: Any) -> None:
+    warn(msg, *args, prefix=prefix, **kwargs)
+
+
 def deprecated(msg: str, *args: Any, **kwargs: Any) -> None:
     kwargs.setdefault("_stack_offset", 4)
     warn(msg, *args, prefix="DeprecationWarning: ", **kwargs)
