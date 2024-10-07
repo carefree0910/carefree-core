@@ -1600,7 +1600,7 @@ def make_progress(
                 msg = f"{self.format(1.0 / speed)}s/it"
             return Text(msg, style="progress.data.speed")
 
-    columns = [TextColumn(get_console_datetime(), "log.time")]
+    columns: List[ProgressColumn] = [TextColumn(get_console_datetime(), "log.time")]
     if use_spinner:
         columns.append(SpinnerColumn())
     columns.extend(
