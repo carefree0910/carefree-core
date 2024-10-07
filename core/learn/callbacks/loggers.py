@@ -44,14 +44,28 @@ from ...toolkit.console import LOG_TIME_FORMAT
 
 
 class ItpsColumn(ProgressColumn):
+    def __init__(
+        self,
+        table_column: Optional[Column] = None,
+        *,
+        precision: int = 2,
+        threshold_offset: int = 0,
+    ):
+        super().__init__(table_column=table_column)
+        self._precision = precision
+        self._threshold_offset = threshold_offset
+
+    def format(self, num: float) -> str:
+        return format_float(num, self._precision, self._threshold_offset)
+
     def render(self, task: "Task") -> Text:
         speed = task.finished_speed or task.speed
         if speed is None:
             return Text("?", style="progress.data.speed")
         if speed >= 1:
-            msg = f"{format_float(speed, 4)}it/s"
+            msg = f"{self.format(speed)}it/s"
         else:
-            msg = f"{format_float(1.0 / speed, 4)}s/it"
+            msg = f"{self.format(1.0 / speed)}s/it"
         return Text(msg, style="progress.data.speed")
 
 
