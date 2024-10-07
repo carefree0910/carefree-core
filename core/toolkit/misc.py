@@ -530,9 +530,9 @@ def update_dict(src_dict: dict, tgt_dict: dict) -> dict:
     return tgt_dict
 
 
-def format_float(value: float, precision: int = 6) -> str:
+def format_float(value: float, precision: int = 6, threshold_offset: int = 2) -> str:
     magnitude = abs(value)
-    threshold = precision - 2
+    threshold = precision - threshold_offset
     if magnitude <= 10**-threshold or magnitude >= 10**threshold:
         return f"{value:.{threshold}e}"
     return f"{value:.{precision}f}"
