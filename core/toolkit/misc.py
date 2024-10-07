@@ -60,6 +60,7 @@ if TYPE_CHECKING:
     from rich.progress import TaskID
     from rich.progress import Progress
     from rich.progress import ProgressType
+    from rich.progress import ProgressColumn
     from accelerate import InitProcessGroupKwargs
 
 
@@ -1559,6 +1560,69 @@ class ProgressProperty(NamedTuple):
     leave: bool
 
 
+def make_progress(
+    *,
+    leave: bool = True,
+    disable: bool = False,
+    use_spinner: bool = False,
+    precision: int = 2,
+    threshold_offset: int = 0,
+    custom_columns: Optional[List["ProgressColumn"]] = None,
+) -> "Progress":
+    from rich.text import Text
+    from rich.table import Column
+    from rich.progress import Task
+    from rich.progress import Progress
+    from rich.progress import BarColumn
+    from rich.progress import TextColumn
+    from rich.progress import SpinnerColumn
+    from rich.progress import ProgressColumn
+    from rich.progress import MofNCompleteColumn
+    from rich.progress import TaskProgressColumn
+    from rich.progress import TimeRemainingColumn
+
+    class ItpsColumn(ProgressColumn):
+        def __init__(self, table_column: Optional[Column] = None):
+            super().__init__(table_column=table_column)
+            self._precision = precision
+            self._threshold_offset = threshold_offset
+
+        def format(self, num: float) -> str:
+            return format_float(num, self._precision, self._threshold_offset)
+
+        def render(self, task: Task) -> Text:
+            speed = task.finished_speed or task.speed
+            if speed is None:
+                return Text("?", style="progress.data.speed")
+            if speed >= 1:
+                msg = f"{self.format(speed)}it/s"
+            else:
+                msg = f"{self.format(1.0 / speed)}s/it"
+            return Text(msg, style="progress.data.speed")
+
+    columns = [TextColumn(get_console_datetime(), "log.time")]
+    if use_spinner:
+        columns.append(SpinnerColumn())
+    columns.extend(
+        [
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            ItpsColumn(),
+            TaskProgressColumn(show_speed=True),
+            TimeRemainingColumn(elapsed_when_finished=True),
+        ]
+    )
+    if custom_columns is not None:
+        columns.extend(custom_columns)
+    return Progress(
+        *columns,
+        console=console.get_console(),
+        transient=not leave,
+        disable=disable,
+    )
+
+
 class RcProgress:
     props: ProgressProperty
 
@@ -1568,25 +1632,8 @@ class RcProgress:
         self._lock = Lock()
 
     def init(self, disable: bool, leave: bool) -> "Progress":
-        from rich.progress import Progress
-        from rich.progress import BarColumn
-        from rich.progress import TextColumn
-        from rich.progress import MofNCompleteColumn
-        from rich.progress import TaskProgressColumn
-        from rich.progress import TimeRemainingColumn
-
-        self.props = ProgressProperty(disable=disable, leave=leave)
-        self._p = Progress(
-            TextColumn(get_console_datetime(), "log.time"),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TaskProgressColumn(show_speed=True),
-            TimeRemainingColumn(elapsed_when_finished=True),
-            console=console.get_console(),
-            transient=not leave,
-            disable=disable,
-        )
+        self.props = ProgressProperty(disable, leave)
+        self._p = make_progress(leave=leave, disable=disable)
         return self._p
 
     def get(self, disable: bool = False, leave: bool = True) -> TProgressCtx:

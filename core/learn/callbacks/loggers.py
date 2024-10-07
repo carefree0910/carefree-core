@@ -12,19 +12,12 @@ from typing import Optional
 from typing import NamedTuple
 from datetime import datetime
 from rich import box
-from rich.text import Text
 from rich.style import Style
 from rich.table import Table
 from rich.table import Column
 from rich.progress import Task
 from rich.progress import TaskID
-from rich.progress import Progress
-from rich.progress import BarColumn
 from rich.progress import TextColumn
-from rich.progress import SpinnerColumn
-from rich.progress import ProgressColumn
-from rich.progress import MofNCompleteColumn
-from rich.progress import TimeRemainingColumn
 
 from ..schema import ITrainer
 from ..schema import DataLoader
@@ -37,36 +30,11 @@ from ..constants import INFERENCE_COLOR
 from ...toolkit import console
 from ...toolkit.misc import prefix_dict
 from ...toolkit.misc import format_float
+from ...toolkit.misc import make_progress
 from ...toolkit.misc import shallow_copy_dict
 from ...toolkit.misc import fix_float_to_length
 from ...toolkit.misc import get_console_datetime
 from ...toolkit.console import LOG_TIME_FORMAT
-
-
-class ItpsColumn(ProgressColumn):
-    def __init__(
-        self,
-        table_column: Optional[Column] = None,
-        *,
-        precision: int = 2,
-        threshold_offset: int = 0,
-    ):
-        super().__init__(table_column=table_column)
-        self._precision = precision
-        self._threshold_offset = threshold_offset
-
-    def format(self, num: float) -> str:
-        return format_float(num, self._precision, self._threshold_offset)
-
-    def render(self, task: "Task") -> Text:
-        speed = task.finished_speed or task.speed
-        if speed is None:
-            return Text("?", style="progress.data.speed")
-        if speed >= 1:
-            msg = f"{self.format(speed)}it/s"
-        else:
-            msg = f"{self.format(1.0 / speed)}s/it"
-        return Text(msg, style="progress.data.speed")
 
 
 class MetricsFormatter:
@@ -92,18 +60,9 @@ class ProgressCallback(TrainerCallback):
     def __init__(self, settings: Dict[str, Any]) -> None:
         super().__init__()
         self.settings = TqdmSettings(**settings)
-        self.time_column = TextColumn("", "log.time")
         self.progress_table = Column()
-        self.progress = Progress(
-            self.time_column,
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            ItpsColumn(),
-            TimeRemainingColumn(elapsed_when_finished=True),
-            TextColumn(MetricsFormatter),  # type: ignore
-        )
+        self.progress = make_progress(custom_columns=[TextColumn(MetricsFormatter)])  # type: ignore
+        self.time_column: TextColumn = self.progress.columns[0]
         self.step_progress: Optional[TaskID] = None
         self.epoch_progress: Optional[TaskID] = None
         self.enabled = self.is_local_rank_0 and (
