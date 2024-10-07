@@ -66,7 +66,9 @@ class ProgressCallback(TrainerCallback):
         self.step_progress: Optional[TaskID] = None
         self.epoch_progress: Optional[TaskID] = None
         self.enabled = self.is_local_rank_0 and (
-            self.settings.use_tqdm or self.settings.use_step_tqdm
+            self.settings.use_tqdm
+            or self.settings.use_step_tqdm
+            or self.settings.use_tqdm_in_validation
         )
         if self.enabled:
             self.progress.start()
