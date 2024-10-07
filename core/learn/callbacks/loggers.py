@@ -72,12 +72,12 @@ class ItpsColumn(ProgressColumn):
 class MetricsFormatter:
     @staticmethod
     def format(task: Task) -> str:
-        fields = task.fields
-        if not fields:
+        metrics = task.fields.get("metrics")
+        if metrics is None:
             return ""
         return (
-            "[yellow]| "
-            + " | ".join([f"{k}: {format_float(v)}" for k, v in fields.items()])
+            f"[{INFERENCE_COLOR}]| "
+            + " | ".join([f"{k}: {format_float(v)}" for k, v in metrics.items()])
             + " |"
         )
 
@@ -144,7 +144,7 @@ class ProgressCallback(TrainerCallback):
         if self.epoch_progress is not None:
             metric_values = shallow_copy_dict(metrics_outputs.metric_values)
             metric_values["score"] = metrics_outputs.final_score
-            self.progress.update(self.epoch_progress, **metric_values)  # type: ignore
+            self.progress.update(self.epoch_progress, metrics=metric_values)  # type: ignore
 
     def at_epoch_end(self, trainer: ITrainer) -> None:
         if self.epoch_progress is not None:
