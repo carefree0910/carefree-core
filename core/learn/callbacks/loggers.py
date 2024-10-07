@@ -101,7 +101,7 @@ class ProgressCallback(TrainerCallback):
             BarColumn(),
             MofNCompleteColumn(),
             ItpsColumn(),
-            TimeRemainingColumn(),
+            TimeRemainingColumn(elapsed_when_finished=True),
             TextColumn(MetricsFormatter),  # type: ignore
         )
         self.step_progress: Optional[TaskID] = None
