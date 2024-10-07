@@ -23,6 +23,7 @@ from rich.progress import BarColumn
 from rich.progress import TextColumn
 from rich.progress import SpinnerColumn
 from rich.progress import ProgressColumn
+from rich.progress import MofNCompleteColumn
 from rich.progress import TimeRemainingColumn
 
 from ..schema import ITrainer
@@ -84,10 +85,7 @@ class ProgressCallback(TrainerCallback):
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
-            TextColumn(
-                "[progress.percentage]{task.completed}/{task.total}",
-                table_column=self.progress_table,
-            ),
+            MofNCompleteColumn(),
             ItpsColumn(),
             TimeRemainingColumn(),
             TextColumn(MetricsFormatter),  # type: ignore

@@ -1568,10 +1568,11 @@ class RcProgress:
         self._lock = Lock()
 
     def init(self, disable: bool, leave: bool) -> "Progress":
-        from rich.progress import BarColumn
         from rich.progress import Progress
-        from rich.progress import TaskProgressColumn
+        from rich.progress import BarColumn
         from rich.progress import TextColumn
+        from rich.progress import MofNCompleteColumn
+        from rich.progress import TaskProgressColumn
         from rich.progress import TimeRemainingColumn
 
         self.props = ProgressProperty(disable=disable, leave=leave)
@@ -1579,6 +1580,7 @@ class RcProgress:
             TextColumn(get_console_datetime(), "log.time"),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
+            MofNCompleteColumn(),
             TaskProgressColumn(show_speed=True),
             TimeRemainingColumn(elapsed_when_finished=True),
             console=console.get_console(),
