@@ -1681,7 +1681,4 @@ def track(
             if update_callback is not None:
                 update_callback(i, p, task_id)
         if not leave:
-            if RC_PROGRESS.props.leave:
-                p.remove_task(task_id)
-            else:
-                p.update(task_id, completed=total)
+            p.remove_task(task_id)
