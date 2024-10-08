@@ -731,15 +731,16 @@ class TestMisc(unittest.TestCase):
 
         @dataclass
         class Bar(DataClassBase):
-            pass
+            b: int = 0
 
         @pydantic_dataclass
         class BarPydantic(DataClassBase):
-            pass
+            b: int = 0
 
         with self.assertRaises(TypeError):
             Bar(a=1)
-        BarPydantic(a=1)
+        bp = BarPydantic(a=1)
+        self.assertDictEqual(bp.asdict(), {"b": 0})
 
     def test_with_register(self):
         class Foo(WithRegister):
