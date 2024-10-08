@@ -3,7 +3,11 @@ import unittest
 
 import core.learn as cflearn
 
+from rich.table import Table
+from unittest.mock import patch
+from unittest.mock import MagicMock
 from core.learn.schema import losses_type
+from core.learn.callbacks.loggers import AutoWrapLine
 
 
 class TestCallbacks(unittest.TestCase):
@@ -74,6 +78,46 @@ class TestCallbacks(unittest.TestCase):
                 cflearn.TrainingPipeline.init(config).fit(data)
         config.loss_name = "large_loss"
         cflearn.TrainingPipeline.init(config).fit(data)
+
+
+class TestAutoWrapLine(unittest.TestCase):
+    def setUp(self):
+        self.auto_wrap_line = AutoWrapLine()
+        with self.assertRaises(RuntimeError):
+            self.auto_wrap_line.get_table()
+
+    def test_add_column(self):
+        self.auto_wrap_line.add_column("test_column")
+        self.assertEqual(self.auto_wrap_line._col_names, ["test_column"])
+        self.assertEqual(self.auto_wrap_line._col_kwargs, [{}])
+
+    def test_add_row(self):
+        self.auto_wrap_line.add_row("test_row")
+        self.assertEqual(self.auto_wrap_line._row, ("test_row",))
+        with self.assertRaises(RuntimeError):
+            self.auto_wrap_line.add_row("test_row")
+
+    @patch("shutil.get_terminal_size")
+    def test_get_table(self, mock_get_terminal_size):
+        n_cols = 20
+        mock_get_terminal_size.return_value = MagicMock(columns=40)
+
+        for i in range(n_cols):
+            self.auto_wrap_line.add_column(f"test_column{i}")
+        self.auto_wrap_line.add_row(*[f"test_row{i}" for i in range(n_cols)])
+
+        table = self.auto_wrap_line.get_table()
+
+        self.assertIsInstance(table, Table)
+        table = table.columns[0]
+        self.assertEqual(table._cells[0].columns[0].header, "")
+        self.assertEqual(table._cells[0].columns[1].header, "test_column0")
+        self.assertEqual(table._cells[0].columns[1]._cells[0], "test_row0")
+        for i in range(1, n_cols // 2):
+            self.assertEqual(table._cells[i].columns[0].header, f"test_column{i*2-1}")
+            self.assertEqual(table._cells[i].columns[1].header, f"test_column{i*2}")
+            self.assertEqual(table._cells[i].columns[0]._cells[0], f"test_row{i*2-1}")
+            self.assertEqual(table._cells[i].columns[1]._cells[0], f"test_row{i*2}")
 
 
 if __name__ == "__main__":
