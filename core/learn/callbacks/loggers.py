@@ -1,3 +1,4 @@
+import math
 import time
 import wandb
 import shutil
@@ -141,55 +142,54 @@ class AutoWrapLine:
     def get_table(self) -> Table:
         if self._row is None:
             raise RuntimeError("should add row before getting table")
+        row = get_console_datetime(), *self._row
+        col_names = [""] + self._col_names
+        col_kwargs = [dict(style="log.time")] + self._col_kwargs
+
         terminal_w = shutil.get_terminal_size().columns
-        terminal_w -= len(get_console_datetime()) + 4
-        pad_tw = lambda nc: terminal_w - nc
+        pad_tw = lambda nc: terminal_w - 2 * nc
         cell_widths = np.array(
             [
-                max(len(str(self._row[i])), len(col_name)) + 2
-                for i, col_name in enumerate(self._col_names)
+                max(len(str(row[i])), len(col_name)) + 2
+                for i, col_name in enumerate(col_names)
             ]
         )
         ws_cumsum = np.cumsum(cell_widths)
         # if total width is less than terminal width (with 1 pixel padding
         # for each column), no need to wrap
-        num_total_cols = len(self._col_names)
+        num_total_cols = len(col_names)
         cumsum_mask = ws_cumsum > pad_tw(num_total_cols)
         wrap_index = np.argmax(cumsum_mask).item()
         if wrap_index == 0 and not cumsum_mask[0]:
             table = Table(**self._table_kw)
-            table.add_column("", style="log.time")
-            for name, kwargs in zip(self._col_names, self._col_kwargs):
+            for name, kwargs in zip(col_names, col_kwargs):
                 table.add_column(name, **kwargs)
-            table.add_row(get_console_datetime(), *self._row)
+            table.add_row(*row)
             return table
         # iteratively decide how many columns can we have, until only 1 column left
-        num_wrapped_cols = wrap_index + 1
-        while num_wrapped_cols > 1:
+        num_wrapped_rows = 2
+        while True:
+            num_wrapped_cols = math.ceil(num_total_cols / num_wrapped_rows)
             remainder = num_total_cols % num_wrapped_cols
             padding = num_wrapped_cols - remainder
             padded_cell_widths = np.concatenate([cell_widths, np.zeros(padding)])
             padded_cell_widths = padded_cell_widths.reshape(-1, num_wrapped_cols)
-            max_widths = padded_cell_widths.max(axis=0)
-            if max_widths.sum() <= pad_tw(num_wrapped_cols):
+            padded_row_widths = padded_cell_widths.sum(axis=1)
+            if padded_row_widths.max() <= pad_tw(num_wrapped_cols):
                 break
-            num_wrapped_cols -= 1
+            num_wrapped_rows += 1
         # add multiple tables
         table = Table(**self._table_kw, show_header=False)
-        num_rows = (num_total_cols + num_wrapped_cols - 1) // num_wrapped_cols
-        for i in range(num_rows):
+        for i in range(num_wrapped_rows):
             it = Table(**self._table_kw)
-            if i == 0:
-                it.add_column("", style="log.time")
             for j in range(num_wrapped_cols):
                 idx = i * num_wrapped_cols + j
                 if idx >= num_total_cols:
                     break
-                name = self._col_names[idx]
-                kwargs = self._col_kwargs[idx]
+                name = col_names[idx]
+                kwargs = col_kwargs[idx]
                 it.add_column(name, **kwargs)
-            i_row = [] if i > 0 else [get_console_datetime()]
-            i_row.extend(self._row[i * num_wrapped_cols : (i + 1) * num_wrapped_cols])
+            i_row = row[i * num_wrapped_cols : (i + 1) * num_wrapped_cols]
             it.add_row(*i_row)
             table.add_row(it)
         return table
