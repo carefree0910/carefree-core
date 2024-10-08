@@ -729,9 +729,14 @@ class TestMisc(unittest.TestCase):
 
         from pydantic.dataclasses import dataclass as pydantic_dataclass
 
+        @pydantic_dataclass
+        class FooPydantic(DataClassBase):
+            a: int = 0
+
         @dataclass
         class Bar(DataClassBase):
             b: int = 0
+            foo: FooPydantic = field(default_factory=FooPydantic)
 
         @pydantic_dataclass
         class BarPydantic(DataClassBase):
@@ -739,8 +744,8 @@ class TestMisc(unittest.TestCase):
 
         with self.assertRaises(TypeError):
             Bar(a=1)
-        bp = BarPydantic(a=1)
-        self.assertDictEqual(bp.asdict(), {"b": 0})
+        BarPydantic(a=1)
+        self.assertDictEqual(Bar().asdict(), {"b": 0, "foo": {"a": 0}})
 
     def test_with_register(self):
         class Foo(WithRegister):
