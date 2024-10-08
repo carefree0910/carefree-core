@@ -813,6 +813,16 @@ class TestMisc(unittest.TestCase):
         self.assertEqual(format_float(1.0), "1.000000")
         self.assertEqual(format_float(1.0e6), "1.0000e+06")
 
+    def test_track(self):
+        for _ in track(range(2)):
+            time.sleep(1.01)
+        for _ in track(range(3), leave=False):
+            pass
+        nums = []
+        for _ in track(range(3), update_callback=lambda *_: nums.append(1)):
+            pass
+        self.assertListEqual(nums, [1, 1, 1])
+
 
 class TestRetry(unittest.TestCase):
     def setUp(self):
