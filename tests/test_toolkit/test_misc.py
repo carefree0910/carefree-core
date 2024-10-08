@@ -727,6 +727,20 @@ class TestMisc(unittest.TestCase):
         foo_complex.bar = 2
         self.assertEqual(foo_complex.as_modified_dict(), {"foo": {"bar": 1}, "bar": 2})
 
+        from pydantic.dataclasses import dataclass as pydantic_dataclass
+
+        @dataclass
+        class Bar(DataClassBase):
+            pass
+
+        @pydantic_dataclass
+        class BarPydantic(DataClassBase):
+            pass
+
+        with self.assertRaises(TypeError):
+            Bar(a=1)
+        BarPydantic(a=1)
+
     def test_with_register(self):
         class Foo(WithRegister):
             d = {}
