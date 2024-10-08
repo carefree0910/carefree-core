@@ -2072,8 +2072,6 @@ class Config(TrainerConfig, DLSettings, ISerializableDataClass["Config"]):  # ty
             self.tqdm_settings = self.tqdm_settings.asdict()
         if isinstance(self.mixed_precision, PrecisionType):
             self.mixed_precision = str(self.mixed_precision)
-        if not isinstance(self.mixed_precision, str):
-            raise ValueError(f"unknown mixed precision: {self.mixed_precision}")
 
     def to_debug(self) -> "Config":
         self.num_steps = 1
