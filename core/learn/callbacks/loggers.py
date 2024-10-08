@@ -62,7 +62,10 @@ class ProgressCallback(TrainerCallback):
         super().__init__()
         self.settings = TqdmSettings(**settings)
         self.progress_table = Column()
-        self.progress = make_progress(custom_columns=[TextColumn(MetricsFormatter)])  # type: ignore
+        self.progress = make_progress(
+            use_spinner=True,
+            custom_columns=[TextColumn(MetricsFormatter)],  # type: ignore
+        )
         self.time_column: TextColumn = self.progress.columns[0]  # type: ignore
         self.step_progress: Optional[TaskID] = None
         self.epoch_progress: Optional[TaskID] = None
