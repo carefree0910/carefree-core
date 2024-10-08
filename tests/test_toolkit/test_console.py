@@ -9,6 +9,7 @@ class TestConsole(unittest.TestCase):
         log("Hello World!")
         debug("Hello World!")
         warn("Hello World!")
+        warning("Hello World!")
         deprecated("Hello World!")
         error("Hello World!")
         print("Hello World!")
