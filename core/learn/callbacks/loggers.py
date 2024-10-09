@@ -79,8 +79,7 @@ class ProgressCallback(TrainerCallback):
 
     def before_loop(self, trainer: ITrainer) -> None:
         if self.is_local_rank_0 and self.settings.use_tqdm:
-            now = datetime.now().strftime(LOG_TIME_FORMAT)
-            self.time_column.text_format = now
+            self._update_time_column()
             self.epoch_progress = self.progress.add_task(
                 f"[green]{self.settings.desc}",
                 total=trainer.state.num_epoch,
@@ -124,6 +123,9 @@ class ProgressCallback(TrainerCallback):
     def after_loop(self, trainer: ITrainer) -> None:
         if self.enabled:
             self.progress.stop()
+
+    def _update_time_column(self) -> None:
+        self.time_column.text_format = datetime.now().strftime(LOG_TIME_FORMAT)
 
 
 class AutoWrapLine:
