@@ -95,6 +95,8 @@ class ProgressCallback(TrainerCallback):
                 total=num_steps,
                 start=True,
             )
+        if self.epoch_progress is None:
+            self._update_time_column()
 
     def at_step_end(self, trainer: ITrainer) -> None:
         if self.step_progress is not None:

@@ -451,6 +451,8 @@ class Trainer(ITrainer):
         else:
             for c in self.callbacks:
                 if isinstance(c, ProgressCallback):
+                    if c.epoch_progress is None:
+                        c._update_time_column()
                     progress = c.progress
                     break
             else:
