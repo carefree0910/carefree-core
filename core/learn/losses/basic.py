@@ -133,6 +133,8 @@ class MultiLoss(ILoss):
         losses: tensor_dict_type = {}
         for k, loss_fn in self.losses.items():
             k_losses = loss_fn(forward_results, batch, state)
+            if k_losses is None:
+                continue
             if isinstance(k_losses, Tensor):
                 losses[k] = k_losses
                 loss += self.weights[k] * k_losses  # type: ignore
