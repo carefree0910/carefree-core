@@ -2045,6 +2045,7 @@ class TrainerConfig:
     mixed_precision: Union[str, PrecisionType] = "no"
     dispatch_batches: Optional[str] = None
     even_batches: bool = True
+    find_unused_parameters: bool = False
     timeout: int = 2400
 
     def init_process_group(self, *, cpu: bool) -> None:

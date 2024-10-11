@@ -12,6 +12,7 @@ from typing import Optional
 from pathlib import Path
 from accelerate import Accelerator
 from accelerate import DataLoaderConfiguration
+from accelerate import DistributedDataParallelKwargs
 from rich.progress import Progress
 from torch.amp import autocast
 from torch.optim import Optimizer
@@ -203,6 +204,11 @@ class Trainer(ITrainer):
                 dispatch_batches=self.config.dispatch_batches,
                 even_batches=self.config.even_batches,
             ),
+            kwargs_handlers=[
+                DistributedDataParallelKwargs(
+                    find_unused_parameters=self.config.find_unused_parameters
+                ),
+            ],
         )
         self.accelerator.wait_for_everyone()
         # initialize artifact structure
