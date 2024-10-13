@@ -32,7 +32,6 @@ from accelerate import InitProcessGroupKwargs
 from contextlib import nullcontext
 from dataclasses import dataclass
 from rich.progress import Progress
-from torch.amp import autocast
 from torch.optim import Optimizer
 from torch.profiler import profile
 from pydantic.dataclasses import dataclass as pydantic_dataclass
@@ -1262,8 +1261,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
           3) Get the optimizer to be used for this training step.
           4) If `enable_toggle_optimizer` is `True` for this training step, temporarily switch to the optimizer associated
           with this training step using the `toggle_optimizer` context manager.
-          5) Calculate the loss for this training step using the model, state, batch, and forward pass outputs. The
-          `autocast` context manager is used if mixed-precision training is enabled.
+          5) Calculate the loss for this training step using the model, state, batch, and forward pass outputs.
           6) Update the optimizer if `train_step.grad_accumulate` is a factor of the current `state.step`.
           7) Update the `loss_tensors` with the loss values for this training step.
         5. Loop through each callback in the trainer and call its `after_gradient_update` method with the trainer, batch,
@@ -1297,7 +1295,6 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         update_fn = get_update_fn(trainer)
         any_update = False
         get_fw = lambda: self.run(batch_idx, batch, state, **forward_kwargs)
-        autocast_ctx = trainer.get_autocast_ctx()
         for train_step in self.train_steps:
             if train_step.should_skip(self, state):
                 continue
@@ -1309,14 +1306,13 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             with no_sync_context(update, trainer):
                 if forward is None or train_step.requires_new_forward:
                     no_grad = not train_step.requires_grad_in_forward
-                    with no_grad_context(enabled=no_grad), autocast_ctx:
+                    with no_grad_context(enabled=no_grad):
                         forward = get_fw()
                 optimizer = trainer.optimizers[train_step.scope]
                 should_toggle = train_step.enable_toggle_optimizer
                 with toggle_optimizer(self.m, optimizer, enabled=should_toggle):
-                    with autocast_ctx:
-                        loss_args = self, state, batch, forward
-                        loss_res = train_step.loss_fn(*loss_args, **loss_kwargs)
+                    loss_args = self, state, batch, forward
+                    loss_res = train_step.loss_fn(*loss_args, **loss_kwargs)
                     update_fn(batch, forward, loss_res, optimizer, update)
                     i_losses = {k: v.detach() for k, v in loss_res.loss_tensors.items()}
                     loss_tensors.update(i_losses)
@@ -1939,11 +1935,6 @@ class ITrainer(ABC):
     def checkpoint_folder(self) -> str:
         """return the checkpoint folder of the trainer"""
 
-    @property
-    @abstractmethod
-    def should_autocast(self) -> bool:
-        """return whether to use autocast or not"""
-
     @abstractmethod
     def fit(
         self,
@@ -1984,10 +1975,6 @@ class ITrainer(ABC):
         state_dict_callback: Optional[Callable[[tensor_dict_type], None]] = None,
     ) -> bool:
         """method to restore the checkpoint"""
-
-    @abstractmethod
-    def get_autocast_ctx(self) -> autocast:
-        """return the proper autocast context manager"""
 
 
 # configs

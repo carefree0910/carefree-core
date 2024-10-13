@@ -14,7 +14,6 @@ from accelerate import Accelerator
 from accelerate import DataLoaderConfiguration
 from accelerate import DistributedDataParallelKwargs
 from rich.progress import Progress
-from torch.amp import autocast
 from torch.optim import Optimizer
 from torch.profiler import profile
 from torch.optim.lr_scheduler import LRScheduler
@@ -163,10 +162,6 @@ class Trainer(ITrainer):
     def checkpoint_folder(self) -> str:
         return os.path.join(self.workspace, CHECKPOINTS_FOLDER)
 
-    @property
-    def should_autocast(self) -> bool:
-        return self.config.mixed_precision != "no"
-
     # api
 
     def fit(
@@ -265,7 +260,7 @@ class Trainer(ITrainer):
             callback.before_summary(self)
         ## should always summary to sync the statuses in distributed training
         input_sample = train_loader.get_input_sample(self.device)
-        with self.get_autocast_ctx():
+        with self.accelerator.autocast():
             summary_msg = summary(
                 self.model.m,
                 input_sample,
@@ -358,9 +353,6 @@ class Trainer(ITrainer):
         for callback in self.callbacks:
             callback.finalize(self)
         return self
-
-    def get_autocast_ctx(self) -> autocast:
-        return autocast(self.device.type, enabled=self.should_autocast)
 
     ## checkpointing
 
