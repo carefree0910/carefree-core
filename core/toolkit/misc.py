@@ -1674,11 +1674,13 @@ def track(
     with RC_PROGRESS.get(disable=disable, leave=leave) as p:
         if total is None:
             total = float(length_hint(sequence)) or None
-        task_id = p.add_task(description, total=total)
+        if not disable:
+            task_id = p.add_task(description, total=total)
         for i, item in enumerate(sequence):
             yield item
-            p.update(task_id, advance=1)
-            if update_callback is not None:
-                update_callback(i, p, task_id)
-        if not leave:
+            if not disable:
+                p.update(task_id, advance=1)
+                if update_callback is not None:
+                    update_callback(i, p, task_id)
+        if not leave and not disable:
             p.remove_task(task_id)
