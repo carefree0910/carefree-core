@@ -61,6 +61,9 @@ class ProgressCallback(TrainerCallback):
     def __init__(self, settings: Dict[str, Any]) -> None:
         super().__init__()
         self.settings = TqdmSettings(**settings)
+        self.init()
+
+    def init(self) -> None:
         self.progress_table = Column()
         self.progress = make_progress(
             use_spinner=True,
