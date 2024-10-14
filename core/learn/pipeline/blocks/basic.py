@@ -971,7 +971,10 @@ class SerializeOptimizerBlock(Block):
         os.makedirs(folder, exist_ok=True)
         torch.save(opt_d, os.path.join(folder, self.optimizer_file))
         torch.save(sch_d, os.path.join(folder, self.scheduler_file))
-        scaler = self.build_trainer.trainer.accelerator.scaler
+        accelerator = self.build_trainer.trainer.accelerator
+        if accelerator is None:
+            return None
+        scaler = accelerator.scaler
         if scaler is not None:
             torch.save(scaler.state_dict(), os.path.join(folder, self.scaler_file))
 
@@ -987,9 +990,12 @@ class SerializeOptimizerBlock(Block):
             k_sch = schedulers[k]
             if k_sch is not None:
                 k_sch.load_state_dict(states)
+        accelerator = self.build_trainer.trainer.accelerator
+        if accelerator is None:
+            return None
         scaler_path = folder / self.scaler_file
         if scaler_path.is_file():
-            scaler = self.build_trainer.trainer.accelerator.scaler
+            scaler = accelerator.scaler
             if scaler is not None:
                 scaler.load_state_dict(torch.load(scaler_path))
 
