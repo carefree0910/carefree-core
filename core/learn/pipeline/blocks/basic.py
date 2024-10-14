@@ -982,8 +982,9 @@ class SerializeOptimizerBlock(Block):
         folder = to_path(folder)
         optimizers = self.build_optimizers.optimizers
         schedulers = self.build_optimizers.schedulers
-        opt_d = torch.load(folder / self.optimizer_file)
-        sch_d = torch.load(folder / self.scheduler_file)
+        load_kw = dict(weights_only=True, map_location="cpu")
+        opt_d = torch.load(folder / self.optimizer_file, **load_kw)  # type: ignore
+        sch_d = torch.load(folder / self.scheduler_file, **load_kw)  # type: ignore
         for k, states in opt_d.items():
             optimizers[k].load_state_dict(states)
         for k, states in sch_d.items():
@@ -997,7 +998,7 @@ class SerializeOptimizerBlock(Block):
         if scaler_path.is_file():
             scaler = accelerator.scaler
             if scaler is not None:
-                scaler.load_state_dict(torch.load(scaler_path))
+                scaler.load_state_dict(torch.load(scaler_path, **load_kw))  # type: ignore
 
 
 @Block.register("serialize_script")
