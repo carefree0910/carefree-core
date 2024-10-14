@@ -996,7 +996,7 @@ class SerializeOptimizerBlock(Block):
         schedulers = self.build_optimizers.schedulers
         load_kw = dict(weights_only=True, map_location="cpu")
         opt_d = torch.load(folder / self.optimizer_file, **load_kw)  # type: ignore
-        sch_d = torch.load(folder / self.scheduler_file, **load_kw)  # type: ignore
+        sch_d = torch.load(folder / self.scheduler_file, map_location="cpu")
         for k, states in opt_d.items():
             optimizers[k].load_state_dict(states)
         for k, states in sch_d.items():
