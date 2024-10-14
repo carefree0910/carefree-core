@@ -542,6 +542,9 @@ def format_float(value: float, precision: int = 6, threshold_offset: int = 2) ->
 def fix_float_to_length(num: float, length: int) -> str:
     """Change a float number to string format with fixed length."""
 
+    if length >= 10:
+        return f"{format_float(num, length - 5):>{length}s}"
+
     ctx = decimal.Context()
     ctx.prec = 2 * length
     # here we explicitly convert `num` to `float`,
