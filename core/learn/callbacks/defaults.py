@@ -9,6 +9,7 @@ from typing import Tuple
 from typing import Optional
 
 from ..schema import ITrainer
+from ..schema import DataLoader
 from ..schema import TrainStepLoss
 from ..schema import TrainerCallback
 from ..schedulers import WarmupScheduler
@@ -92,6 +93,30 @@ class TrainingLoopCallback(TrainerCallback):
                 console.log(
                     "\n".join(["=" * 100, msg, "-" * 100] + param_names + ["-" * 100])
                 )
+
+    def before_loop_with_loaders(
+        self,
+        trainer: ITrainer,
+        train_loader: DataLoader,
+        valid_loader: Optional[DataLoader],
+    ) -> None:
+        if trainer.config.resume_training_from is None:
+            return None
+        if valid_loader is not None:
+            loader = valid_loader
+        else:
+            if (
+                console.ask(
+                    "no validation loader found, do you want to calculate resumed-metrics from the training loader?",
+                    ["y", "n"],
+                    default="n",
+                )
+                == "n"
+            ):
+                return None
+            loader = train_loader
+        resumed_results = trainer.get_metrics(loader, trainer.config.valid_portion)
+        console.log("resumed metrics:", resumed_results)
 
     def before_gradient_update(
         self,
