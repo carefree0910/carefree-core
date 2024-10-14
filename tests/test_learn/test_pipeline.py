@@ -13,6 +13,7 @@ from accelerate import Accelerator
 from unittest.mock import patch
 from unittest.mock import Mock
 from core.toolkit.misc import random_hash
+from core.toolkit.misc import get_latest_workspace
 from core.learn.schema import losses_type
 from core.learn.pipeline.blocks.basic import StateInfo
 from core.learn.pipeline.blocks.basic import OptimizerSettings
@@ -254,6 +255,26 @@ class TestPipeline(unittest.TestCase):
             cflearn.PipelineSerializer.self_ensemble_inference(5, workspace)
         with self.assertRaises(RuntimeError):
             cflearn.PipelineSerializer.self_ensemble_evaluation(5, workspace)
+
+    def test_resume(self):
+        cflearn.seed_everything(142857)
+        resume_workspace = "_resume"
+        data, in_dim, out_dim, _ = cflearn.testing.linear_data(use_validation=True)
+        config = cflearn.Config(
+            workspace=resume_workspace,
+            module_name="linear",
+            module_config=dict(input_dim=in_dim, output_dim=out_dim, bias=False),
+            loss_name="mse",
+            num_epoch=10,
+            tqdm_settings=cflearn.TqdmSettings(use_tqdm=True),
+        )
+        config.to_debug()
+        cflearn.TrainingPipeline.init(config).fit(data)
+        config.resume_training_from = (
+            get_latest_workspace(resume_workspace)
+            / cflearn.PipelineSerializer.pipeline_folder
+        )
+        cflearn.TrainingPipeline.init(config).fit(data)
 
 
 class TestBlocks(unittest.TestCase):
