@@ -61,7 +61,6 @@ class ProgressCallback(TrainerCallback):
     def __init__(self, settings: Dict[str, Any]) -> None:
         super().__init__()
         self.settings = TqdmSettings(**settings)
-        self.init()
 
     def init(self) -> None:
         self.progress_table = Column()
@@ -81,13 +80,15 @@ class ProgressCallback(TrainerCallback):
             self.progress.start()
 
     def before_loop(self, trainer: ITrainer) -> None:
-        if self.is_local_rank_0 and self.settings.use_tqdm:
-            self._update_time_column()
-            self.epoch_progress = self.progress.add_task(
-                f"[green]{self.settings.desc}",
-                total=trainer.state.num_epoch,
-                start=True,
-            )
+        if self.is_local_rank_0:
+            self.init()
+            if self.settings.use_tqdm:
+                self._update_time_column()
+                self.epoch_progress = self.progress.add_task(
+                    f"[green]{self.settings.desc}",
+                    total=trainer.state.num_epoch,
+                    start=True,
+                )
 
     def at_epoch_start(self, trainer: ITrainer, train_loader: DataLoader) -> None:
         num_steps = len(train_loader)
