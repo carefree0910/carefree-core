@@ -15,9 +15,9 @@ from datetime import datetime
 from rich import box
 from rich.style import Style
 from rich.table import Table
-from rich.table import Column
 from rich.progress import Task
 from rich.progress import TaskID
+from rich.progress import Progress
 from rich.progress import TextColumn
 
 from ..schema import ITrainer
@@ -61,8 +61,8 @@ class ProgressCallback(TrainerCallback):
     def __init__(self, settings: Dict[str, Any]) -> None:
         super().__init__()
         self.enabled = False
-        self.progress = None
-        self.time_column = None
+        self.progress: Optional[Progress] = None
+        self.time_column: Optional[TextColumn] = None
         self.step_progress: Optional[TaskID] = None
         self.epoch_progress: Optional[TaskID] = None
         self.settings = TqdmSettings(**settings)
@@ -84,7 +84,7 @@ class ProgressCallback(TrainerCallback):
     def before_loop(self, trainer: ITrainer) -> None:
         if self.is_local_rank_0:
             self.init()
-            if self.settings.use_tqdm:
+            if self.settings.use_tqdm and self.progress is not None:
                 self._update_time_column()
                 self.epoch_progress = self.progress.add_task(
                     f"[green]{self.settings.desc}",
@@ -94,7 +94,11 @@ class ProgressCallback(TrainerCallback):
 
     def at_epoch_start(self, trainer: ITrainer, train_loader: DataLoader) -> None:
         num_steps = len(train_loader)
-        if self.is_local_rank_0 and self.settings.use_step_tqdm:
+        if (
+            self.is_local_rank_0
+            and self.settings.use_step_tqdm
+            and self.progress is not None
+        ):
             self.step_progress = self.progress.add_task(
                 "[cyan]running step",
                 total=num_steps,
@@ -104,7 +108,7 @@ class ProgressCallback(TrainerCallback):
             self._update_time_column()
 
     def at_step_end(self, trainer: ITrainer) -> None:
-        if self.step_progress is not None:
+        if self.progress is not None and self.step_progress is not None:
             self.progress.update(self.step_progress, advance=1)
 
     def log_metrics_msg(
@@ -112,23 +116,23 @@ class ProgressCallback(TrainerCallback):
         trainer: ITrainer,
         metrics_outputs: MetricsOutputs,
     ) -> None:
-        if self.epoch_progress is not None:
+        if self.progress is not None and self.epoch_progress is not None:
             metric_values = shallow_copy_dict(metrics_outputs.metric_values)
             metric_values["score"] = metrics_outputs.final_score
             self.progress.update(self.epoch_progress, metrics=metric_values)  # type: ignore
 
     def at_epoch_end(self, trainer: ITrainer) -> None:
-        if self.epoch_progress is not None:
+        if self.progress is not None and self.epoch_progress is not None:
             self.progress.update(
                 self.epoch_progress,
                 total=trainer.state.num_epoch,
                 advance=1,
             )
-        if self.step_progress is not None:
+        if self.progress is not None and self.step_progress is not None:
             self.progress.remove_task(self.step_progress)
 
     def after_loop(self, trainer: ITrainer) -> None:
-        if self.enabled:
+        if self.enabled and self.progress is not None:
             self.progress.stop()
 
     def _update_time_column(self) -> None:
