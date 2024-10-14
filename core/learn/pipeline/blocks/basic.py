@@ -829,7 +829,6 @@ class SerializeDataBlock(Block):
 
 @Block.register("serialize_model")
 class SerializeModelBlock(Block):
-    config: Config
     verbose: bool = True
     ckpt_folder: Optional[Path] = None
     ckpt_scores: Optional[Dict[str, float]] = None
@@ -837,7 +836,12 @@ class SerializeModelBlock(Block):
     target_ckpt_step: Optional[int] = None
 
     def build(self, config: Config) -> None:
-        self.config = config
+        resume = config.resume_training_from
+        if resume is None:
+            return None
+        resume_dir = Path(resume) / self.__identifier__
+        console.debug(f"resuming model from '{resume_dir}'")
+        self.load_from(resume_dir)
 
     @property
     def requirements(self) -> List[Type[Block]]:
@@ -940,7 +944,12 @@ class SerializeOptimizerBlock(Block):
     scaler_file = "scaler.pt"
 
     def build(self, config: Config) -> None:
-        pass
+        resume = config.resume_training_from
+        if resume is None:
+            return None
+        resume_dir = Path(resume) / self.__identifier__
+        console.debug(f"resuming optimizations from '{resume_dir}'")
+        self.load_from(resume_dir)
 
     @property
     def requirements(self) -> List[Type[Block]]:
