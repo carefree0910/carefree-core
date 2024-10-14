@@ -126,6 +126,7 @@ class Trainer(ITrainer):
     def __init__(self, config: TrainerConfig):
         self.config = config
         self.tqdm_settings = safe_execute(TqdmSettings, config.tqdm_settings or {})  # type: ignore
+        self.state: TrainerState = None
         self.accelerator: Accelerator = None
         self.loss_incrementers: Dict[str, Incrementer] = {}
         self.intermediate: Optional[MetricsOutputs] = None
@@ -177,6 +178,7 @@ class Trainer(ITrainer):
         schedulers_requires_metric: Set[str],
         *,
         show_summary: bool = True,
+        loaded_state: Optional[Dict[str, Any]] = None,
         skip_final_evaluation: bool = False,
         only_touch: bool = False,
         device: device_type = None,
@@ -248,6 +250,9 @@ class Trainer(ITrainer):
             loader_length=len(distributed_train_loader),
             **(self.config.state_config or {}),
         )
+        if loaded_state is not None:
+            self.state.step = loaded_state["step"]
+            self.state.epoch = loaded_state["epoch"]
         self.model = model.from_accelerator(*prepared[:-n_optim])
         self.inference.model = self.model
         self.optimizers = {k: prepared[-n_optim + i] for i, k in enumerate(optim_keys)}
