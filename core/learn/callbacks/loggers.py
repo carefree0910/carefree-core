@@ -91,6 +91,7 @@ class ProgressCallback(TrainerCallback):
                     total=trainer.state.num_epoch,
                     start=True,
                 )
+                self.progress.update(self.epoch_progress, completed=trainer.state.epoch)
 
     def at_epoch_start(self, trainer: ITrainer, train_loader: DataLoader) -> None:
         num_steps = len(train_loader)
