@@ -1985,6 +1985,10 @@ class ITrainer(ABC):
     ) -> bool:
         """method to restore the checkpoint"""
 
+    @abstractmethod
+    def get_metrics(self, loader: DataLoader, portion: float = 1.0) -> MetricsOutputs:
+        """method to get the metrics from the given loader"""
+
 
 # configs
 
