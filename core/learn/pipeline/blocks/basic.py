@@ -937,17 +937,22 @@ class SerializeModelBlock(Block):
 class SerializeOptimizerBlock(Block):
     optimizer_file = "optimizers.pt"
     scheduler_file = "schedulers.pt"
+    scaler_file = "scaler.pt"
 
     def build(self, config: Config) -> None:
         pass
 
     @property
     def requirements(self) -> List[Type[Block]]:
-        return [BuildOptimizersBlock]
+        return [BuildOptimizersBlock, BuildTrainerBlock]
 
     @property
     def build_optimizers(self) -> BuildOptimizersBlock:
         return self.get_previous(BuildOptimizersBlock)
+
+    @property
+    def build_trainer(self) -> BuildTrainerBlock:
+        return self.get_previous(BuildTrainerBlock)
 
     def save_extra(self, folder: TPath) -> None:
         optims = self.build_optimizers.optimizers
@@ -957,6 +962,9 @@ class SerializeOptimizerBlock(Block):
         os.makedirs(folder, exist_ok=True)
         torch.save(opt_d, os.path.join(folder, self.optimizer_file))
         torch.save(sch_d, os.path.join(folder, self.scheduler_file))
+        scaler = self.build_trainer.trainer.accelerator.scaler
+        if scaler is not None:
+            torch.save(scaler.state_dict(), os.path.join(folder, self.scaler_file))
 
     def load_from(self, folder: TPath) -> None:
         folder = to_path(folder)
@@ -970,6 +978,11 @@ class SerializeOptimizerBlock(Block):
             k_sch = schedulers[k]
             if k_sch is not None:
                 k_sch.load_state_dict(states)
+        scaler_path = folder / self.scaler_file
+        if scaler_path.is_file():
+            scaler = self.build_trainer.trainer.accelerator.scaler
+            if scaler is not None:
+                scaler.load_state_dict(torch.load(scaler_path))
 
 
 @Block.register("serialize_script")
