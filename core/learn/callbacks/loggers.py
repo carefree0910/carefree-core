@@ -60,17 +60,19 @@ class ProgressCallback(TrainerCallback):
 
     def __init__(self, settings: Dict[str, Any]) -> None:
         super().__init__()
+        self.enabled = False
+        self.progress = None
+        self.time_column = None
+        self.step_progress: Optional[TaskID] = None
+        self.epoch_progress: Optional[TaskID] = None
         self.settings = TqdmSettings(**settings)
 
     def init(self) -> None:
-        self.progress_table = Column()
         self.progress = make_progress(
             use_spinner=True,
             custom_columns=[TextColumn(MetricsFormatter)],  # type: ignore
         )
         self.time_column: TextColumn = self.progress.columns[0]  # type: ignore
-        self.step_progress: Optional[TaskID] = None
-        self.epoch_progress: Optional[TaskID] = None
         self.enabled = self.is_local_rank_0 and (
             self.settings.use_tqdm
             or self.settings.use_step_tqdm
@@ -92,7 +94,6 @@ class ProgressCallback(TrainerCallback):
 
     def at_epoch_start(self, trainer: ITrainer, train_loader: DataLoader) -> None:
         num_steps = len(train_loader)
-        self.progress_table.width = len(str(num_steps)) * 2 + 1
         if self.is_local_rank_0 and self.settings.use_step_tqdm:
             self.step_progress = self.progress.add_task(
                 "[cyan]running step",
@@ -131,7 +132,8 @@ class ProgressCallback(TrainerCallback):
             self.progress.stop()
 
     def _update_time_column(self) -> None:
-        self.time_column.text_format = datetime.now().strftime(LOG_TIME_FORMAT)
+        if self.time_column is not None:
+            self.time_column.text_format = datetime.now().strftime(LOG_TIME_FORMAT)
 
 
 class AutoWrapLine:
