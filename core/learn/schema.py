@@ -1746,7 +1746,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
     This is the base class for various callbacks used in the training process, here are some brief introductions:
 
     - `initialize` is called before the trainer is constructed.
-    - `before_loop` is called right before the training loop starts.
+    - `before_loop` / `before_loop_with_loaders` is called right before the training loop starts.
     - `mutate_forward_kwargs` is used to mutate the `forward_kwargs` of the model.
     > `forward_kwargs` will be used in `IModel.run` method, which will affect both `m.forward` & `self.postprocess`.
     - `mutate_loss_kwargs` is used to mutate the `loss_kwargs` of the model.
@@ -1762,7 +1762,8 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
 
     overall:
 
-       `initialize` -> `after_workspace_prepared` -> `before_summary` -> `before_loop` -> training loop -> `after_loop` -> `finalize`
+       `initialize` -> `after_workspace_prepared` -> `before_summary` -> `before_loop` -> `before_loop_with_loaders`
+    -> training loop -> `after_loop` -> `finalize`
 
     * training loop:
 
@@ -1810,6 +1811,14 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
         pass
 
     def before_loop(self, trainer: "ITrainer") -> None:
+        pass
+
+    def before_loop_with_loaders(
+        self,
+        trainer: "ITrainer",
+        train_loader: DataLoader,
+        valid_loader: Optional[DataLoader],
+    ) -> None:
         pass
 
     def mutate_forward_kwargs(self, kw: Dict[str, Any], trainer: "ITrainer") -> None:

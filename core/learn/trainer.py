@@ -277,6 +277,10 @@ class Trainer(ITrainer):
             console.debug("entered training loop")
         for callback in self.callbacks:
             callback.before_loop(self)
+        for callback in self.callbacks:
+            callback.before_loop_with_loaders(
+                self, distributed_train_loader, distributed_valid_loader
+            )
         while self.state.should_train and not only_touch:
             try:
                 for callback in self.callbacks:
