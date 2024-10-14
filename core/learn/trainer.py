@@ -350,8 +350,10 @@ class Trainer(ITrainer):
             else:
                 final_score = self.final_results.final_score
             self.save_checkpoint(final_score)
+        console.debug("finalizing training")
         for callback in self.callbacks:
             callback.finalize(self)
+        console.debug("finished training")
         return self
 
     ## checkpointing
