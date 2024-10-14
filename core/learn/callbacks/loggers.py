@@ -223,7 +223,7 @@ class Metrics(NamedTuple):
         metric_values = self.metrics_outputs.metric_values
         core = " | ".join(
             [
-                f"{k} : {fix_float_to_length(metric_values[k], 8)}"
+                f"{k} : {fix_float_to_length(metric_values[k], 10)}"
                 for k in sorted(metric_values)
             ]
         )
@@ -239,7 +239,7 @@ class Metrics(NamedTuple):
         timer_str = f"[{self.t:.3f}s]"
         msg = (
             f"| epoch {self.state.epoch:^4d} {step_str} {timer_str} | {core} | "
-            f"score : {fix_float_to_length(final_score, 8)} |"
+            f"score : {fix_float_to_length(final_score, 10)} |"
         )
         if self.recorded_lr is not None:
             msg += f" lr : {fix_float_to_length(self.recorded_lr, 12)} |"
