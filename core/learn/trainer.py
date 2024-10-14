@@ -350,10 +350,13 @@ class Trainer(ITrainer):
             else:
                 final_score = self.final_results.final_score
             self.save_checkpoint(final_score)
-        console.debug("finalizing training")
+        if self.is_local_rank_0:
+            console.debug("finalizing training")
         for callback in self.callbacks:
             callback.finalize(self)
-        console.debug("finished training")
+        if self.is_local_rank_0:
+            console.debug("finished training")
+        self.accelerator.wait_for_everyone()
         return self
 
     ## checkpointing
