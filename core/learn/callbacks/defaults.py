@@ -116,7 +116,8 @@ class TrainingLoopCallback(TrainerCallback):
                 return None
             loader = train_loader
         resumed_results = trainer.get_metrics(loader, trainer.config.valid_portion)
-        console.log("resumed metrics:", resumed_results)
+        if self.is_local_rank_0:
+            console.log("resumed metrics:", resumed_results)
 
     def before_gradient_update(
         self,
