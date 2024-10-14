@@ -126,7 +126,7 @@ class Trainer(ITrainer):
     def __init__(self, config: TrainerConfig):
         self.config = config
         self.tqdm_settings = safe_execute(TqdmSettings, config.tqdm_settings or {})  # type: ignore
-        self.state: TrainerState = None
+        self.state: TrainerState = None  # type: ignore
         self.accelerator: Accelerator = None
         self.loss_incrementers: Dict[str, Incrementer] = {}
         self.intermediate: Optional[MetricsOutputs] = None
