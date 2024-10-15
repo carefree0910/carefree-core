@@ -995,7 +995,7 @@ class DataClassBase:
                     setattr(
                         instance,
                         field.name,
-                        _construct(field.type, getattr(instance, field.name)),
+                        _construct(field.type, getattr(instance, field.name)),  # type: ignore
                     )
                     continue
                 t_origin = getattr(field.type, "__origin__", None)
@@ -1008,7 +1008,7 @@ class DataClassBase:
                             instance,
                             field.name,
                             [
-                                _construct(t_value, item)
+                                _construct(t_value, item)  # type: ignore
                                 for item in getattr(instance, field.name)
                             ],
                         )
@@ -1020,7 +1020,7 @@ class DataClassBase:
                             instance,
                             field.name,
                             {
-                                k: _construct(t_value, v)
+                                k: _construct(t_value, v)  # type: ignore
                                 for k, v in getattr(instance, field.name).items()
                             },
                         )
