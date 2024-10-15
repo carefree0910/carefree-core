@@ -1634,6 +1634,10 @@ class RcProgress:
         self._counter = 0
         self._lock = Lock()
 
+    @property
+    def is_last(self) -> bool:
+        return self._counter == 1
+
     def init(self, disable: bool, leave: bool) -> "Progress":
         self.props = ProgressProperty(disable, leave)
         self._p = make_progress(leave=leave, disable=disable)
@@ -1685,5 +1689,5 @@ def track(
                 p.update(task_id, advance=1)
                 if update_callback is not None:
                     update_callback(i, p, task_id)
-        if not leave and not disable:
+        if not leave and not disable and not RC_PROGRESS.is_last:
             p.remove_task(task_id)
