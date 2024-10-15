@@ -132,7 +132,7 @@ class ProgressCallback(TrainerCallback):
         if self.progress is not None and self.step_progress is not None:
             self.progress.remove_task(self.step_progress)
 
-    def after_loop(self, trainer: ITrainer) -> None:
+    def finalize(self, trainer: ITrainer) -> None:
         if self.enabled and self.progress is not None:
             self.progress.stop()
 
