@@ -32,6 +32,15 @@ class TestData(unittest.TestCase):
         with self.assertRaises(ValueError):
             cflearn.ArrayData.init().fit(x, y[:-1]).build_loaders()
 
+        data.config.async_prefetch = True
+        async_loader = data.build_loader(x, y, drop_last=True)
+        self.assertEqual(len(loader), len(async_loader))
+        for b0, b1 in zip(loader, async_loader):
+            x0, y0 = b0[cflearn.INPUT_KEY], b0[cflearn.LABEL_KEY]
+            x1, y1 = b1[cflearn.INPUT_KEY], b1[cflearn.LABEL_KEY]
+            np.testing.assert_allclose(x0, x1)
+            np.testing.assert_allclose(y0, y1)
+
     def test_array_dict_data(self) -> None:
         input_dim = 11
         output_dim = 7
