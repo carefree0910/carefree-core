@@ -70,6 +70,9 @@ class AsyncArrayDataset(IAsyncDataset):
         batch = np_batch_to_tensor(batch)
         return batch
 
+    def async_finalize(self) -> None:
+        del self._map
+
 
 class ArrayDictDataset(IDataset):
     def __init__(self, arrays: Dict[str, arr_type]):

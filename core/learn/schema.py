@@ -245,6 +245,10 @@ class IAsyncDataset(IDataset):
     def async_fetch(self, cursor: int) -> Optional[Any]:
         """fetch the data after submission, return None if not ready"""
 
+    @abstractmethod
+    def async_finalize(self) -> None:
+        """finalize the dataset at the end of each epoch"""
+
     def poll(self, cursor: int) -> Any:
         while True:
             fetched = self.async_fetch(cursor)
@@ -276,6 +280,10 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         self._dataset.async_reset()
         self._initialized = True
 
+    def _finalize(self) -> None:
+        self._dataset.async_finalize()
+        raise StopIteration
+
     def _sumbit_next(self) -> None:
         cursor = self._queue_cursor
         index = self._next_index()
@@ -293,7 +301,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
             self._initialize()
         if self._queue is not None:
             if len(self._queue) == 0:
-                raise StopIteration
+                self._finalize()
             if not self._drained:
                 try:
                     self._sumbit_next()
