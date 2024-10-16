@@ -41,6 +41,11 @@ class TestData(unittest.TestCase):
             np.testing.assert_allclose(x0, x1)
             np.testing.assert_allclose(y0, y1)
 
+        with self.assertRaises(ValueError):
+            data.fit(None).build_loaders()
+        with self.assertRaises(ValueError):
+            data.fit(x, y[:-1]).build_loaders()
+
     def test_array_dict_data(self) -> None:
         input_dim = 11
         output_dim = 7
@@ -188,6 +193,14 @@ class TestData(unittest.TestCase):
             loss_name="mse",
         )
         config.to_debug()
+        cflearn.TrainingPipeline.init(config).fit(data)
+        data, in_dim, out_dim, _ = cflearn.testing.linear_data(1000, use_async=True)
+        config = cflearn.Config(
+            module_name="linear",
+            module_config=dict(input_dim=in_dim, output_dim=out_dim, bias=False),
+            loss_name="mse",
+            num_epoch=1,
+        )
         cflearn.TrainingPipeline.init(config).fit(data)
 
     def test_seeding(self) -> None:

@@ -230,12 +230,12 @@ class IAsyncDataset(IDataset):
     programming languages that can do the 'real' async I/O stuffs.
     """
 
-    def __getitems__(self, indices: List[int]) -> Any:
+    def __getitems__(self, indices: List[int]) -> Any:  # pragma: no cover
         raise NotImplementedError("should not call `__getitems__` of an async dataset")
 
     @abstractmethod
     def async_reset(self) -> None:
-        pass
+        """reset the dataset at the beginning of each epoch"""
 
     @abstractmethod
     def async_submit(self, cursor: int, index: Any) -> bool:
@@ -250,7 +250,7 @@ class IAsyncDataset(IDataset):
             fetched = self.async_fetch(cursor)
             if fetched is not None:
                 return fetched
-            time.sleep(0.01)
+            time.sleep(0.01)  # pragma: no cover
 
 
 class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
@@ -264,7 +264,9 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         self.enabled = loader.async_prefetch
         self.async_prefetch_factor = loader.async_prefetch_factor
         if self.enabled and not isinstance(loader.dataset, IAsyncDataset):
-            raise RuntimeError("async prefetch is only available for `IAsyncDataset`")
+            raise RuntimeError(
+                "async prefetch is only available for `IAsyncDataset`"
+            )  # pragma: no cover
         self._initialized = False
 
     def _initialize(self) -> None:
@@ -277,7 +279,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
     def _sumbit_next(self) -> None:
         cursor = self._queue_cursor
         index = self._next_index()
-        if not self._dataset.async_submit(cursor, index):
+        if not self._dataset.async_submit(cursor, index):  # pragma: no cover
             msg = f"failed to submit async task with cursor={cursor} and index={index}"
             console.error(msg)
             raise RuntimeError("failed to sumbit async task")
@@ -306,7 +308,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
                 self._drained = True
         cursor = self._queue.pop(0)
         data = self._dataset.poll(cursor)
-        if self._pin_memory:
+        if self._pin_memory:  # pragma: no cover
             data = _utils.pin_memory.pin_memory(data, self._pin_memory_device)
         return data
 
@@ -335,7 +337,7 @@ class DataLoader(TorchDataLoader):
     def _get_iterator(self) -> _BaseDataLoaderIter:
         if self.num_workers == 0:
             return AsyncDataLoaderIter(self)
-        return super()._get_iterator()
+        return super()._get_iterator()  # pragma: no cover
 
     def __iter__(self) -> Iterator[tensor_dict_type]:  # type: ignore
         self.dataset.reset(for_inference=self.for_inference)
