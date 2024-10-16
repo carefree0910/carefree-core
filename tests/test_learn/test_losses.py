@@ -32,6 +32,11 @@ class TestLosses(unittest.TestCase):
         torch.testing.assert_close(corr, gt_corr)
 
     def test_multi_loss(self) -> None:
+        @cflearn.register_loss("foo")
+        class _(cflearn.ILoss):
+            def forward(self, forward_results, batch, state=None) -> None:
+                return None
+
         x = torch.randn(13, 1)
         y = torch.randn(13, 1)
         mse = get_loss("mae", x, y)
@@ -44,6 +49,7 @@ class TestLosses(unittest.TestCase):
             losses=[
                 {"name": "mse", "weight": 0.17},
                 {"name": "corr", "weight": 0.19},
+                {"name": "foo", "weight": 123.456},
             ],
         )[cflearn.LOSS_KEY]
         multi = get_loss(

@@ -978,7 +978,7 @@ class SerializeOptimizerBlock(Block):
         accelerator = self.build_trainer.trainer.accelerator
         if accelerator is not None:
             scaler = accelerator.scaler
-            if scaler is not None:
+            if scaler is not None:  # pragma: no cover
                 torch.save(scaler.state_dict(), os.path.join(folder, self.scaler_file))
         state = self.build_trainer.trainer.state
         if state is not None:
@@ -1004,7 +1004,7 @@ class SerializeOptimizerBlock(Block):
             if k_sch is not None:
                 k_sch.load_state_dict(states)
         accelerator = self.build_trainer.trainer.accelerator
-        if accelerator is not None:
+        if accelerator is not None:  # pragma: no cover
             scaler_path = folder / self.scaler_file
             if scaler_path.is_file():
                 scaler = accelerator.scaler

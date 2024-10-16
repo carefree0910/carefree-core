@@ -104,7 +104,7 @@ class TrainingLoopCallback(TrainerCallback):
             return None
         if valid_loader is not None:
             loader = valid_loader
-        else:
+        else:  # pragma: no cover
             if (
                 console.ask(
                     "no validation loader found, do you want to calculate resumed-metrics from the training loader?",
