@@ -261,9 +261,8 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
 
     def __init__(self, loader: "DataLoader"):
         super().__init__(loader)
-        config = loader.data.config
-        self.enabled = config.async_prefetch
-        self.prefetch_factor = loader._async_prefetch_factor or config.prefetch_factor
+        self.enabled = loader.async_prefetch
+        self.async_prefetch_factor = loader.async_prefetch_factor
         if self.enabled and not isinstance(loader.dataset, IAsyncDataset):
             raise RuntimeError("async prefetch is only available for `IAsyncDataset`")
         self._initialized = False
@@ -301,7 +300,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         else:
             self._queue = []
             try:
-                for _ in range(self.prefetch_factor):
+                for _ in range(self.async_prefetch_factor):
                     self._sumbit_next()
             except StopIteration:
                 self._drained = True
@@ -329,7 +328,9 @@ class DataLoader(TorchDataLoader):
     data: "IData"
     dataset: IDataset
     for_inference: bool
-    _async_prefetch_factor: Optional[int] = None
+
+    async_prefetch: bool
+    async_prefetch_factor: int
 
     def _get_iterator(self) -> _BaseDataLoaderIter:
         if self.num_workers == 0:
@@ -362,7 +363,8 @@ class DataLoader(TorchDataLoader):
         return concat
 
     def get_input_sample(self, device: device_type = None) -> tensor_dict_type:
-        self._async_prefetch_factor = 1
+        prev_factor = self.async_prefetch_factor
+        self.async_prefetch_factor = 1
         pseudo_batch = self.dataset.pseudo_batch(device)
         if pseudo_batch is None:
             pseudo_batch = self.get_one_batch(device)
@@ -373,7 +375,7 @@ class DataLoader(TorchDataLoader):
                 pseudo_batch[k] = [vv[:1] if isinstance(vv, Tensor) else vv for vv in v]
             else:
                 pseudo_batch[k] = v
-        self._async_prefetch_factor = None
+        self.async_prefetch_factor = prev_factor
         return pseudo_batch
 
 
@@ -396,6 +398,8 @@ def prepare_dataloaders(accelerator: Accelerator, *loaders: TL) -> TLs:
             d = prepared
             d.data = loader.data
             d.for_inference = loader.for_inference
+            d.async_prefetch = loader.async_prefetch
+            d.async_prefetch_factor = loader.async_prefetch_factor
             d.recover_labels = loader.recover_labels
             d._get_iterator = loader._get_iterator
             td = type(d)
@@ -421,7 +425,7 @@ class DataConfig(ISerializableDataClass["DataConfig"]):
     bypass_collate_fn: bool = True
     # async prefetch configs
     async_prefetch: bool = False
-    prefetch_factor: int = 8
+    async_prefetch_factor: int = 8
 
     def add_blocks(self, *blocks: Type["IDataBlock"]) -> None:
         if self.block_names is None:
@@ -703,6 +707,8 @@ class IData(  # type: ignore
         )
         loader.data = self
         loader.for_inference = for_inference
+        loader.async_prefetch = self.config.async_prefetch
+        loader.async_prefetch_factor = self.config.async_prefetch_factor
         if self.config.bypass_collate_fn:
             # this is useful when collation is already done in the `__getitems__` method
             loader.collate_fn = collate_placeholder
