@@ -400,10 +400,11 @@ def prepare_dataloaders(accelerator: Accelerator, *loaders: TL) -> TLs:
             d = prepared
             d.data = loader.data
             d.for_inference = loader.for_inference
-            d.async_prefetch = loader.async_prefetch
-            d.async_prefetch_factor = loader.async_prefetch_factor
             d.recover_labels = loader.recover_labels
-            d._get_iterator = loader._get_iterator
+            base = d.base_dataloader
+            base.async_prefetch = loader.async_prefetch
+            base.async_prefetch_factor = loader.async_prefetch_factor
+            base._get_iterator = loader._get_iterator
             td = type(d)
             iter_prepared = getattr(td, "_iter_prepared_", False)
             if not iter_prepared:
