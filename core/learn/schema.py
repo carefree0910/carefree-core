@@ -281,10 +281,10 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
             msg = f"failed to submit async task with cursor={cursor} and index={index}"
             console.error(msg)
             raise RuntimeError("failed to sumbit async task")
-        self._queue.append(cursor)
+        self._queue.append(cursor)  # type: ignore
         self._queue_cursor = cursor + 1
 
-    def _next_data(self):
+    def _next_data(self) -> Any:
         if not self.enabled:
             return super()._next_data()
         if not self._initialized:

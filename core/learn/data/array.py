@@ -49,18 +49,19 @@ class AsyncArrayDataset(IAsyncDataset):
             raise ValueError("`x` cannot be `None`")
         self.x = x
         self.y = y
-        nx, ny = len(x), len(y)
-        if nx != ny:
-            raise ValueError(f"`x` and `y` must have same length, got {nx} and {ny}")
+        if y is not None:
+            nx, ny = len(x), len(y)
+            if nx != ny:
+                raise ValueError(f"`x` and `y` must have same length ({nx} != {ny})")
 
     def __len__(self) -> int:
         return len(self.x)
 
     def async_reset(self) -> None:
-        self._map: Dict[int, Tuple[arr_type, arr_type]] = {}
+        self._map: Dict[int, Tuple[arr_type, Optional[arr_type]]] = {}
 
     def async_submit(self, cursor: int, index: Any) -> bool:
-        self._map[cursor] = self.x[index], self.y[index]
+        self._map[cursor] = self.x[index], None if self.y is None else self.y[index]
         return True
 
     def async_fetch(self, cursor: int) -> tensor_dict_type:
