@@ -1,6 +1,7 @@
 import json
 import math
 import onnx
+import time
 import torch
 
 import numpy as np
@@ -42,6 +43,9 @@ from torch.utils.data import Dataset
 from torch.utils.data import WeightedRandomSampler
 from torch.utils.data import DataLoader as TorchDataLoader
 from torch.utils.checkpoint import checkpoint
+from torch.utils.data.dataloader import _utils
+from torch.utils.data.dataloader import _BaseDataLoaderIter
+from torch.utils.data.dataloader import _SingleProcessDataLoaderIter
 
 from .toolkit import device_type
 from .toolkit import get_device
@@ -218,16 +222,119 @@ class IDataset(Dataset):
         """this will be called everytime the `DataLoader` enters `__iter__`"""
 
 
+class IAsyncDataset(IDataset):
+    """
+    An async version of `IDataset`
+
+    Notice that the APIs here are all synchronous, so it is designed to interact with other
+    programming languages that can do the 'real' async I/O stuffs.
+    """
+
+    def __getitems__(self, indices: List[int]) -> Any:
+        raise NotImplementedError("should not call `__getitems__` of an async dataset")
+
+    @abstractmethod
+    def async_reset(self) -> None:
+        pass
+
+    @abstractmethod
+    def async_submit(self, cursor: int, index: Any) -> bool:
+        """return whether the submission is successful"""
+
+    @abstractmethod
+    def async_fetch(self, cursor: int) -> Optional[Any]:
+        """fetch the data after submission, return None if not ready"""
+
+    def poll(self, cursor: int) -> Any:
+        while True:
+            fetched = self.async_fetch(cursor)
+            if fetched is not None:
+                return fetched
+            time.sleep(0.01)
+
+
+class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
+    _queue: Optional[List[Any]]
+    _drained: bool
+    _queue_cursor: int
+    _dataset: IAsyncDataset
+
+    def __init__(self, loader: "DataLoader"):
+        super().__init__(loader)
+        config = loader.data.config
+        self.enabled = config.async_prefetch
+        self.prefetch_factor = loader._async_prefetch_factor or config.prefetch_factor
+        if self.enabled and not isinstance(loader.dataset, IAsyncDataset):
+            raise RuntimeError("async prefetch is only available for `IAsyncDataset`")
+        self._initialized = False
+
+    def _initialize(self) -> None:
+        self._queue = None
+        self._drained = False
+        self._queue_cursor = 0
+        self._dataset.async_reset()
+        self._initialized = True
+
+    def _sumbit_next(self) -> None:
+        cursor = self._queue_cursor
+        index = self._next_index()
+        if not self._dataset.async_submit(cursor, index):
+            msg = f"failed to submit async task with cursor={cursor} and index={index}"
+            console.error(msg)
+            raise RuntimeError("failed to sumbit async task")
+        self._queue.append(cursor)
+        self._queue_cursor = cursor + 1
+
+    def _next_data(self):
+        if not self.enabled:
+            return super()._next_data()
+        if not self._initialized:
+            self._initialize()
+        if self._queue is not None:
+            if len(self._queue) == 0:
+                raise StopIteration
+            if not self._drained:
+                try:
+                    self._sumbit_next()
+                except StopIteration:
+                    self._drained = True
+        else:
+            self._queue = []
+            try:
+                for _ in range(self.prefetch_factor):
+                    self._sumbit_next()
+            except StopIteration:
+                self._drained = True
+        cursor = self._queue.pop(0)
+        data = self._dataset.poll(cursor)
+        if self._pin_memory:
+            data = _utils.pin_memory.pin_memory(data, self._pin_memory_device)
+        return data
+
+
 class DataLoader(TorchDataLoader):
     """
     A thin wrapper of the `torch.utils.data.DataLoader` class, which forces the user
     to assign the `data` attribute and the `for_inference` attribute, which are used
     to process the collated batch from `IDataset` objects.
+
+    > If `async_prefetch` is set to `True`, the `DataLoader` will use the `AsyncDataLoaderIter`
+    > to prefetch the data asynchronously.
+    > It is not achieved by multi-processing, not even `asyncio` stuffs - just a set of synchronous
+    > APIs with 'asynchronous design'.
+    > And since python can hardly achieve real async I/O under the GIL, it is only useful when you can
+    > offload the data loading to other programming languages.
     """
 
     data: "IData"
     dataset: IDataset
     for_inference: bool
+    _async_prefetch_factor: Optional[int] = None
+
+    def _get_iterator(self) -> _BaseDataLoaderIter:
+        if self.num_workers == 0:
+            return AsyncDataLoaderIter(self)
+        return super()._get_iterator()
 
     def __iter__(self) -> Iterator[tensor_dict_type]:  # type: ignore
         self.dataset.reset(for_inference=self.for_inference)
@@ -255,6 +362,7 @@ class DataLoader(TorchDataLoader):
         return concat
 
     def get_input_sample(self, device: device_type = None) -> tensor_dict_type:
+        self._async_prefetch_factor = 1
         pseudo_batch = self.dataset.pseudo_batch(device)
         if pseudo_batch is None:
             pseudo_batch = self.get_one_batch(device)
@@ -265,6 +373,7 @@ class DataLoader(TorchDataLoader):
                 pseudo_batch[k] = [vv[:1] if isinstance(vv, Tensor) else vv for vv in v]
             else:
                 pseudo_batch[k] = v
+        self._async_prefetch_factor = None
         return pseudo_batch
 
 
@@ -288,6 +397,7 @@ def prepare_dataloaders(accelerator: Accelerator, *loaders: TL) -> TLs:
             d.data = loader.data
             d.for_inference = loader.for_inference
             d.recover_labels = loader.recover_labels
+            d._get_iterator = loader._get_iterator
             td = type(d)
             iter_prepared = getattr(td, "_iter_prepared_", False)
             if not iter_prepared:
@@ -309,6 +419,9 @@ class DataConfig(ISerializableDataClass["DataConfig"]):
     valid_loader_configs: Optional[Dict[str, Any]] = None
     loader_seed: Optional[int] = None
     bypass_collate_fn: bool = True
+    # async prefetch configs
+    async_prefetch: bool = False
+    prefetch_factor: int = 8
 
     def add_blocks(self, *blocks: Type["IDataBlock"]) -> None:
         if self.block_names is None:

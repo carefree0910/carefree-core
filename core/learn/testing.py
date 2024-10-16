@@ -29,6 +29,7 @@ def linear_data(
     use_validation: bool = False,
     x_noise_scale: Optional[float] = None,
     y_noise_scale: Optional[float] = None,
+    use_async: bool = False,
 ) -> Tuple[ArrayData, int, int, np.ndarray]:
     x = np.random.random([n, dim])
     w = np.random.random([dim, out_dim])
@@ -44,4 +45,5 @@ def linear_data(
     else:
         data = ArrayData.init().fit(x, y, x, y)
     data.config.batch_size = batch_size
+    data.config.async_prefetch = use_async
     return data, dim, out_dim, w

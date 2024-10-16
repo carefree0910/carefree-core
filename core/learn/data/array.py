@@ -1,10 +1,13 @@
+from typing import Any
 from typing import Dict
 from typing import List
+from typing import Tuple
 from typing import Optional
 
 from ..schema import IData
 from ..schema import IDataset
 from ..schema import DataBundle
+from ..schema import IAsyncDataset
 from ..schema import TDs
 from ..toolkit import np_batch_to_tensor
 from ..constants import INPUT_KEY
@@ -38,6 +41,35 @@ class ArrayDataset(IDataset):
         return batch
 
 
+class AsyncArrayDataset(IAsyncDataset):
+    """This is not really async, just to make sure the APIs are working correctly."""
+
+    def __init__(self, x: arr_type, y: Optional[arr_type] = None):
+        if x is None:
+            raise ValueError("`x` cannot be `None`")
+        self.x = x
+        self.y = y
+        nx, ny = len(x), len(y)
+        if nx != ny:
+            raise ValueError(f"`x` and `y` must have same length, got {nx} and {ny}")
+
+    def __len__(self) -> int:
+        return len(self.x)
+
+    def async_reset(self) -> None:
+        self._map: Dict[int, Tuple[arr_type, arr_type]] = {}
+
+    def async_submit(self, cursor: int, index: Any) -> bool:
+        self._map[cursor] = self.x[index], self.y[index]
+        return True
+
+    def async_fetch(self, cursor: int) -> tensor_dict_type:
+        x, y = self._map.pop(cursor)
+        batch = {INPUT_KEY: x, LABEL_KEY: y}
+        batch = np_batch_to_tensor(batch)
+        return batch
+
+
 class ArrayDictDataset(IDataset):
     def __init__(self, arrays: Dict[str, arr_type]):
         self.arrays = arrays
@@ -57,11 +89,12 @@ class ArrayDictDataset(IDataset):
 @IData.register("array")
 class ArrayData(IData["ArrayData", ArrayDataset]):
     def to_datasets(self, bundle: DataBundle, *, for_inference: Optional[bool]) -> TDs:
-        train_dataset = ArrayDataset(bundle.x_train, bundle.y_train)  # type: ignore
+        dataset_cls = AsyncArrayDataset if self.config.async_prefetch else ArrayDataset
+        train_dataset = dataset_cls(bundle.x_train, bundle.y_train)  # type: ignore
         if bundle.x_valid is None:
             valid_dataset = None
         else:
-            valid_dataset = ArrayDataset(bundle.x_valid, bundle.y_valid)  # type: ignore
+            valid_dataset = dataset_cls(bundle.x_valid, bundle.y_valid)  # type: ignore
         return train_dataset, valid_dataset
 
 
