@@ -1618,12 +1618,7 @@ def make_progress(
     )
     if custom_columns is not None:
         columns.extend(custom_columns)
-    return Progress(
-        *columns,
-        console=console.get_console(),
-        transient=not leave,
-        disable=disable,
-    )
+    return Progress(*columns, transient=not leave, disable=disable)
 
 
 class RcProgress:
