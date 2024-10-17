@@ -64,7 +64,7 @@ class AsyncArrayDataset(IAsyncDataset):
         self._map[cursor] = self.x[index], None if self.y is None else self.y[index]
         return True
 
-    def async_fetch(self, cursor: int) -> tensor_dict_type:
+    def async_fetch(self, cursor: int, index: Any) -> tensor_dict_type:
         x, y = self._map.pop(cursor)
         batch = {INPUT_KEY: x, LABEL_KEY: y}
         batch = np_batch_to_tensor(batch)

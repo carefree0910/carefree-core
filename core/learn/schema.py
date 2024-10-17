@@ -242,23 +242,23 @@ class IAsyncDataset(IDataset):
         """return whether the submission is successful"""
 
     @abstractmethod
-    def async_fetch(self, cursor: int) -> Optional[Any]:
+    def async_fetch(self, cursor: int, index: Any) -> Optional[Any]:
         """fetch the data after submission, return None if not ready"""
 
     @abstractmethod
     def async_finalize(self) -> None:
         """finalize the dataset at the end of each epoch"""
 
-    def poll(self, cursor: int) -> Any:
+    def poll(self, cursor: int, index: Any) -> Any:
         while True:
-            fetched = self.async_fetch(cursor)
+            fetched = self.async_fetch(cursor, index)
             if fetched is not None:
                 return fetched
             time.sleep(0.01)  # pragma: no cover
 
 
 class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
-    _queue: Optional[List[Any]]
+    _queue: Optional[List[Tuple[int, Any]]]
     _drained: bool
     _queue_cursor: int
     _dataset: IAsyncDataset
@@ -291,7 +291,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
             msg = f"failed to submit async task with cursor={cursor} and index={index}"
             console.error(msg)
             raise RuntimeError("failed to sumbit async task")
-        self._queue.append(cursor)  # type: ignore
+        self._queue.append((cursor, index))  # type: ignore
         self._queue_cursor = cursor + 1
 
     def _next_data(self) -> Any:
@@ -314,8 +314,8 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
                     self._sumbit_next()
             except StopIteration:
                 self._drained = True
-        cursor = self._queue.pop(0)
-        data = self._dataset.poll(cursor)
+        cursor, index = self._queue.pop(0)
+        data = self._dataset.poll(cursor, index)
         if self._pin_memory:  # pragma: no cover
             data = _utils.pin_memory.pin_memory(data, self._pin_memory_device)
         return data
