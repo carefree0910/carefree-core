@@ -292,13 +292,13 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         self._finalized = True
         raise StopIteration
 
-    def _sumbit_next(self) -> None:
+    def _submit_next(self) -> None:
         cursor = self._queue_cursor
         index = self._next_index()
         if not self._dataset.async_submit(cursor, index):  # pragma: no cover
             msg = f"failed to submit async task with cursor={cursor} and index={index}"
             console.error(msg)
-            raise RuntimeError("failed to sumbit async task")
+            raise RuntimeError("failed to submit async task")
         self._queue.append((cursor, index))  # type: ignore
         self._queue_cursor = cursor + 1
 
@@ -312,14 +312,14 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
                 self._finalize()
             if not self._drained:
                 try:
-                    self._sumbit_next()
+                    self._submit_next()
                 except StopIteration:
                     self._drained = True
         else:
             self._queue = []
             try:
                 for _ in range(self.async_prefetch_factor):
-                    self._sumbit_next()
+                    self._submit_next()
             except StopIteration:
                 self._drained = True
         cursor, index = self._queue.pop(0)
