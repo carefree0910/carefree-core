@@ -262,6 +262,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
     _drained: bool
     _queue_cursor: int
     _dataset: IAsyncDataset
+    _finalized: bool
 
     def __init__(self, loader: "DataLoader"):
         super().__init__(loader)
@@ -271,17 +272,24 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
             raise RuntimeError(
                 "async prefetch is only available for `IAsyncDataset`"
             )  # pragma: no cover
+        self._finalized = True
         self._initialized = False
+
+    def __del__(self) -> None:
+        if not self._finalized:
+            self._dataset.async_finalize()
 
     def _initialize(self) -> None:
         self._queue = None
         self._drained = False
         self._queue_cursor = 0
         self._dataset.async_reset()
+        self._finalized = False
         self._initialized = True
 
     def _finalize(self) -> None:
         self._dataset.async_finalize()
+        self._finalized = True
         raise StopIteration
 
     def _sumbit_next(self) -> None:
