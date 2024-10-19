@@ -1,10 +1,12 @@
 import math
 
+from enum import Enum
 from typing import Any
 from typing import Dict
 from typing import List
 from typing import Tuple
 from typing import Union
+from typing import Literal
 from typing import Callable
 from typing import Optional
 from typing import NamedTuple
@@ -24,6 +26,8 @@ from .types import tensor_dict_type
 if TYPE_CHECKING:
     import torch
     import numpy as np
+
+TEndian = Literal["<", ">", "|"]
 
 
 def is_int(arr: arr_type) -> bool:
@@ -728,6 +732,60 @@ def make_grid(arr: arr_type, n_row: Optional[int] = None) -> "torch.Tensor":
     if n_row is None:
         n_row = math.ceil(math.sqrt(len(arr)))
     return torchvision.utils.make_grid(arr, n_row)
+
+
+class BaseType(str, Enum):
+    INT = "i"
+    FLOAT = "f"
+    BOOL = "b"
+    COMPLEX = "c"
+    DATETIME = "M"
+    STRING = "S"
+    UNICODE = "U"
+    OBJECT = "O"
+
+    def to_typestr(self, nbytes: int, *, endianness: TEndian = "<") -> str:
+        return f"{endianness}{self.value}{nbytes}"
+
+
+def arr_from_ptr(
+    ptr: int,
+    typestr: str,
+    shape: List[int],
+    *,
+    copy: bool = False,
+    read_only_flag: bool = True,
+) -> "np.ndarray":
+    """
+    Create a numpy array from a memory address.
+
+    Parameters
+    ----------
+    ptr : int
+        Memory address
+
+    typestr : str
+        A string providing the basic type of the homogenous array, it is recommended
+        to use the `BaseType` enum to generate the `typestr`.
+
+        > See https://docs.scipy.org/doc/numpy-1.13.0/reference/arrays.interface.html#__array_interface__
+
+    shape : List[int]
+        Shape of array.
+
+    copy : bool
+        Whether to copy the array.
+
+    read_only_flag : bool
+        Whether to load the array as read-only.
+
+    """
+
+    import numpy as np
+
+    buff = {"data": (ptr, read_only_flag), "typestr": typestr, "shape": shape}
+    holder = type("holder", (object,), {"__array_interface__": buff})()
+    return np.array(holder, copy=copy)
 
 
 class NpSafeSerializer:
