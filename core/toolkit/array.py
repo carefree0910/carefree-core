@@ -783,7 +783,7 @@ def arr_from_ptr(
 
     import numpy as np
 
-    buff = {"data": (ptr, read_only_flag), "typestr": typestr, "shape": shape}
+    buff = {"data": (ptr, read_only_flag), "typestr": typestr, "shape": tuple(shape)}
     holder = type("holder", (object,), {"__array_interface__": buff})()
     return np.array(holder, copy=copy)
 
