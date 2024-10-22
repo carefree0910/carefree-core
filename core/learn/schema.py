@@ -280,7 +280,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
 
     def __del__(self) -> None:
         if not self._finalized:
-            self._dataset.async_finalize()
+            self._cleanup()
 
     def _initialize(self) -> None:
         self._queue = None
@@ -291,10 +291,13 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         self._finalized = False
         self._initialized = True
 
-    def _finalize(self) -> None:
+    def _cleanup(self) -> None:
         self._pool.shutdown()
         self._results.clear()
         self._dataset.async_finalize()
+
+    def _finalize(self) -> None:
+        self._cleanup()
         self._finalized = True
         raise StopIteration
 
