@@ -275,9 +275,10 @@ class AsyncIterManager:
     @classmethod
     def cleanup(cls) -> None:
         if cls._cur is not None:
-            if not cls._cur._finalized:
-                cls._cur._cleanup()
+            cur = cls._cur
             cls._cur = None
+            if not cur._finalized:
+                cur._cleanup()
 
 
 class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
