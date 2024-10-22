@@ -365,7 +365,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
             data = self._results.pop(cursor, None)
             if data is not None:
                 return data
-            time.sleep(0.005)
+            time.sleep(0.001)
 
 
 class DataLoader(TorchDataLoader):
