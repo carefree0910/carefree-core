@@ -263,11 +263,21 @@ class AsyncIterManager:
 
     @classmethod
     def new(cls, fn: Callable[[], "AsyncDataLoaderIter"]) -> "AsyncDataLoaderIter":
+        cls.cleanup()
+        cls._cur = fn()
+        return cls._cur
+
+    @classmethod
+    def remove(cls, iter: "AsyncDataLoaderIter") -> None:
+        if cls._cur is iter:
+            cls.cleanup()
+
+    @classmethod
+    def cleanup(cls) -> None:
         if cls._cur is not None:
             if not cls._cur._finalized:
                 cls._cur._cleanup()
-        cls._cur = fn()
-        return cls._cur
+            cls._cur = None
 
 
 class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
@@ -289,6 +299,9 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         self._finalized = True
         self._initialized = False
         self._pool = ThreadPoolExecutor(max_workers=self.async_prefetch_factor)
+
+    def __del__(self) -> None:
+        AsyncIterManager.remove(self)
 
     def _initialize(self) -> None:
         self._queue = None
