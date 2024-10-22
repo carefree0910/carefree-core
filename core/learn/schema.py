@@ -320,7 +320,14 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
             return super()._next_data()
         if not self._initialized:
             self._initialize()
-        if self._queue is not None:
+        if self._queue is None:
+            self._queue = []
+            try:
+                for _ in range(self.async_prefetch_factor):
+                    self._submit_next()
+            except StopIteration:
+                self._drained = True
+        else:
             if len(self._queue) == 0:
                 self._finalize()
             if not self._drained:
@@ -328,13 +335,6 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
                     self._submit_next()
                 except StopIteration:
                     self._drained = True
-        else:
-            self._queue = []
-            try:
-                for _ in range(self.async_prefetch_factor):
-                    self._submit_next()
-            except StopIteration:
-                self._drained = True
         cursor, _ = self._queue.pop(0)
         while True:
             data = self._results.pop(cursor, None)
