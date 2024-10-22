@@ -2226,6 +2226,7 @@ class TrainerConfig:
     mixed_precision: Union[str, PrecisionType] = "no"
     dispatch_batches: Optional[str] = None
     even_batches: bool = True
+    non_blocking: bool = False
     find_unused_parameters: bool = False
     timeout: int = 2400
 

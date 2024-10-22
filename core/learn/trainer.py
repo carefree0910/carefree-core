@@ -200,6 +200,7 @@ class Trainer(ITrainer):
                 split_batches=self.config.split_batches,
                 dispatch_batches=self.config.dispatch_batches,
                 even_batches=self.config.even_batches,
+                non_blocking=self.config.non_blocking,
             ),
             kwargs_handlers=[
                 DistributedDataParallelKwargs(
