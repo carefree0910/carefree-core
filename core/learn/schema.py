@@ -446,7 +446,7 @@ class DataConfig(ISerializableDataClass["DataConfig"]):
     bypass_collate_fn: bool = True
     # async prefetch configs
     async_prefetch: bool = False
-    async_prefetch_factor: int = 8
+    async_prefetch_factor: int = 4
 
     def add_blocks(self, *blocks: Type["IDataBlock"]) -> None:
         if self.block_names is None:
