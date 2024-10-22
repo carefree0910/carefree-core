@@ -258,6 +258,18 @@ class IAsyncDataset(IDataset):
             time.sleep(0.01)  # pragma: no cover
 
 
+class AsyncIterManager:
+    _cur: Optional["AsyncDataLoaderIter"] = None
+
+    @classmethod
+    def new(cls, fn: Callable[[], "AsyncDataLoaderIter"]) -> "AsyncDataLoaderIter":
+        if cls._cur is not None:
+            if not cls._cur._finalized:
+                cls._cur._cleanup()
+        cls._cur = fn()
+        return cls._cur
+
+
 class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
     _queue: Optional[List[Tuple[int, Any]]]
     _drained: bool
@@ -277,10 +289,6 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         self._finalized = True
         self._initialized = False
         self._pool = ThreadPoolExecutor(max_workers=self.async_prefetch_factor)
-
-    def __del__(self) -> None:
-        if not self._finalized:
-            self._cleanup()
 
     def _initialize(self) -> None:
         self._queue = None
@@ -369,7 +377,7 @@ class DataLoader(TorchDataLoader):
 
     def _get_iterator(self) -> _BaseDataLoaderIter:
         if self.num_workers == 0:
-            return AsyncDataLoaderIter(self)
+            return AsyncIterManager.new(lambda: AsyncDataLoaderIter(self))
         return super()._get_iterator()  # pragma: no cover
 
     def __iter__(self) -> Iterator[tensor_dict_type]:  # type: ignore
