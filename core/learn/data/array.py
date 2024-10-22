@@ -1,3 +1,5 @@
+import time
+
 from typing import Any
 from typing import Dict
 from typing import List
@@ -42,7 +44,11 @@ class ArrayDataset(IDataset):
 
 
 class AsyncArrayDataset(IAsyncDataset):
-    """This is not really async, just to make sure the APIs are working correctly."""
+    """
+    This is not really async, just to make sure the APIs are working correctly.
+
+    > DO NOT USE THIS IN PRODUCTION, because `sleep` is used to simulate async fetching.
+    """
 
     def __init__(self, x: arr_type, y: Optional[arr_type] = None):
         if x is None:
@@ -65,6 +71,8 @@ class AsyncArrayDataset(IAsyncDataset):
         return True
 
     def async_fetch(self, cursor: int, index: Any) -> tensor_dict_type:
+        # we sleep `cursor * 0.01` seconds to simulate async fetching with different speeds
+        time.sleep(cursor * 0.01)
         x, y = self._map.pop(cursor)
         batch = {INPUT_KEY: x, LABEL_KEY: y}
         batch = np_batch_to_tensor(batch)

@@ -199,7 +199,7 @@ class TestData(unittest.TestCase):
             module_name="linear",
             module_config=dict(input_dim=in_dim, output_dim=out_dim, bias=False),
             loss_name="mse",
-            num_epoch=1,
+            num_steps=3,
         )
         cflearn.TrainingPipeline.init(config).fit(data)
 
