@@ -507,6 +507,8 @@ def prepare_dataloaders(accelerator: Accelerator, *loaders: TL) -> TLs:
             if not iter_prepared:
                 td.__iter__ = _iter_factory(td.__iter__)
                 td._iter_prepared_ = True
+            if not loader.data.config.loader_seed_sync:
+                prepared.rng_types = None
     return prepared_loaders
 
 
@@ -522,6 +524,7 @@ class DataConfig(ISerializableDataClass["DataConfig"]):
     loader_configs: Optional[Dict[str, Any]] = None
     valid_loader_configs: Optional[Dict[str, Any]] = None
     loader_seed: Optional[int] = None
+    loader_seed_sync: bool = True
     bypass_collate_fn: bool = True
     # async prefetch configs
     async_prefetch: bool = False
