@@ -223,6 +223,17 @@ class IDataset(Dataset):
         """this will be called everytime the `DataLoader` enters `__iter__`"""
 
 
+@dataclass
+class AsyncPack:
+    cursor: int
+    index: Any
+
+
+@dataclass
+class AsyncExceptionPack(AsyncPack):
+    e: Optional[Exception]
+
+
 class IAsyncDataset(IDataset):
     """
     An async version of `IDataset`
@@ -251,16 +262,8 @@ class IAsyncDataset(IDataset):
         """finalize the dataset at the end of each epoch"""
 
     @abstractmethod
-    def async_recover(self, it: "AsyncDataLoaderIter", e: Optional[Exception]) -> None:
-        """
-        recover from exceptions, there are two main sources of exceptions:
-
-        1. when `async_submit` returns `False`. in this case, `e` will be `None` and the `async_submit`
-           will be called again until it returns `True`.
-        2. when `async_fetch` raises exceptions. in this case, `e` will be the exception raised by
-           `async_fetch`, and `async_submit` -> `poll` pipeline will be called again until the data
-           is successfully fetched.
-        """
+    def get_async_pending_queue(self) -> List[AsyncPack]:
+        """get pending queue of current dataset"""
 
     def poll(self, cursor: int, index: Any) -> Any:
         while True:
@@ -335,15 +338,15 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         self._finalized = True
         raise StopIteration
 
-    def _async_submit(self, cursor: int, index: Any) -> Any:
+    def _async_submit(self, cursor: int, index: Any) -> None:
         if not self._dataset.async_submit(cursor, index):  # pragma: no cover
-            self._dataset.async_recover(self, None)
-            return self._async_submit(cursor, index)
+            self._results[cursor] = AsyncExceptionPack(cursor, index, None)
+            return None
         try:
             data = self._dataset.poll(cursor, index)
         except Exception as e:  # pragma: no cover
-            self._dataset.async_recover(self, e)
-            return self._async_submit(cursor, index)
+            self._results[cursor] = AsyncExceptionPack(cursor, index, e)
+            return None
         if self._pin_memory:  # pragma: no cover
             data = _utils.pin_memory.pin_memory(data, self._pin_memory_device)
         self._results[cursor] = data
@@ -376,11 +379,29 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
                 except StopIteration:
                     self._drained = True
         cursor, _ = self._queue.pop(0)
+        return self._poll(cursor)
+
+    def _poll(self, cursor: int) -> Any:
         while True:
             data = self._results.pop(cursor, None)
             if data is not None:
+                if isinstance(data, AsyncExceptionPack):
+                    return self._handle_exception(data)
                 return data
             time.sleep(0.001)
+
+    def _handle_exception(self, pack: AsyncExceptionPack) -> Any:
+        if pack.e is not None:
+            console.error(f"trying to recover from error: {pack.e}")
+        # we keep a reference to the cache because...
+        pendings = self._dataset.get_async_pending_queue()
+        self._cleanup()
+        # ...`pending_queue` might be cleared here
+        self._initialize()
+        for pending in pendings:
+            self._async_submit(pending.cursor, pending.index)
+        self._pool.submit(self._async_submit, pack.cursor, pack.index)
+        return self._poll(pack.cursor)
 
 
 class DataLoader(TorchDataLoader):
