@@ -391,12 +391,14 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
     def _handle_exception(self, pack: AsyncExceptionPack) -> Any:
         if pack.e is not None:
             console.error(f"trying to recover from error: {pack.e}")
+        queue = self._queue or []
         queue_cursor = self._queue_cursor
-        to_re_submit = (self._queue or []) + [pack]
+        to_re_submit = queue + [pack]
         self._cleanup()
         self._initialize()
         for re_submit in to_re_submit:
             self._pool.submit(self._async_submit, re_submit.cursor, re_submit.index)
+        self._queue = queue
         self._queue_cursor = queue_cursor
         return self._poll(pack.cursor)
 
