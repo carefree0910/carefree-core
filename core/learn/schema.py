@@ -341,6 +341,8 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
             return None
         try:
             data = self._dataset.poll(cursor, index)
+        except KeyboardInterrupt:  # pragma: no cover
+            raise
         except Exception as e:  # pragma: no cover
             self._results[cursor] = AsyncExceptionPack(cursor, index, e)
             return None
