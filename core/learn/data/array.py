@@ -10,6 +10,7 @@ from ..schema import IData
 from ..schema import IDataset
 from ..schema import DataBundle
 from ..schema import IAsyncDataset
+from ..schema import AsyncDataLoaderIter
 from ..schema import TDs
 from ..toolkit import np_batch_to_tensor
 from ..constants import INPUT_KEY
@@ -63,7 +64,7 @@ class AsyncArrayDataset(IAsyncDataset):
     def __len__(self) -> int:
         return len(self.x)
 
-    def async_reset(self) -> None:
+    def async_reset(self, _: AsyncDataLoaderIter) -> None:
         self._map: Dict[int, Tuple[arr_type, Optional[arr_type]]] = {}
 
     def async_submit(self, cursor: int, index: Any) -> bool:

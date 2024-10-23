@@ -235,8 +235,14 @@ class IAsyncDataset(IDataset):
         raise NotImplementedError("should not call `__getitems__` of an async dataset")
 
     @abstractmethod
-    def async_reset(self) -> None:
-        """reset the dataset at the beginning of each epoch"""
+    def async_reset(self, async_iter: "AsyncDataLoaderIter") -> None:
+        """
+        reset the dataset at the beginning of each epoch
+
+        > we provide the `async_iter` object to allow the dataset to interact with the
+        > `AsyncDataLoaderIter` object. this might be very helpful if exceptions are raised
+        > and the dataset needs to do some cleanup works.
+        """
 
     @abstractmethod
     def async_submit(self, cursor: int, index: Any) -> bool:
@@ -309,7 +315,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         self._drained = False
         self._queue_cursor = 0
         self._results = {}
-        self._dataset.async_reset()
+        self._dataset.async_reset(self)
         self._finalized = False
         self._initialized = True
 
