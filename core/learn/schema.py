@@ -297,7 +297,8 @@ class AsyncIterManager:
 
 
 class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
-    _queue: Optional[List[Tuple[int, Any]]]
+    _pool: ThreadPoolExecutor
+    _queue: Optional[List[AsyncPack]]
     _drained: bool
     _queue_cursor: int
     _dataset: IAsyncDataset
@@ -314,12 +315,12 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
             )  # pragma: no cover
         self._finalized = True
         self._initialized = False
-        self._pool = ThreadPoolExecutor(max_workers=self.async_prefetch_factor)
 
     def __del__(self) -> None:
         AsyncIterManager.remove(self)
 
     def _initialize(self) -> None:
+        self._pool = ThreadPoolExecutor(max_workers=self.async_prefetch_factor)
         self._queue = None
         self._drained = False
         self._queue_cursor = 0
@@ -354,9 +355,9 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
     def _submit_next(self) -> None:
         cursor = self._queue_cursor
         index = self._next_index()
-        self._pool.submit(self._async_submit, cursor, index)
-        self._queue.append((cursor, index))  # type: ignore
+        self._queue.append(AsyncPack(cursor, index))  # type: ignore
         self._queue_cursor = cursor + 1
+        self._pool.submit(self._async_submit, cursor, index)
 
     def _next_data(self) -> Any:
         if not self.enabled:
@@ -378,8 +379,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
                     self._submit_next()
                 except StopIteration:
                     self._drained = True
-        cursor, _ = self._queue.pop(0)
-        return self._poll(cursor)
+        return self._poll(self._queue.pop(0).cursor)
 
     def _poll(self, cursor: int) -> Any:
         while True:
@@ -393,14 +393,12 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
     def _handle_exception(self, pack: AsyncExceptionPack) -> Any:
         if pack.e is not None:
             console.error(f"trying to recover from error: {pack.e}")
-        # we keep a reference to the cache because...
         pendings = self._dataset.get_async_pending_queue()
+        to_re_submit = (self._queue or []) + pendings + [pack]
         self._cleanup()
-        # ...`pending_queue` might be cleared here
         self._initialize()
-        for pending in pendings:
-            self._async_submit(pending.cursor, pending.index)
-        self._pool.submit(self._async_submit, pack.cursor, pack.index)
+        for re_submit in to_re_submit:
+            self._pool.submit(self._async_submit, re_submit.cursor, re_submit.index)
         return self._poll(pack.cursor)
 
 
