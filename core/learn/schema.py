@@ -261,10 +261,6 @@ class IAsyncDataset(IDataset):
     def async_finalize(self) -> None:
         """finalize the dataset at the end of each epoch"""
 
-    @abstractmethod
-    def get_async_pending_queue(self) -> List[AsyncPack]:
-        """get pending queue of current dataset"""
-
     def poll(self, cursor: int, index: Any) -> Any:
         while True:
             fetched = self.async_fetch(cursor, index)
@@ -393,8 +389,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
     def _handle_exception(self, pack: AsyncExceptionPack) -> Any:
         if pack.e is not None:
             console.error(f"trying to recover from error: {pack.e}")
-        pendings = self._dataset.get_async_pending_queue()
-        to_re_submit = (self._queue or []) + pendings + [pack]
+        to_re_submit = (self._queue or []) + [pack]
         self._cleanup()
         self._initialize()
         for re_submit in to_re_submit:
