@@ -82,7 +82,7 @@ class AsyncArrayDataset(IAsyncDataset):
     def async_finalize(self) -> None:
         del self._map
 
-    def async_recover(self, it: AsyncDataLoaderIter, e: Optional[Exception]) -> None:
+    def async_recover(self) -> None:
         pass
 
 

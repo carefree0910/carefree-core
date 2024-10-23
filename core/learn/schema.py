@@ -261,6 +261,10 @@ class IAsyncDataset(IDataset):
     def async_finalize(self) -> None:
         """finalize the dataset at the end of each epoch"""
 
+    @abstractmethod
+    def async_recover(self) -> None:
+        """recover from exceptions, it is common to reset the related resources here"""
+
     def poll(self, cursor: int, index: Any) -> Any:
         while True:
             fetched = self.async_fetch(cursor, index)
@@ -395,6 +399,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         queue_cursor = self._queue_cursor
         to_re_submit = queue + [pack]
         self._cleanup()
+        self._dataset.async_recover()
         self._initialize()
         for re_submit in to_re_submit:
             self._pool.submit(self._async_submit, re_submit.cursor, re_submit.index)
