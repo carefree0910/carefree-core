@@ -64,7 +64,7 @@ class AsyncArrayDataset(IAsyncDataset):
     def __len__(self) -> int:
         return len(self.x)
 
-    def async_reset(self, _: AsyncDataLoaderIter) -> None:
+    def async_reset(self) -> None:
         self._map: Dict[int, Tuple[arr_type, Optional[arr_type]]] = {}
 
     def async_submit(self, cursor: int, index: Any) -> bool:
@@ -81,6 +81,9 @@ class AsyncArrayDataset(IAsyncDataset):
 
     def async_finalize(self) -> None:
         del self._map
+
+    def async_recover(self, it: AsyncDataLoaderIter, e: Optional[Exception]) -> None:
+        pass
 
 
 class ArrayDictDataset(IDataset):

@@ -235,14 +235,8 @@ class IAsyncDataset(IDataset):
         raise NotImplementedError("should not call `__getitems__` of an async dataset")
 
     @abstractmethod
-    def async_reset(self, async_iter: "AsyncDataLoaderIter") -> None:
-        """
-        reset the dataset at the beginning of each epoch
-
-        > we provide the `async_iter` object to allow the dataset to interact with the
-        > `AsyncDataLoaderIter` object. this might be very helpful if exceptions are raised
-        > and the dataset needs to do some cleanup works.
-        """
+    def async_reset(self) -> None:
+        """reset the dataset at the beginning of each epoch"""
 
     @abstractmethod
     def async_submit(self, cursor: int, index: Any) -> bool:
@@ -255,6 +249,18 @@ class IAsyncDataset(IDataset):
     @abstractmethod
     def async_finalize(self) -> None:
         """finalize the dataset at the end of each epoch"""
+
+    @abstractmethod
+    def async_recover(self, it: "AsyncDataLoaderIter", e: Optional[Exception]) -> None:
+        """
+        recover from exceptions, there are two main sources of exceptions:
+
+        1. when `async_submit` returns `False`. in this case, `e` will be `None` and the `async_submit`
+           will be called again until it returns `True`.
+        2. when `async_fetch` raises exceptions. in this case, `e` will be the exception raised by
+           `async_fetch`, and `async_submit` -> `poll` pipeline will be called again until the data
+           is successfully fetched.
+        """
 
     def poll(self, cursor: int, index: Any) -> Any:
         while True:
@@ -315,7 +321,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         self._drained = False
         self._queue_cursor = 0
         self._results = {}
-        self._dataset.async_reset(self)
+        self._dataset.async_reset()
         self._finalized = False
         self._initialized = True
 
@@ -331,10 +337,13 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
 
     def _async_submit(self, cursor: int, index: Any) -> Any:
         if not self._dataset.async_submit(cursor, index):  # pragma: no cover
-            msg = f"failed to submit async task with cursor={cursor} and index={index}"
-            console.error(msg)
-            raise RuntimeError("failed to submit async task")
-        data = self._dataset.poll(cursor, index)
+            self._dataset.async_recover(self, None)
+            return self._async_submit(cursor, index)
+        try:
+            data = self._dataset.poll(cursor, index)
+        except Exception as e:  # pragma: no cover
+            self._dataset.async_recover(self, e)
+            return self._async_submit(cursor, index)
         if self._pin_memory:  # pragma: no cover
             data = _utils.pin_memory.pin_memory(data, self._pin_memory_device)
         self._results[cursor] = data
