@@ -421,7 +421,7 @@ class TestNpSafeSerializer(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.folder = Path(self.temp_dir.name)
         self.data = np.array([1, 2, 3, 4, 5], dtype="S7")
-        self.rawd = dict(dtype=self.data.dtype, shape=self.data.shape)
+        self.rawd = dict(dtype=self.data.dtype)
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -443,7 +443,10 @@ class TestNpSafeSerializer(unittest.TestCase):
         NpSafeSerializer.save(self.folder, self.data, to_raw=True)
         loaded_data = NpSafeSerializer.load_raw(self.folder, **self.rawd)
         np.testing.assert_array_equal(loaded_data, self.data)
-        loaded_data = NpSafeSerializer.load_raw(self.folder, **self.rawd, mmap_mode="r")
+        rawd = dict(**self.rawd, shape=self.data.shape)
+        loaded_data = NpSafeSerializer.load_raw(self.folder, **rawd)
+        np.testing.assert_array_equal(loaded_data, self.data)
+        loaded_data = NpSafeSerializer.load_raw(self.folder, **rawd, mmap_mode="r")
         np.testing.assert_array_equal(loaded_data, self.data)
 
     def test_try_load(self):

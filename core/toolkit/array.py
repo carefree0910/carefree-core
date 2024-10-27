@@ -831,15 +831,18 @@ class NpSafeSerializer:
         folder: TPath,
         *,
         dtype: "np.dtype",
-        shape: Tuple[int, ...],
+        shape: Optional[Tuple[int, ...]] = None,
         mmap_mode: Optional[str] = None,
     ) -> "np.ndarray":
         import numpy as np
 
         array_path = to_path(folder) / cls.array_file
-        if mmap_mode is None:
-            return np.fromfile(array_path, dtype=dtype).reshape(shape)
-        return np.memmap(array_path, dtype=dtype, mode=mmap_mode, shape=shape)  # type: ignore
+        if mmap_mode is not None:
+            return np.memmap(array_path, dtype=dtype, mode=mmap_mode, shape=shape)  # type: ignore
+        array = np.fromfile(array_path, dtype=dtype)
+        if shape is not None:
+            array = array.reshape(shape)
+        return array
 
     @classmethod
     def try_load(
@@ -874,8 +877,8 @@ class NpSafeSerializer:
         if from_raw:
             if kwargs:
                 raise ValueError("`kwargs` are not supported for `from_raw`")
-            if dtype is None or shape is None:
-                raise ValueError("`dtype` and `shape` are required for `from_raw`")
+            if dtype is None:
+                raise ValueError("`dtype` is required for `from_raw`")
             return cls.load_raw(folder, dtype=dtype, shape=shape, mmap_mode=mmap_mode)
         return np.load(array_path, mmap_mode=mmap_mode, **kwargs)  # type: ignore
 
