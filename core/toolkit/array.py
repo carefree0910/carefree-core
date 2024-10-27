@@ -791,6 +791,7 @@ def arr_from_ptr(
 class NpSafeSerializer:
     size_file = "size.txt"
     array_file = "array.npy"
+    raw_array_file = "array.raw"
 
     @classmethod
     def save(
@@ -808,7 +809,7 @@ class NpSafeSerializer:
         with FileLock(folder / "NpSafeSerializer.lock", timeout=30000):
             if cls.try_load(folder, no_load=True) is None:
                 folder.mkdir(parents=True, exist_ok=True)
-                array_path = folder / cls.array_file
+                array_path = folder / (cls.raw_array_file if to_raw else cls.array_file)
                 with timeit(f"save '{folder}'", enabled=verbose):
                     if not isinstance(data, np.ndarray):
                         data = data()
@@ -836,7 +837,7 @@ class NpSafeSerializer:
     ) -> "np.ndarray":
         import numpy as np
 
-        array_path = to_path(folder) / cls.array_file
+        array_path = to_path(folder) / cls.raw_array_file
         if mmap_mode is not None:
             return np.memmap(array_path, dtype=dtype, mode=mmap_mode, shape=shape)  # type: ignore
         array = np.fromfile(array_path, dtype=dtype)
@@ -859,7 +860,7 @@ class NpSafeSerializer:
         import numpy as np
 
         folder = to_path(folder)
-        array_path = folder / cls.array_file
+        array_path = folder / (cls.raw_array_file if from_raw else cls.array_file)
         if not array_path.exists():
             return None
         size_path = folder / cls.size_file
