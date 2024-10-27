@@ -807,7 +807,7 @@ class NpSafeSerializer:
 
         folder = to_path(folder)
         with FileLock(folder / "NpSafeSerializer.lock", timeout=30000):
-            if cls.try_load(folder, no_load=True) is None:
+            if cls.try_load(folder, from_raw=to_raw, no_load=True) is None:
                 folder.mkdir(parents=True, exist_ok=True)
                 array_path = folder / (cls.raw_array_file if to_raw else cls.array_file)
                 with timeit(f"save '{folder}'", enabled=verbose):
