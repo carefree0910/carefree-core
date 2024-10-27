@@ -420,7 +420,8 @@ class TestNpSafeSerializer(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.folder = Path(self.temp_dir.name)
-        self.data = np.array([1, 2, 3, 4, 5])
+        self.data = np.array([1, 2, 3, 4, 5], dtype="S7")
+        self.rawd = dict(dtype=self.data.dtype, shape=self.data.shape)
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -429,15 +430,29 @@ class TestNpSafeSerializer(unittest.TestCase):
         NpSafeSerializer.save(self.folder, self.data)
         self.assertTrue((self.folder / NpSafeSerializer.array_file).exists())
         self.assertTrue((self.folder / NpSafeSerializer.size_file).exists())
+        NpSafeSerializer.cleanup(self.folder)
+        NpSafeSerializer.save(self.folder, self.data, to_raw=True)
+        self.assertTrue((self.folder / NpSafeSerializer.array_file).exists())
+        self.assertTrue((self.folder / NpSafeSerializer.size_file).exists())
 
     def test_load(self):
         NpSafeSerializer.save(self.folder, self.data)
         loaded_data = NpSafeSerializer.load(self.folder)
         np.testing.assert_array_equal(loaded_data, self.data)
+        NpSafeSerializer.cleanup(self.folder)
+        NpSafeSerializer.save(self.folder, self.data, to_raw=True)
+        loaded_data = NpSafeSerializer.load_raw(self.folder, **self.rawd)
+        np.testing.assert_array_equal(loaded_data, self.data)
+        loaded_data = NpSafeSerializer.load_raw(self.folder, **self.rawd, mmap_mode="r")
+        np.testing.assert_array_equal(loaded_data, self.data)
 
     def test_try_load(self):
         NpSafeSerializer.save(self.folder, self.data)
         np.testing.assert_array_equal(NpSafeSerializer.try_load(self.folder), self.data)
+        NpSafeSerializer.cleanup(self.folder)
+        NpSafeSerializer.save(self.folder, self.data, to_raw=True)
+        loaded_data = NpSafeSerializer.try_load(self.folder, **self.rawd, from_raw=True)
+        np.testing.assert_array_equal(loaded_data, self.data)
         self.assertIsNone(NpSafeSerializer.try_load(self.folder / "invalid"))
         np.save(self.folder / NpSafeSerializer.array_file, self.data[..., :2])
         self.assertIsNone(NpSafeSerializer.try_load(self.folder))
@@ -459,12 +474,15 @@ class TestNpSafeSerializer(unittest.TestCase):
         self.assertIsNone(loaded_data)
 
     def test_load_with(self):
-        def init_fn():
-            return np.array([6, 7, 8, 9, 10])
+        def init():
+            return np.array([6, 7, 8, 9, 10], dtype=self.data.dtype)
 
         NpSafeSerializer.cleanup(self.folder)
-        loaded_data = NpSafeSerializer.load_with(self.folder, init_fn)
-        np.testing.assert_array_equal(loaded_data, init_fn())
+        arr = NpSafeSerializer.load_with(self.folder, init)
+        np.testing.assert_array_equal(arr, init())
+        NpSafeSerializer.cleanup(self.folder)
+        arr = NpSafeSerializer.load_with(self.folder, init, **self.rawd, use_raw=True)
+        np.testing.assert_array_equal(arr, init())
         self.assertTrue((self.folder / NpSafeSerializer.array_file).exists())
         self.assertTrue((self.folder / NpSafeSerializer.size_file).exists())
 

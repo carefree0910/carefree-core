@@ -798,6 +798,7 @@ class NpSafeSerializer:
         folder: TPath,
         data: Union["np.ndarray", Callable[[], "np.ndarray"]],
         *,
+        to_raw: bool = False,
         verbose: bool = True,
     ) -> None:
         import numpy as np
@@ -811,7 +812,10 @@ class NpSafeSerializer:
                 with timeit(f"save '{folder}'", enabled=verbose):
                     if not isinstance(data, np.ndarray):
                         data = data()
-                    np.save(array_path, data)
+                    if to_raw:
+                        data.tofile(array_path)
+                    else:
+                        np.save(array_path, data)
                     with (folder / cls.size_file).open("w") as f:
                         f.write(str(get_file_size(array_path)))
 
@@ -822,11 +826,30 @@ class NpSafeSerializer:
         return np.load(to_path(folder) / cls.array_file, mmap_mode=mmap_mode)  # type: ignore
 
     @classmethod
+    def load_raw(
+        cls,
+        folder: TPath,
+        *,
+        dtype: "np.dtype",
+        shape: Tuple[int, ...],
+        mmap_mode: Optional[str] = None,
+    ) -> "np.ndarray":
+        import numpy as np
+
+        array_path = to_path(folder) / cls.array_file
+        if mmap_mode is None:
+            return np.fromfile(array_path, dtype=dtype).reshape(shape)
+        return np.memmap(array_path, dtype=dtype, mode=mmap_mode, shape=shape)  # type: ignore
+
+    @classmethod
     def try_load(
         cls,
         folder: TPath,
         *,
+        dtype: Optional["np.dtype"] = None,
+        shape: Optional[Tuple[int, ...]] = None,
         mmap_mode: Optional[str] = None,
+        from_raw: bool = False,
         no_load: bool = False,
         **kwargs: Any,
     ) -> Optional["np.ndarray"]:
@@ -848,6 +871,12 @@ class NpSafeSerializer:
             return None
         if no_load:
             return np.zeros(0)
+        if from_raw:
+            if kwargs:
+                raise ValueError("`kwargs` are not supported for `from_raw`")
+            if dtype is None or shape is None:
+                raise ValueError("`dtype` and `shape` are required for `from_raw`")
+            return cls.load_raw(folder, dtype=dtype, shape=shape, mmap_mode=mmap_mode)
         return np.load(array_path, mmap_mode=mmap_mode, **kwargs)  # type: ignore
 
     @classmethod
@@ -856,7 +885,10 @@ class NpSafeSerializer:
         folder: TPath,
         init_fn: Callable[[], "np.ndarray"],
         *,
+        dtype: Optional["np.dtype"] = None,
+        shape: Optional[Tuple[int, ...]] = None,
         mmap_mode: Optional[str] = None,
+        use_raw: bool = False,
         no_load: bool = False,
         verbose: bool = True,
         **kwargs: Any,
@@ -870,7 +902,10 @@ class NpSafeSerializer:
 
         load_func = lambda: cls.try_load(
             folder,
+            dtype=dtype,
+            shape=shape,
             mmap_mode=mmap_mode,
+            from_raw=use_raw,
             no_load=no_load,
             **kwargs,
         )
@@ -878,7 +913,7 @@ class NpSafeSerializer:
         if array is None:
             folder = to_path(folder)
             folder.mkdir(parents=True, exist_ok=True)
-            cls.save(folder, init_fn, verbose=verbose)
+            cls.save(folder, init_fn, to_raw=use_raw, verbose=verbose)
             array = load_func()
             if array is None:  # pragma: no cover
                 raise RuntimeError(f"failed to load array from '{folder}'")
