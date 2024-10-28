@@ -374,13 +374,13 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
             except StopIteration:
                 self._drained = True
         else:
-            if len(self._queue) == 0:
-                self._finalize()
             if not self._drained:
                 try:
                     self._submit_next()
                 except StopIteration:
                     self._drained = True
+            if len(self._queue) == 0:
+                self._finalize()
         return self._poll(self._queue.pop(0).cursor)
 
     def _poll(self, cursor: int) -> Any:
