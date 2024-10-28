@@ -33,13 +33,23 @@ class TestData(unittest.TestCase):
             cflearn.ArrayData.init().fit(x, y[:-1]).build_loaders()
 
         data.config.async_prefetch = True
+        data.config.async_prefetch_factor = 2
         async_loader = data.build_loader(x, y, drop_last=True)
         self.assertEqual(len(loader), len(async_loader))
+        cursor = 0
         for b0, b1 in zip(loader, async_loader):
+            cursor += 1
             x0, y0 = b0[cflearn.INPUT_KEY], b0[cflearn.LABEL_KEY]
             x1, y1 = b1[cflearn.INPUT_KEY], b1[cflearn.LABEL_KEY]
             np.testing.assert_allclose(x0, x1)
             np.testing.assert_allclose(y0, y1)
+        self.assertEqual(cursor, len(loader))
+        data.config.async_prefetch_factor = 1
+        async_loader = data.build_loader(x, y, drop_last=True)
+        cursor = 0
+        for _ in async_loader:
+            cursor += 1
+        self.assertEqual(cursor, len(async_loader))
 
         with self.assertRaises(ValueError):
             data.fit(None).build_loaders()
