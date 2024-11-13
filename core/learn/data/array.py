@@ -10,7 +10,6 @@ from ..schema import IData
 from ..schema import IDataset
 from ..schema import DataBundle
 from ..schema import IAsyncDataset
-from ..schema import AsyncDataLoaderIter
 from ..schema import TDs
 from ..toolkit import np_batch_to_tensor
 from ..constants import INPUT_KEY
