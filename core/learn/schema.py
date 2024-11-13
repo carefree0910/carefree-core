@@ -274,24 +274,28 @@ class IAsyncDataset(IDataset):
 
 
 class AsyncIterManager:
-    _cur: Optional["AsyncDataLoaderIter"] = None
+    _cur: Dict[int, "AsyncDataLoaderIter"] = {}
 
     @classmethod
-    def new(cls, fn: Callable[[], "AsyncDataLoaderIter"]) -> "AsyncDataLoaderIter":
-        cls.cleanup()
-        cls._cur = fn()
-        return cls._cur
+    def new(
+        cls,
+        id: int,
+        fn: Callable[[], "AsyncDataLoaderIter"],
+    ) -> "AsyncDataLoaderIter":
+        cls.cleanup(id)
+        cls._cur[id] = fn()
+        return cls._cur[id]
 
     @classmethod
     def remove(cls, iter: "AsyncDataLoaderIter") -> None:
-        if cls._cur is iter:
-            cls.cleanup()
+        for id, v in cls._cur.items():
+            if v is iter:
+                cls.cleanup(id)
 
     @classmethod
-    def cleanup(cls) -> None:
-        if cls._cur is not None:
-            cur = cls._cur
-            cls._cur = None
+    def cleanup(cls, id: int) -> None:
+        cur = cls._cur.pop(id, None)
+        if cur is not None:
             if not cur._finalized:
                 cur._cleanup()
 
@@ -431,7 +435,7 @@ class DataLoader(TorchDataLoader):
 
     def _get_iterator(self) -> _BaseDataLoaderIter:
         if self.num_workers == 0:
-            return AsyncIterManager.new(lambda: AsyncDataLoaderIter(self))
+            return AsyncIterManager.new(id(self), lambda: AsyncDataLoaderIter(self))
         return super()._get_iterator()  # pragma: no cover
 
     def __iter__(self) -> Iterator[tensor_dict_type]:  # type: ignore

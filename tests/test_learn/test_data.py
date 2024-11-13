@@ -213,6 +213,29 @@ class TestData(unittest.TestCase):
         )
         cflearn.TrainingPipeline.init(config).fit(data)
 
+    def test_async_data(self) -> None:
+        data, *_ = cflearn.testing.linear_data(
+            100,
+            batch_size=4,
+            use_validation=True,
+            use_async=True,
+        )
+        train_loader, valid_loader = data.build_loaders()
+        for i, _ in enumerate(train_loader):
+            if i == 2:
+                for _ in valid_loader:
+                    break
+                for _ in valid_loader:
+                    break
+                for _ in valid_loader:
+                    break
+            if i == 4:
+                break
+        for _ in train_loader:
+            break
+        for _ in train_loader:
+            break
+
     def test_seeding(self) -> None:
         data = cflearn.testing.arange_data()[0]
         loader = data.build_loaders()[0]
