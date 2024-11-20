@@ -14,6 +14,7 @@ from ..schema import TrainerCallback
 from ..toolkit import tensor_batch_to_np
 from ...toolkit import console
 from ...toolkit.misc import get_ddp_info
+from ...toolkit.array import is_string
 from ...toolkit.types import np_dict_type
 from ...toolkit.types import tensor_dict_type
 
@@ -58,11 +59,13 @@ class NaNDetectorCallback(TrainerCallback):
                     is_nan.append(k)
         if is_nan:
             np_batch = tensor_batch_to_np(batch)
-            nan_ratios = {
-                k: np.isnan(v).mean().item()
-                for k, v in np_batch.items()
-                if isinstance(v, np.ndarray)
-            }
+            nan_ratios = {}
+            for k, v in np_batch.items():
+                if isinstance(v, np.ndarray) and not is_string(v):
+                    try:
+                        nan_ratios[k] = np.isnan(v).mean().item()
+                    except Exception as e:
+                        console.warn(f"failed to calculate nan ratio for '{k}': {e}")
             debug_folder = Path(trainer.workspace) / "debugging"
             debug_folder.mkdir(exist_ok=True)
             batch_paths: Dict[str, Path] = {}
