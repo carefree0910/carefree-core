@@ -78,6 +78,7 @@ class Inference(IInference):
         return_outputs: bool = True,
         target_outputs: Union[str, List[str]] = PREDICTIONS_KEY,
         recover_labels: bool = True,
+        recover_predictions: bool = True,
         return_labels: bool = False,
         target_labels: Union[str, List[str]] = LABEL_KEY,
         stack_outputs: bool = True,
@@ -129,7 +130,15 @@ class Inference(IInference):
             if recover_labels:
                 tensors = shallow_copy_dict(tensors)
                 for k, v in tensors.items():
-                    if v is not None and k in need_recover:
+                    if v is not None and k in target_labels:
+                        tensors[k] = loader.recover_labels(k, v)
+            return tensors
+
+        def recover_predictions_of(tensors: tensor_dict_type) -> tensor_dict_type:
+            if recover_predictions:
+                tensors = shallow_copy_dict(tensors)
+                for k, v in tensors.items():
+                    if v is not None and isinstance(v, Tensor):
                         tensors[k] = loader.recover_labels(k, v)
             return tensors
 
@@ -196,7 +205,7 @@ class Inference(IInference):
                             tensor_batch,
                             shallow_copy_dict(kwargs),
                             get_losses=use_losses_as_metrics,
-                            recover_labels_fn=recover_labels_of,
+                            recover_predictions_fn=recover_predictions_of,
                         )
                     flags.in_step = False
                     tensor_outputs = step_outputs.forward_results
@@ -339,7 +348,6 @@ class Inference(IInference):
             target_outputs = [target_outputs]
         if isinstance(target_labels, str):
             target_labels = [target_labels]
-        need_recover = target_outputs + target_labels
         try:
             return run()
         except KeyboardInterrupt:

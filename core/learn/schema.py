@@ -1154,6 +1154,7 @@ class IInference(ABC):
         return_outputs: bool = True,
         target_outputs: Union[str, List[str]] = PREDICTIONS_KEY,
         recover_labels: bool = True,
+        recover_predictions: bool = True,
         return_labels: bool = False,
         target_labels: Union[str, List[str]] = LABEL_KEY,
         stack_outputs: bool = True,
@@ -1413,7 +1414,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         get_losses: bool = False,
         detach_losses: bool = True,
         loss_kwargs: Optional[Dict[str, Any]] = None,
-        recover_labels_fn: Optional[Callable[[td_type], td_type]] = None,
+        recover_predictions_fn: Optional[Callable[[td_type], td_type]] = None,
     ) -> StepOutputs:
         loss_tensors = {}
         loss_kwargs = loss_kwargs or {}
@@ -1428,8 +1429,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                 continue
             if fw is None or train_step.requires_new_forward:
                 fw = get_fw()
-                if recover_labels_fn is not None:
-                    fw = recover_labels_fn(fw)
+                if recover_predictions_fn is not None:
+                    fw = recover_predictions_fn(fw)
             if get_losses:
                 loss_res = train_step.loss_fn(self, None, batch, fw, **loss_kwargs)
                 if not detach_losses:
@@ -1565,6 +1566,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         return_outputs: bool = False,
         target_outputs: Union[str, List[str]] = PREDICTIONS_KEY,
         recover_labels: bool = True,
+        recover_predictions: bool = True,
         return_labels: bool = False,
         target_labels: Union[str, List[str]] = LABEL_KEY,
         progress: Optional[Progress] = None,
@@ -1583,6 +1585,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             return_outputs=return_outputs,
             target_outputs=target_outputs,
             recover_labels=recover_labels,
+            recover_predictions=recover_predictions,
             return_labels=return_labels,
             target_labels=target_labels,
             progress=progress,

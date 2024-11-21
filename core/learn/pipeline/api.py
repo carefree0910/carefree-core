@@ -157,6 +157,7 @@ class _InferenceMixin:
         return_probabilities: bool = False,
         target_outputs: Union[str, List[str]] = PREDICTIONS_KEY,
         recover_labels: bool = True,
+        recover_predictions: bool = True,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
         **kwargs: Any,
@@ -171,6 +172,7 @@ class _InferenceMixin:
         kw["loader"] = loader
         kw["target_outputs"] = target_outputs
         kw["recover_labels"] = recover_labels
+        kw["recover_predictions"] = recover_predictions
         kw["accelerator"] = accelerator
         kw["pad_dim"] = pad_dim
         outputs = safe_execute(self.build_inference.inference.get_outputs, kw)
@@ -226,6 +228,7 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
         return_outputs: bool = False,
         target_outputs: Union[str, List[str]] = PREDICTIONS_KEY,
         recover_labels: bool = True,
+        recover_predictions: bool = True,
         return_labels: bool = False,
         target_labels: Union[str, List[str]] = LABEL_KEY,
         progress: Optional[Progress] = None,
@@ -245,6 +248,7 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
             return_outputs=return_outputs,
             target_outputs=target_outputs,
             recover_labels=recover_labels,
+            recover_predictions=recover_predictions,
             return_labels=return_labels,
             target_labels=target_labels,
             progress=progress,
