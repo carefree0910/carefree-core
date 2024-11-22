@@ -179,7 +179,8 @@ class TestData(unittest.TestCase):
         self.assertAlmostEqual(outputs.metric_outputs.final_score, 0.0)
         predictions = outputs.forward_results[cflearn.PREDICTIONS_KEY]
         np.testing.assert_allclose(predictions, np.ones_like(predictions))
-        outputs = p.evaluate(loader, return_outputs=True, recover_labels=False)
+        raw_kw = dict(recover_labels=False, recover_predictions=False)
+        outputs = p.evaluate(loader, return_outputs=True, **raw_kw)
         self.assertAlmostEqual(outputs.metric_outputs.final_score, 0.0)
         predictions = outputs.forward_results[cflearn.PREDICTIONS_KEY]
         np.testing.assert_allclose(predictions, np.zeros_like(predictions))
@@ -190,7 +191,7 @@ class TestData(unittest.TestCase):
         self.assertAlmostEqual(outputs.metric_outputs.final_score, 0.0)
         predictions = outputs.forward_results[cflearn.PREDICTIONS_KEY]
         np.testing.assert_allclose(predictions, np.ones_like(predictions))
-        outputs = p.evaluate(loader, return_outputs=True, recover_labels=False)
+        outputs = p.evaluate(loader, return_outputs=True, **raw_kw)
         self.assertAlmostEqual(outputs.metric_outputs.final_score, 0.0)
         predictions = outputs.forward_results[cflearn.PREDICTIONS_KEY]
         np.testing.assert_allclose(predictions, np.zeros_like(predictions))
