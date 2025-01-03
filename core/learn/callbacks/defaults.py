@@ -56,14 +56,33 @@ class TrainingLoopCallback(TrainerCallback):
         finetune_config = trainer.config.finetune_config
         if finetune_config is not None:
             ckpt = finetune_config.get("pretrained_ckpt")
+            device = trainer.device
             if ckpt is None:
                 raise ValueError(
                     "`pretrained_ckpt` should be provided when `finetune` is triggered"
                 )
             console.log(f"loading pretrained checkpoint from '{ckpt}'...")
-            states = torch.load(ckpt, weights_only=False, map_location=trainer.device)
-            states = states["states"]
-            model.load_state_dict(states)
+            full_states = torch.load(ckpt, weights_only=False, map_location=device)
+            states: tensor_dict_type = full_states["states"]
+            exclude = finetune_config.get("exclude", "")
+            if not exclude:
+                exclude_names = []
+                model.load_state_dict(states)
+            else:
+                exclude_names = []
+                for name in states.keys():
+                    if re.match(exclude, name):
+                        exclude_names.append(name)
+                if exclude_names:
+                    console.log("following parameters will be excluded:", exclude_names)
+                    states = {k: v for k, v in states.items() if k not in exclude_names}
+                    model.load_state_dict(states, strict=False)
+                else:
+                    console.warn(
+                        f"`exclude` pattern '{exclude}' does not match any parameter, "
+                        "please make sure this is as expected!"
+                    )
+                    model.load_state_dict(states)
             freeze = finetune_config.get("freeze", "")
             freeze_except = finetune_config.get("freeze_except", "")
             if freeze or freeze_except:
