@@ -73,16 +73,19 @@ class TrainingLoopCallback(TrainerCallback):
                 for name in states.keys():
                     if re.match(exclude, name):
                         exclude_names.append(name)
-                if exclude_names:
-                    console.log("following parameters will be excluded:", exclude_names)
-                    states = {k: v for k, v in states.items() if k not in exclude_names}
-                    model.load_state_dict(states, strict=False)
-                else:
+                if not exclude_names:
                     console.warn(
                         f"`exclude` pattern '{exclude}' does not match any parameter, "
                         "please make sure this is as expected!"
                     )
                     model.load_state_dict(states)
+                else:
+                    console.log(
+                        f"{len(exclude_names)} parameters will be excluded:",
+                        exclude_names,
+                    )
+                    states = {k: v for k, v in states.items() if k not in exclude_names}
+                    model.load_state_dict(states, strict=False)
             freeze = finetune_config.get("freeze", "")
             freeze_except = finetune_config.get("freeze_except", "")
             if freeze or freeze_except:
@@ -90,7 +93,7 @@ class TrainingLoopCallback(TrainerCallback):
                     raise ValueError(
                         "`freeze` & `freeze_except` should not be provided simultaneously"
                     )
-                msg_fmt = f"-> {'{}'} parameter(s) will be {'{}'} under '{'{}'}'"
+                msg_fmt = f"{'{}'} parameter(s) will be {'{}'} under '{'{}'}':"
                 param_names = []
                 if freeze:
                     num_frozen = 0
@@ -109,9 +112,7 @@ class TrainingLoopCallback(TrainerCallback):
                             num_trainable += 1
                             param_names.append(name)
                     msg = msg_fmt.format(num_trainable, "trainable", freeze_except)
-                console.log(
-                    "\n".join(["=" * 100, msg, "-" * 100] + param_names + ["-" * 100])
-                )
+                console.log(msg, param_names)
 
     def before_loop_with_loaders(
         self,
