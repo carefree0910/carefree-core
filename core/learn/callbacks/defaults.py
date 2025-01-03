@@ -5,6 +5,7 @@ import torch
 from torch import Tensor
 from typing import Any
 from typing import Dict
+from typing import List
 from typing import Tuple
 from typing import Optional
 
@@ -65,6 +66,7 @@ class TrainingLoopCallback(TrainerCallback):
             full_states = torch.load(ckpt, weights_only=False, map_location=device)
             states: tensor_dict_type = full_states["states"]
             exclude = finetune_config.get("exclude", "")
+            exclude_names: List[str]
             if not exclude:
                 exclude_names = []
                 model.load_state_dict(states)
