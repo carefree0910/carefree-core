@@ -127,6 +127,8 @@ class EMA(Module):
             num_updates = self.num_updates.item()
             decay = min(self._decay, (1 + num_updates) / (10 + num_updates))
         for name, param in self.tgt_params:
+            if not param.requires_grad:
+                continue
             ema_attr = getattr(self, name)
             ema = torch.lerp(param.data, ema_attr, decay)
             setattr(self, name, ema)
