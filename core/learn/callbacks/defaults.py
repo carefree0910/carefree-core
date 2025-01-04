@@ -63,7 +63,8 @@ class TrainingLoopCallback(TrainerCallback):
                 raise ValueError(
                     "`pretrained_ckpt` should be provided when `finetune` is triggered"
                 )
-            console.log(f"loading pretrained checkpoint from '{ckpt}'...")
+            if self.is_local_rank_0:
+                console.log(f"loading pretrained checkpoint from '{ckpt}'...")
             full_states = torch.load(ckpt, weights_only=False, map_location=device)
             states: tensor_dict_type = full_states["states"]
             exclude = finetune_config.get("exclude", "")
@@ -77,16 +78,18 @@ class TrainingLoopCallback(TrainerCallback):
                     if re.match(exclude, name):
                         exclude_names.append(name)
                 if not exclude_names:
-                    console.warn(
-                        f"`exclude` pattern '{exclude}' does not match any parameter, "
-                        "please make sure this is as expected!"
-                    )
+                    if self.is_local_rank_0:
+                        console.warn(
+                            f"`exclude` pattern '{exclude}' does not match any "
+                            "parameter, please make sure this is as expected!"
+                        )
                     model.load_state_dict(states)
                 else:
-                    console.log(
-                        f"{len(exclude_names)} parameters will be excluded:",
-                        exclude_names,
-                    )
+                    if self.is_local_rank_0:
+                        console.log(
+                            f"{len(exclude_names)} parameters will be excluded:",
+                            exclude_names,
+                        )
                     states = {k: v for k, v in states.items() if k not in exclude_names}
                     model.load_state_dict(states, strict=False)
             freeze = finetune_config.get("freeze", "")
@@ -115,7 +118,8 @@ class TrainingLoopCallback(TrainerCallback):
                             num_trainable += 1
                             param_names.append(name)
                     msg = msg_fmt.format(num_trainable, "trainable", freeze_except)
-                console.log(msg, param_names)
+                if self.is_local_rank_0:
+                    console.log(msg, param_names)
 
     def before_loop_with_loaders(
         self,
