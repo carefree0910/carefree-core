@@ -8,6 +8,7 @@ from typing import Dict
 from typing import List
 from typing import Tuple
 from typing import Optional
+from accelerate.utils import broadcast_object_list
 
 from ..schema import ITrainer
 from ..schema import DataLoader
@@ -127,14 +128,15 @@ class TrainingLoopCallback(TrainerCallback):
         if valid_loader is not None:
             loader = valid_loader
         else:  # pragma: no cover
-            if (
-                console.ask(
+            answer = None
+            if self.is_local_rank_0:
+                answer = console.ask(
                     "no validation loader found, do you want to calculate resumed-metrics from the training loader?",
                     ["y", "n"],
                     default="n",
                 )
-                == "n"
-            ):
+            answer = broadcast_object_list([answer])[0]
+            if answer == "n":
                 return None
             loader = train_loader
         resumed_results = trainer.get_metrics(loader, trainer.config.valid_portion)
