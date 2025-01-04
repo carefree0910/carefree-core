@@ -17,6 +17,7 @@ from ..schema import TrainerCallback
 from ..schedulers import WarmupScheduler
 from ..modules.common import EMA
 from ...toolkit import console
+from ...toolkit.misc import is_ddp
 from ...toolkit.misc import shallow_copy_dict
 from ...toolkit.types import tensor_dict_type
 
@@ -101,9 +102,12 @@ class TrainingLoopCallback(TrainerCallback):
                     )
                 msg_fmt = f"{'{}'} parameter(s) will be {'{}'} under '{'{}'}':"
                 param_names = []
+                is_ddp_mode = is_ddp()
                 if freeze:
                     num_frozen = 0
                     for name, param in model.named_parameters():
+                        if is_ddp_mode:
+                            name = name[len("module.") :]
                         if re.match(freeze, name):
                             num_frozen += 1
                             param.requires_grad_(False)
@@ -112,6 +116,8 @@ class TrainingLoopCallback(TrainerCallback):
                 elif freeze_except:
                     num_trainable = 0
                     for name, param in model.named_parameters():
+                        if is_ddp_mode:
+                            name = name[len("module.") :]
                         if not re.match(freeze_except, name):
                             param.requires_grad_(False)
                         else:
