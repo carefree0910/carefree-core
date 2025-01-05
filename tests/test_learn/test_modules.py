@@ -141,11 +141,8 @@ class TestModules(unittest.TestCase):
         gt = p1.data
         gt = decay * gt + (1.0 - decay) * p2.data
         gt = decay * gt + (1.0 - decay) * p3.data
-        for p in [p1, p1.data]:
-            if not isinstance(p, nn.Parameter):
-                p = p.clone()
-            else:
-                p = nn.Parameter(p.data.clone())
+        for i, p in enumerate([p1, p1.data]):
+            p = p.clone()
             ema = cflearn.EMA(decay, [("test", p)])
             p.data = p2.data
             ema()
@@ -156,7 +153,7 @@ class TestModules(unittest.TestCase):
             ema.eval()
             ema.train()
             ema.eval()
-            torch.testing.assert_close(p.data, gt.data)
+            torch.testing.assert_close(p.data, gt.data if i == 0 else p3.data)
             ema.train()
             ema.eval()
             ema.train()
@@ -169,7 +166,7 @@ class TestModules(unittest.TestCase):
             ema.train()
             ema.eval()
             ema.eval()
-            torch.testing.assert_close(p.data, gt.data)
+            torch.testing.assert_close(p.data, gt.data if i == 0 else p3.data)
             ema.train()
             ema.train()
             ema.eval()
@@ -178,7 +175,7 @@ class TestModules(unittest.TestCase):
             ema.train()
             torch.testing.assert_close(p.data, p3.data)
             with cflearn.eval_context(ema):
-                torch.testing.assert_close(p.data, gt.data)
+                torch.testing.assert_close(p.data, gt.data if i == 0 else p3.data)
             torch.testing.assert_close(p.data, p3.data)
             str(ema)
             ema = cflearn.EMA(decay, [("test", p)], use_num_updates=True)
