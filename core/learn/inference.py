@@ -279,8 +279,14 @@ class Inference(IInference):
             cleanup_progress()
 
             # stack
-            stacked_np_outputs = stack(all_np_outputs, gather_np_outputs, stack_outputs)
-            stacked_labels = stack(all_labels, return_labels, stack_outputs)
+            if accelerator is not None and not accelerator.is_main_process:
+                stacked_broadcast = [None, None]
+            else:
+                sno = stack(all_np_outputs, gather_np_outputs, stack_outputs)
+                sl = stack(all_labels, return_labels, stack_outputs)
+                stacked_broadcast = [sno, sl]
+            stacked_broadcast = broadcast_object_list(stacked_broadcast)
+            stacked_np_outputs, stacked_labels = stacked_broadcast
             # gather metric outputs
             if metrics is None:
                 final_metric_outputs = None
