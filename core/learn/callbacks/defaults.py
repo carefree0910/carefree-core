@@ -71,8 +71,8 @@ class TrainingLoopCallback(TrainerCallback):
             exclude = finetune_config.get("exclude", "")
             exclude_names: List[str]
             if not exclude:
+                strict = finetune_config.get("strict", True)
                 exclude_names = []
-                model.load_state_dict(states)
             else:
                 exclude_names = []
                 for name in states.keys():
@@ -93,7 +93,7 @@ class TrainingLoopCallback(TrainerCallback):
                         )
                     states = {k: v for k, v in states.items() if k not in exclude_names}
                     strict = finetune_config.get("strict", False)
-                model.load_state_dict(states, strict=strict)
+            model.load_state_dict(states, strict=strict)
             freeze = finetune_config.get("freeze", "")
             freeze_except = finetune_config.get("freeze_except", "")
             if freeze or freeze_except:
