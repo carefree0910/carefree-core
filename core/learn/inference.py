@@ -285,8 +285,8 @@ class Inference(IInference):
                 sno = stack(all_np_outputs, gather_np_outputs, stack_outputs)
                 sl = stack(all_labels, return_labels, stack_outputs)
                 stacked_broadcast = [sno, sl]
-            stacked_broadcast = broadcast_object_list(stacked_broadcast)
-            stacked_np_outputs, stacked_labels = stacked_broadcast
+            received_broadcast = broadcast_object_list(stacked_broadcast)
+            stacked_np_outputs, stacked_labels = received_broadcast
             # gather metric outputs
             if metrics is None:
                 final_metric_outputs = None
