@@ -84,7 +84,7 @@ class TrainingLoopCallback(TrainerCallback):
                             f"`exclude` pattern '{exclude}' does not match any "
                             "parameter, please make sure this is as expected!"
                         )
-                    model.load_state_dict(states)
+                    strict = finetune_config.get("strict", True)
                 else:
                     if self.is_local_rank_0:
                         console.log(
@@ -92,7 +92,8 @@ class TrainingLoopCallback(TrainerCallback):
                             exclude_names,
                         )
                     states = {k: v for k, v in states.items() if k not in exclude_names}
-                    model.load_state_dict(states, strict=False)
+                    strict = finetune_config.get("strict", False)
+                model.load_state_dict(states, strict=strict)
             freeze = finetune_config.get("freeze", "")
             freeze_except = finetune_config.get("freeze_except", "")
             if freeze or freeze_except:
