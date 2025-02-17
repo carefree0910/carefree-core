@@ -3,6 +3,7 @@ import math
 import onnx
 import time
 import torch
+import traceback
 
 import numpy as np
 import torch.nn as nn
@@ -231,7 +232,7 @@ class AsyncPack:
 
 @dataclass
 class AsyncExceptionPack(AsyncPack):
-    e: Optional[Exception]
+    e: Union[str, Exception]
 
 
 class IAsyncDataset(IDataset):
@@ -344,8 +345,13 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         raise StopIteration
 
     def _async_submit(self, cursor: int, index: Any) -> None:
-        if not self._dataset.async_submit(cursor, index):  # pragma: no cover
-            self._results[cursor] = AsyncExceptionPack(cursor, index, None)
+        try:  # pragma: no cover
+            if not self._dataset.async_submit(cursor, index):
+                err_msg = "async submit failed"
+                self._results[cursor] = AsyncExceptionPack(cursor, index, err_msg)
+                return None
+        except Exception as e:  # pragma: no cover
+            self._results[cursor] = AsyncExceptionPack(cursor, index, e)
             return None
         try:
             data = self._dataset.poll(cursor, index)
@@ -397,8 +403,11 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
             time.sleep(0.001)
 
     def _handle_exception(self, pack: AsyncExceptionPack) -> Any:
-        if pack.e is not None:
-            console.error(f"trying to recover from error: {pack.e}")
+        if isinstance(pack.e, str):
+            err_msg = pack.e
+        else:
+            err_msg = f"{pack.e}\n{''.join(traceback.format_tb(pack.e.__traceback__))}"
+        console.error(f"trying to recover from error: {err_msg}")
         queue = self._queue or []
         queue_cursor = self._queue_cursor
         to_re_submit = queue + [pack]
