@@ -1163,13 +1163,11 @@ class MultipleMetrics(IMetric):
 
     @property
     def requires_all(self) -> bool:
-        requires_all = any(metric.requires_all for metric in self.metrics)
-        if requires_all and any(
-            isinstance(metric, IStreamMetric) for metric in self.metrics
-        ):
-            raise RuntimeError(
-                "streaming metrics should not be used with `requires_all`"
-            )
+        requires_all = any(m.requires_all for m in self.metrics)
+        any_streaming = any(isinstance(m, IStreamMetric) for m in self.metrics)
+        if requires_all and any_streaming:
+            raise RuntimeError("streaming metrics should not `requires_all`")
+        return requires_all
 
     def requires(self, key: str) -> bool:
         return any(metric.requires(key) for metric in self.metrics)
