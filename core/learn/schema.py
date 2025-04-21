@@ -1265,6 +1265,7 @@ class IInference(ABC):
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
+        only_hold_data_on_rank_0: bool = False,
         verbose: bool = True,
         **kwargs: Any,
     ) -> InferenceOutputs:
@@ -1676,6 +1677,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
+        only_hold_data_on_rank_0: bool = False,
         verbose: bool = True,
         **kwargs: Any,
     ) -> InferenceOutputs:
@@ -1695,6 +1697,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             use_inference_mode=use_inference_mode,
             accelerator=accelerator,
             pad_dim=pad_dim,
+            only_hold_data_on_rank_0=only_hold_data_on_rank_0,
             verbose=verbose,
             **kwargs,
         )

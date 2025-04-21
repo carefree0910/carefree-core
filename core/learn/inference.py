@@ -89,6 +89,7 @@ class Inference(IInference):
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
+        only_hold_data_on_rank_0: bool = False,
         verbose: bool = True,
         **kwargs: Any,
     ) -> InferenceOutputs:
@@ -165,6 +166,16 @@ class Inference(IInference):
                 progress.remove_task(flags.progress_task)
                 flags.progress_task = None
 
+        def should_hold_data() -> bool:
+            return (
+                not only_hold_data_on_rank_0
+                or accelerator is None
+                or accelerator.is_main_process
+            )
+
+        def filter_data(data: np_dict_type) -> np_dict_type:
+            return data if should_hold_data() else {}
+
         def _run() -> InferenceOutputs:
             all_np_outputs: TArrays = {}
             all_labels: TArrays = {}
@@ -191,7 +202,7 @@ class Inference(IInference):
             gather_np_outputs = return_outputs or metrics_requires_all
             remainder = -1
             if is_stream_metric:
-                metrics.reset()
+                metrics.reset()  # type: ignore
             for i, tensor_batch in iterator:
                 if i / len(loader) >= portion:
                     break
@@ -234,7 +245,7 @@ class Inference(IInference):
                     metric_outputs = metrics.evaluate(np_batch, np_outputs)
                     metric_outputs_list.append(metric_outputs)
                     if is_stream_metric:
-                        metric_outputs = metrics.update(np_batch, np_outputs)
+                        metric_outputs = metrics.update(np_batch, np_outputs)  # type: ignore
                 # gather
                 if gather_np_outputs:
                     if np_outputs is not None:
@@ -252,6 +263,7 @@ class Inference(IInference):
                             or (metrics_requires_all and metrics.requires(key))  # type: ignore
                         }
                         target_np_outputs = to_np_batch(target_tensor_outputs)
+                        target_np_outputs = filter_data(target_np_outputs)
                     for k, v in target_np_outputs.items():
                         if v is not None:
                             all_np_outputs.setdefault(k, []).append(v)
@@ -267,6 +279,7 @@ class Inference(IInference):
                             if v is not None and k in target_labels:
                                 required_tensor_batch[k] = v
                         gathered_np_batch = to_np_batch(required_tensor_batch)
+                        gathered_np_batch = filter_data(gathered_np_batch)
                         for k, v in gathered_np_batch.items():
                             all_labels.setdefault(k, []).append(v)
                 if metrics is not None and metrics.requires_all:
@@ -285,6 +298,7 @@ class Inference(IInference):
                                 required_tensor_batch[k] = v
                         if required_tensor_batch:
                             gathered_np_batch.update(to_np_batch(required_tensor_batch))
+                        gathered_np_batch = filter_data(gathered_np_batch)
                         for k, v in gathered_np_batch.items():
                             all_metrics_requires.setdefault(k, []).append(v)
                 # progress
@@ -299,8 +313,14 @@ class Inference(IInference):
                 sno = stack(all_np_outputs, gather_np_outputs, stack_outputs)
                 sl = stack(all_labels, return_labels, stack_outputs)
                 stacked_broadcast = [sno, sl]
-            received_broadcast = broadcast_object_list(stacked_broadcast)
-            stacked_np_outputs, stacked_labels = received_broadcast
+            if not should_hold_data():
+                stacked_np_outputs: np_dict_type = {}
+                stacked_labels: np_dict_type = {}
+            elif only_hold_data_on_rank_0:
+                stacked_np_outputs, stacked_labels = stacked_broadcast  # type: ignore
+            else:
+                received_broadcast = broadcast_object_list(stacked_broadcast)
+                stacked_np_outputs, stacked_labels = received_broadcast
             # gather metric outputs
             if metrics is None:
                 final_metric_outputs = None
@@ -322,7 +342,7 @@ class Inference(IInference):
                     if isinstance(metrics, MultipleMetrics):
                         metric_outputs_list.append(metrics.finalize())
                     else:
-                        metric_outputs_list.append(metrics.report(metrics.finalize()))
+                        metric_outputs_list.append(metrics.report(metrics.finalize()))  # type: ignore
                 scores = []
                 metric_values: Dict[str, List[float]] = {}
                 for metric_outputs in metric_outputs_list:
