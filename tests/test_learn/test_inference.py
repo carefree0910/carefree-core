@@ -24,7 +24,7 @@ class TestInference(unittest.TestCase):
 
         input_dim = 11
         output_dim = 7
-        num_samples = 123
+        num_samples = 17 * 31  # `mse` == `stream_mse` iff every batch is full
         batch_size = 17
 
         x = np.random.randn(num_samples, input_dim).astype(np.float32)
@@ -55,10 +55,19 @@ class TestInference(unittest.TestCase):
         mae = cflearn.MAE()
         model_outputs = inference.get_outputs(loader, return_labels=True)
         model_outputs = inference.get_outputs(loader, metrics=mae, return_labels=True)
+        model_outputs = inference.get_outputs(
+            loader,
+            metrics=cflearn.IMetric.fuse(["mse", "stream_mse"]),
+            return_labels=True,
+        )
         for v in model_outputs.forward_results.values():
             self.assertEqual(v.shape, (num_samples, output_dim))
         labels = model_outputs.labels[cflearn.LABEL_KEY]
         self.assertEqual(labels.shape, (num_samples, output_dim))
+        self.assertAlmostEqual(
+            model_outputs.metric_outputs.metric_values["mse"],
+            model_outputs.metric_outputs.metric_values["stream_mse"],
+        )
 
         @cflearn.IMetric.register("foo", allow_duplicate=True)
         class FooMetric(cflearn.IMetric):
@@ -125,8 +134,8 @@ class TestInference(unittest.TestCase):
         metrics = cflearn.MultipleMetrics.fuse(["foo", "bar"])
         model_outputs = inference.get_outputs(loader, metrics=metrics)
         metric_values = model_outputs.metric_outputs.metric_values
-        self.assertEqual(metric_values["foo"], 0.12)
-        self.assertEqual(metric_values["bar"], 3.45)
+        self.assertAlmostEqual(metric_values["foo"], 0.12)
+        self.assertAlmostEqual(metric_values["bar"], 3.45)
         final_score = model_outputs.metric_outputs.final_score
         self.assertAlmostEqual(final_score, 0.5 * (0.12 - 3.45))
 

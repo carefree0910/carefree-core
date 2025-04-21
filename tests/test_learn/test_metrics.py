@@ -11,15 +11,14 @@ class TestMetrics(unittest.TestCase):
 
         x = torch.randn(11, 1)
         y = torch.randn(11, 1)
-        metric = cflearn.IMetric.fuse(["mae", "mse", "corr"])
+        metric = cflearn.IMetric.fuse(["mae", "mse", "corr", "stream_mse"])
         with self.assertRaises(NotImplementedError):
             metric.is_positive
         with self.assertRaises(NotImplementedError):
             metric.forward(None, None)
-        outputs = metric.evaluate(
-            {cflearn.LABEL_KEY: y.numpy()},
-            {cflearn.PREDICTIONS_KEY: x.numpy()},
-        )
+        batch = {cflearn.LABEL_KEY: y.numpy()}
+        predictions = {cflearn.PREDICTIONS_KEY: x.numpy()}
+        outputs = metric.evaluate(batch, predictions)
         # mae
         gt_mae = torch.mean(torch.abs(x - y))
         torch.testing.assert_close(to_tensor("mae"), gt_mae)
@@ -37,6 +36,11 @@ class TestMetrics(unittest.TestCase):
             torch.tensor(outputs.final_score),
             (-gt_mae - gt_mse + gt_corr) / 3.0,
         )
+        # stream mse
+        metric.reset()
+        metric.update(batch, predictions)
+        outputs = metric.finalize()
+        torch.testing.assert_close(to_tensor("stream_mse"), gt_mse)
         # weighted score
         metric = cflearn.IMetric.fuse("mae", metric_weights=dict(mae=0.123))
         outputs = metric.evaluate(
