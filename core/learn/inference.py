@@ -304,21 +304,20 @@ class Inference(IInference):
             # gather metric outputs
             if metrics is None:
                 final_metric_outputs = None
+            elif metrics.requires_all:
+                to_be_broadcasted: List[Optional[MetricsOutputs]]
+                if accelerator is not None and not accelerator.is_main_process:
+                    to_be_broadcasted = [None]
+                else:
+                    final_metric_outputs = metrics.evaluate(
+                        stack(all_metrics_requires, True, True),
+                        stacked_np_outputs,
+                        loader,
+                    )
+                    to_be_broadcasted = [final_metric_outputs]
+                to_be_broadcasted = broadcast_object_list(to_be_broadcasted)
+                final_metric_outputs = to_be_broadcasted[0]
             else:
-                if metrics.requires_all:
-                    to_be_broadcasted: List[Optional[MetricsOutputs]]
-                    if accelerator is not None and not accelerator.is_main_process:
-                        to_be_broadcasted = [None]
-                    else:
-                        final_metric_outputs = metrics.evaluate(
-                            stack(all_metrics_requires, True, True),
-                            stacked_np_outputs,
-                            loader,
-                        )
-                        to_be_broadcasted = [final_metric_outputs]
-                    to_be_broadcasted = broadcast_object_list(to_be_broadcasted)
-                    final_metric_outputs = to_be_broadcasted[0]
-                    metric_outputs_list.append(final_metric_outputs)
                 if is_stream_metric:
                     if isinstance(metrics, MultipleMetrics):
                         metric_outputs_list.append(metrics.finalize())
