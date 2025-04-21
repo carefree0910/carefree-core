@@ -183,6 +183,11 @@ class Inference(IInference):
                 isinstance(metrics, MultipleMetrics) and metrics.has_streaming
             )
             metrics_requires_all = metrics is not None and metrics.requires_all
+            if metrics_requires_all:
+                console.warn(
+                    "detected `requires_all` metrics, it is recommended to implement "
+                    "an `IStreamMetric` version to reduce memory footprint."
+                )
             gather_np_outputs = return_outputs or metrics_requires_all
             remainder = -1
             if is_stream_metric:
