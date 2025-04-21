@@ -1063,8 +1063,6 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
     ) -> "MultipleMetrics":
         metrics = IMetric.make_multiple(names, configs)
         if isinstance(metrics, IMetric):
-            if metric_weights is None:
-                return metrics
             metrics = [metrics]
         return MultipleMetrics(metrics, weights=metric_weights)
 
