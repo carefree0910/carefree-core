@@ -20,7 +20,9 @@ from .schema import IModel
 from .schema import IMetric
 from .schema import IInference
 from .schema import DataLoader
+from .schema import IStreamMetric
 from .schema import MetricsOutputs
+from .schema import MultipleMetrics
 from .schema import InferenceOutputs
 from .toolkit import get_device
 from .toolkit import tensor_batch_to_np
@@ -177,9 +179,14 @@ class Inference(IInference):
                 progress_kw.setdefault("total", math.floor(len(loader) * portion))
                 progress_kw.setdefault("description", f"[{INFERENCE_COLOR}]inference")
                 flags.progress_task = progress.add_task(**progress_kw)
+            is_stream_metric = isinstance(metrics, IStreamMetric) or (
+                isinstance(metrics, MultipleMetrics) and metrics.has_streaming
+            )
             metrics_requires_all = metrics is not None and metrics.requires_all
             gather_np_outputs = return_outputs or metrics_requires_all
             remainder = -1
+            if is_stream_metric:
+                metrics.reset()
             for i, tensor_batch in iterator:
                 if i / len(loader) >= portion:
                     break
@@ -221,6 +228,8 @@ class Inference(IInference):
                         np_outputs = to_np_batch(tensor_outputs)  # type: ignore
                     metric_outputs = metrics.evaluate(np_batch, np_outputs)
                     metric_outputs_list.append(metric_outputs)
+                    if is_stream_metric:
+                        metric_outputs = metrics.update(np_batch, np_outputs)
                 # gather
                 if gather_np_outputs:
                     if np_outputs is not None:
@@ -290,20 +299,26 @@ class Inference(IInference):
             # gather metric outputs
             if metrics is None:
                 final_metric_outputs = None
-            elif metrics.requires_all:
-                to_be_broadcasted: List[Optional[MetricsOutputs]]
-                if accelerator is not None and not accelerator.is_main_process:
-                    to_be_broadcasted = [None]
-                else:
-                    final_metric_outputs = metrics.evaluate(
-                        stack(all_metrics_requires, True, True),
-                        stacked_np_outputs,
-                        loader,
-                    )
-                    to_be_broadcasted = [final_metric_outputs]
-                to_be_broadcasted = broadcast_object_list(to_be_broadcasted)
-                final_metric_outputs = to_be_broadcasted[0]
             else:
+                if metrics.requires_all:
+                    to_be_broadcasted: List[Optional[MetricsOutputs]]
+                    if accelerator is not None and not accelerator.is_main_process:
+                        to_be_broadcasted = [None]
+                    else:
+                        final_metric_outputs = metrics.evaluate(
+                            stack(all_metrics_requires, True, True),
+                            stacked_np_outputs,
+                            loader,
+                        )
+                        to_be_broadcasted = [final_metric_outputs]
+                    to_be_broadcasted = broadcast_object_list(to_be_broadcasted)
+                    final_metric_outputs = to_be_broadcasted[0]
+                    metric_outputs_list.append(final_metric_outputs)
+                if is_stream_metric:
+                    if isinstance(metrics, MultipleMetrics):
+                        metric_outputs_list.append(metrics.finalize())
+                    else:
+                        metric_outputs_list.append(metrics.report(metrics.finalize()))
                 scores = []
                 metric_values: Dict[str, List[float]] = {}
                 for metric_outputs in metric_outputs_list:

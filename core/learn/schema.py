@@ -1060,7 +1060,7 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
         configs: configs_type = None,
         *,
         metric_weights: Optional[Dict[str, float]] = None,
-    ) -> "IMetric":
+    ) -> "MultipleMetrics":
         metrics = IMetric.make_multiple(names, configs)
         if isinstance(metrics, IMetric):
             if metric_weights is None:
@@ -1076,6 +1076,67 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
     ) -> MetricsOutputs:
         k = self.__identifier__
         metric = self.forward(np_batch, np_outputs, loader)
+        score = metric * (1.0 if self.is_positive else -1.0)
+        return MetricsOutputs(score, {k: metric}, {k: self.is_positive})
+
+
+class IStreamMetric(IMetric):
+    """
+    an interface for metrics that support streaming calculation.
+
+    this type of metrics are designed to run as follows:
+
+    ```python
+    metric = IStreamMetric()
+    metric.reset()
+    for batch in dataloader:
+        outputs = model(batch)
+        metric.update(batch, outputs)
+    score = metric.finalize()
+    ```
+    """
+
+    @abstractmethod
+    def reset(self) -> None:
+        """reset the streaming context"""
+
+    @abstractmethod
+    def update(
+        self,
+        np_batch: np_dict_type,
+        np_outputs: np_dict_type,
+        loader: Optional[DataLoader] = None,
+    ) -> None:
+        """update the streaming context with new batch & outputs"""
+
+    @abstractmethod
+    def finalize(self) -> float:
+        """finalize the streaming context and return the final metric"""
+
+    def forward(
+        self,
+        np_batch: np_dict_type,
+        np_outputs: np_dict_type,
+        loader: Optional[DataLoader] = None,
+    ) -> float:
+        raise RuntimeError(
+            f"should not call `forward` of {self.__class__.__name__} directly, "
+            "as it is a streaming metric"
+        )
+
+    def evaluate(
+        self,
+        np_batch: np_dict_type,
+        np_outputs: np_dict_type,
+        loader: Optional[DataLoader] = None,
+    ) -> MetricsOutputs:
+        raise RuntimeError(
+            f"should not call `evaluate` of {self.__class__.__name__} directly, "
+            "as it is a streaming metric"
+        )
+
+    def report(self, metric: float) -> MetricsOutputs:
+        k = self.__identifier__
         score = metric * (1.0 if self.is_positive else -1.0)
         return MetricsOutputs(score, {k: metric}, {k: self.is_positive})
 
@@ -1097,8 +1158,18 @@ class MultipleMetrics(IMetric):
         raise NotImplementedError
 
     @property
+    def has_streaming(self) -> bool:
+        return any(isinstance(metric, IStreamMetric) for metric in self.metrics)
+
+    @property
     def requires_all(self) -> bool:
-        return any(metric.requires_all for metric in self.metrics)
+        requires_all = any(metric.requires_all for metric in self.metrics)
+        if requires_all and any(
+            isinstance(metric, IStreamMetric) for metric in self.metrics
+        ):
+            raise RuntimeError(
+                "streaming metrics should not be used with `requires_all`"
+            )
 
     def requires(self, key: str) -> bool:
         return any(metric.requires(key) for metric in self.metrics)
@@ -1116,13 +1187,21 @@ class MultipleMetrics(IMetric):
         np_batch: np_dict_type,
         np_outputs: np_dict_type,
         loader: Optional[DataLoader] = None,
+        for_streaming: bool = False,
     ) -> MetricsOutputs:
         scores: List[float] = []
         weights: List[float] = []
         metrics_values: Dict[str, float] = {}
         is_positive: Dict[str, bool] = {}
         for metric in self.metrics:
-            metric_outputs = metric.evaluate(np_batch, np_outputs, loader)
+            if isinstance(metric, IStreamMetric):
+                if not for_streaming:
+                    continue
+                metric_outputs = metric.report(metric.finalize())
+            else:
+                if for_streaming:
+                    continue
+                metric_outputs = metric.evaluate(np_batch, np_outputs, loader)
             metrics_values.update(metric_outputs.metric_values)
             is_positive.update(metric_outputs.is_positive)
             if not metric.not_include_in_score:
@@ -1134,6 +1213,24 @@ class MultipleMetrics(IMetric):
         else:
             final_score = sum(scores) / (sum(weights) + 1.0e-12)
         return MetricsOutputs(final_score, metrics_values, is_positive)
+
+    def reset(self) -> None:
+        for metric in self.metrics:
+            if isinstance(metric, IStreamMetric):
+                metric.reset()
+
+    def update(
+        self,
+        np_batch: np_dict_type,
+        np_outputs: np_dict_type,
+        loader: Optional[DataLoader] = None,
+    ) -> None:
+        for metric in self.metrics:
+            if isinstance(metric, IStreamMetric):
+                metric.update(np_batch, np_outputs, loader)
+
+    def finalize(self) -> MetricsOutputs:
+        return self.evaluate({}, {}, for_streaming=True)
 
 
 # inference
