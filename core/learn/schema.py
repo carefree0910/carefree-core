@@ -542,6 +542,8 @@ class DataConfig(ISerializableDataClass["DataConfig"]):
     # async prefetch configs
     async_prefetch: bool = False
     async_prefetch_factor: int = 4
+    ## this will be used when `for_inference=True` or `is_validation=True`
+    async_prefetch_factor_for_validation: Optional[int] = None
 
     def add_blocks(self, *blocks: Type["IDataBlock"]) -> None:
         if self.block_names is None:
@@ -824,7 +826,14 @@ class IData(  # type: ignore
         loader.data = self
         loader.for_inference = for_inference
         loader.async_prefetch = self.config.async_prefetch
-        loader.async_prefetch_factor = self.config.async_prefetch_factor
+        if not is_validation and not for_inference:
+            async_prefetch_factor = self.config.async_prefetch_factor
+        else:
+            async_prefetch_factor = (
+                self.config.async_prefetch_factor_for_validation
+                or self.config.async_prefetch_factor
+            )
+        loader.async_prefetch_factor = async_prefetch_factor
         if self.config.bypass_collate_fn:
             # this is useful when collation is already done in the `__getitems__` method
             loader.collate_fn = collate_placeholder
