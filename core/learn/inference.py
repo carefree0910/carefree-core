@@ -145,6 +145,13 @@ class Inference(IInference):
                         tensors[k] = loader.recover_labels(k, v)
             return tensors
 
+        def should_hold_data() -> bool:
+            return (
+                not only_hold_data_on_rank_0
+                or accelerator is None
+                or accelerator.is_main_process
+            )
+
         def to_np_batch(tensors: tensor_dict_type) -> np_dict_type:
             if accelerator is not None:
                 if isinstance(pad_dim, int):
@@ -159,22 +166,14 @@ class Inference(IInference):
                             new[k] = accelerator.pad_across_processes(v, dim=k_pad_dim)
                     tensors = new
                 tensors = accelerator.gather_for_metrics(tensors)
+                if not should_hold_data():
+                    tensors = {}
             return tensor_batch_to_np(tensors)
 
         def cleanup_progress() -> None:
             if progress is not None and flags.progress_task is not None:
                 progress.remove_task(flags.progress_task)
                 flags.progress_task = None
-
-        def should_hold_data() -> bool:
-            return (
-                not only_hold_data_on_rank_0
-                or accelerator is None
-                or accelerator.is_main_process
-            )
-
-        def filter_data(data: np_dict_type) -> np_dict_type:
-            return data if should_hold_data() else {}
 
         def _run() -> InferenceOutputs:
             all_np_outputs: TArrays = {}
@@ -244,10 +243,11 @@ class Inference(IInference):
                         np_batch = to_np_batch(tensor_batch)
                     if np_outputs is None:
                         np_outputs = to_np_batch(tensor_outputs)  # type: ignore
-                    metric_outputs = metrics.evaluate(np_batch, np_outputs)
-                    metric_outputs_list.append(metric_outputs)
-                    if is_stream_metric:
-                        metric_outputs = metrics.update(np_batch, np_outputs)  # type: ignore
+                    if should_hold_data():
+                        metric_outputs = metrics.evaluate(np_batch, np_outputs)
+                        metric_outputs_list.append(metric_outputs)
+                        if is_stream_metric:
+                            metrics.update(np_batch, np_outputs)  # type: ignore
                 # gather
                 if gather_np_outputs:
                     if np_outputs is not None:
@@ -265,7 +265,6 @@ class Inference(IInference):
                             or (metrics_requires_all and metrics.requires(key))  # type: ignore
                         }
                         target_np_outputs = to_np_batch(target_tensor_outputs)
-                        target_np_outputs = filter_data(target_np_outputs)
                     for k, v in target_np_outputs.items():
                         if v is not None:
                             all_np_outputs.setdefault(k, []).append(v)
@@ -281,7 +280,6 @@ class Inference(IInference):
                             if v is not None and k in target_labels:
                                 required_tensor_batch[k] = v
                         gathered_np_batch = to_np_batch(required_tensor_batch)
-                        gathered_np_batch = filter_data(gathered_np_batch)
                         for k, v in gathered_np_batch.items():
                             all_labels.setdefault(k, []).append(v)
                 if metrics is not None and metrics.requires_all:
@@ -300,7 +298,6 @@ class Inference(IInference):
                                 required_tensor_batch[k] = v
                         if required_tensor_batch:
                             gathered_np_batch.update(to_np_batch(required_tensor_batch))
-                        gathered_np_batch = filter_data(gathered_np_batch)
                         for k, v in gathered_np_batch.items():
                             all_metrics_requires.setdefault(k, []).append(v)
                 # progress
@@ -309,7 +306,7 @@ class Inference(IInference):
             cleanup_progress()
 
             # stack
-            if accelerator is not None and not accelerator.is_main_process:
+            if not should_hold_data():
                 stacked_broadcast = [None, None]
             else:
                 sno = stack(all_np_outputs, gather_np_outputs, stack_outputs)
@@ -326,36 +323,47 @@ class Inference(IInference):
             # gather metric outputs
             if metrics is None:
                 final_metric_outputs = None
-            elif metrics.requires_all:
+            else:
                 to_be_broadcasted: List[Optional[MetricsOutputs]]
-                if accelerator is not None and not accelerator.is_main_process:
-                    to_be_broadcasted = [None]
+                if metrics.requires_all:
+                    if not should_hold_data():
+                        to_be_broadcasted = [None]
+                    else:
+                        to_be_broadcasted = [
+                            metrics.evaluate(
+                                stack(all_metrics_requires, True, True),
+                                stacked_np_outputs,
+                                loader,
+                            )
+                        ]
                 else:
-                    final_metric_outputs = metrics.evaluate(
-                        stack(all_metrics_requires, True, True),
-                        stacked_np_outputs,
-                        loader,
-                    )
-                    to_be_broadcasted = [final_metric_outputs]
+                    if not should_hold_data():
+                        to_be_broadcasted = [None]
+                    else:
+                        if is_stream_metric:
+                            if isinstance(metrics, MultipleMetrics):
+                                metric_outputs_list.append(metrics.finalize())
+                            else:
+                                stream_outputs = metrics.report(metrics.finalize())  # type: ignore
+                                metric_outputs_list.append(stream_outputs)
+                        scores = []
+                        metric_values: Dict[str, List[float]] = {}
+                        for metric_outputs in metric_outputs_list:
+                            scores.append(metric_outputs.final_score)
+                            for k, v in metric_outputs.metric_values.items():
+                                metric_values.setdefault(k, []).append(v)
+                        to_be_broadcasted = [
+                            MetricsOutputs(
+                                sum(scores) / len(scores),
+                                {
+                                    k: sum(vl) / len(vl)
+                                    for k, vl in metric_values.items()
+                                },
+                                metric_outputs_list[0].is_positive,
+                            )
+                        ]
                 to_be_broadcasted = broadcast_object_list(to_be_broadcasted)
                 final_metric_outputs = to_be_broadcasted[0]
-            else:
-                if is_stream_metric:
-                    if isinstance(metrics, MultipleMetrics):
-                        metric_outputs_list.append(metrics.finalize())
-                    else:
-                        metric_outputs_list.append(metrics.report(metrics.finalize()))  # type: ignore
-                scores = []
-                metric_values: Dict[str, List[float]] = {}
-                for metric_outputs in metric_outputs_list:
-                    scores.append(metric_outputs.final_score)
-                    for k, v in metric_outputs.metric_values.items():
-                        metric_values.setdefault(k, []).append(v)
-                final_metric_outputs = MetricsOutputs(
-                    sum(scores) / len(scores),
-                    {k: sum(vl) / len(vl) for k, vl in metric_values.items()},
-                    metric_outputs_list[0].is_positive,
-                )
             # handle accelerator stuffs
             if accelerator is not None:
                 accelerator.wait_for_everyone()
