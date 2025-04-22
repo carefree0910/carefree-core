@@ -997,6 +997,40 @@ class MetricsOutputs(NamedTuple):
     metric_values: Dict[str, float]
     is_positive: Dict[str, bool]
 
+    @classmethod
+    def reduce(cls, outputs: List["MetricsOutputs"]) -> "MetricsOutputs":
+        """
+        reduce a list of `MetricsOutputs` to a single `MetricsOutputs` object.
+
+        `MetricsOutputs` in `outputs` is considered to be the metrics of each 'batch',
+        so after we evaluate all batches, we need to reduce them to a single `MetricsOutputs`
+        for later use.
+        """
+
+        scores = []
+        metric_values: Dict[str, List[float]] = {}
+        for o in outputs:
+            scores.append(o.final_score)
+            for k, v in o.metric_values.items():
+                metric_values.setdefault(k, []).append(v)
+        return MetricsOutputs(
+            sum(scores) / len(scores),
+            {k: sum(vl) / len(vl) for k, vl in metric_values.items()},
+            outputs[0].is_positive,
+        )
+
+    def union(self, other: "MetricsOutputs") -> "MetricsOutputs":
+        """
+        union two `MetricsOutputs` objects, which means we will combine the metric values
+        and the `is_positive` values.
+        """
+
+        return MetricsOutputs(
+            (self.final_score + other.final_score) / 2,
+            {**self.metric_values, **other.metric_values},
+            {**self.is_positive, **other.is_positive},
+        )
+
 
 class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
     d = metrics

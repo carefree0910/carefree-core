@@ -340,28 +340,14 @@ class Inference(IInference):
                     if not should_hold_data():
                         to_be_broadcasted = [None]
                     else:
+                        reduced = MetricsOutputs.reduce(metric_outputs_list)
                         if is_stream_metric:
                             if isinstance(metrics, MultipleMetrics):
-                                metric_outputs_list.append(metrics.finalize())
+                                stream_outputs = metrics.finalize()
                             else:
                                 stream_outputs = metrics.report(metrics.finalize())  # type: ignore
-                                metric_outputs_list.append(stream_outputs)
-                        scores = []
-                        metric_values: Dict[str, List[float]] = {}
-                        for metric_outputs in metric_outputs_list:
-                            scores.append(metric_outputs.final_score)
-                            for k, v in metric_outputs.metric_values.items():
-                                metric_values.setdefault(k, []).append(v)
-                        to_be_broadcasted = [
-                            MetricsOutputs(
-                                sum(scores) / len(scores),
-                                {
-                                    k: sum(vl) / len(vl)
-                                    for k, vl in metric_values.items()
-                                },
-                                metric_outputs_list[0].is_positive,
-                            )
-                        ]
+                            reduced = reduced.union(stream_outputs)
+                        to_be_broadcasted = [reduced]
                 to_be_broadcasted = broadcast_object_list(to_be_broadcasted)
                 final_metric_outputs = to_be_broadcasted[0]
             # handle accelerator stuffs
