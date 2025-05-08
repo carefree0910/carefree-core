@@ -38,6 +38,7 @@ from torch.optim import Optimizer
 from torch.profiler import profile
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 from accelerate.utils import PrecisionType
+from accelerate.utils import send_to_device
 from accelerate.utils import extract_model_from_parallel
 from concurrent.futures import ThreadPoolExecutor
 from torch.optim.lr_scheduler import LRScheduler
@@ -313,6 +314,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
     def __init__(self, loader: "DataLoader"):
         super().__init__(loader)
         self.enabled = loader.async_prefetch
+        self.presend_device = loader.presend_device
         self.async_prefetch_factor = loader.async_prefetch_factor
         if self.enabled and not isinstance(loader.dataset, IAsyncDataset):
             raise RuntimeError(
@@ -362,6 +364,8 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
             return None
         if self._pin_memory:  # pragma: no cover
             data = _utils.pin_memory.pin_memory(data, self._pin_memory_device)
+            if self.presend_device is not None:
+                data = send_to_device(data, self.presend_device, non_blocking=True)
         self._results[cursor] = data
 
     def _submit_next(self) -> None:
@@ -439,6 +443,7 @@ class DataLoader(TorchDataLoader):
     dataset: IDataset
     for_inference: bool
 
+    presend_device: Optional[str]
     async_prefetch: bool
     async_prefetch_factor: int
 
@@ -510,8 +515,11 @@ def prepare_dataloaders(accelerator: Accelerator, *loaders: TL) -> TLs:
             d.for_inference = loader.for_inference
             d.recover_labels = loader.recover_labels
             base = d.base_dataloader
+            base.presend_device = loader.presend_device
             base.async_prefetch = loader.async_prefetch
             base.async_prefetch_factor = loader.async_prefetch_factor
+            if base.presend_device is not None:
+                d.device = None
             if base.async_prefetch:
                 get_iterator = (lambda ins: lambda: DataLoader._get_iterator(ins))(base)
                 base._get_iterator = get_iterator
@@ -539,6 +547,7 @@ class DataConfig(ISerializableDataClass["DataConfig"]):
     loader_seed: Optional[int] = None
     loader_seed_sync: bool = True
     bypass_collate_fn: bool = True
+    presend_device: Optional[str] = None
     # async prefetch configs
     async_prefetch: bool = False
     async_prefetch_factor: int = 4
@@ -825,6 +834,7 @@ class IData(  # type: ignore
         )
         loader.data = self
         loader.for_inference = for_inference
+        loader.presend_device = self.config.presend_device
         loader.async_prefetch = self.config.async_prefetch
         if not is_validation and not for_inference:
             async_prefetch_factor = self.config.async_prefetch_factor
