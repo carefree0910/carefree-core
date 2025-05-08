@@ -364,8 +364,9 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
             return None
         if self._pin_memory:  # pragma: no cover
             data = _utils.pin_memory.pin_memory(data, self._pin_memory_device)
-            if self.presend_device is not None:
-                data = send_to_device(data, self.presend_device, non_blocking=True)
+        presend_device = self.presend_device
+        if presend_device is not None:
+            data = send_to_device(data, presend_device, non_blocking=self._pin_memory)
         self._results[cursor] = data
 
     def _submit_next(self) -> None:
