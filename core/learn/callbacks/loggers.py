@@ -35,6 +35,7 @@ from ...toolkit.misc import make_progress
 from ...toolkit.misc import shallow_copy_dict
 from ...toolkit.misc import fix_float_to_length
 from ...toolkit.misc import get_console_datetime
+from ...toolkit.types import tensor_dict_type
 from ...toolkit.console import LOG_TIME_FORMAT
 
 
@@ -108,7 +109,12 @@ class ProgressCallback(TrainerCallback):
         if self.epoch_progress is None:
             self._update_time_column()
 
-    def at_step_end(self, trainer: ITrainer) -> None:
+    def after_train_step(
+        self,
+        batch: tensor_dict_type,
+        step_outputs: StepOutputs,
+        trainer: ITrainer,
+    ) -> None:
         if self.progress is not None and self.step_progress is not None:
             self.progress.update(self.step_progress, advance=1)
 
