@@ -65,6 +65,7 @@ from .constants import PREDICTIONS_KEY
 from ..toolkit import console
 from ..toolkit.misc import is_fsdp
 from ..toolkit.misc import update_dict
+from ..toolkit.misc import get_ddp_info
 from ..toolkit.misc import safe_execute
 from ..toolkit.misc import get_world_size
 from ..toolkit.misc import is_local_rank_0
@@ -366,6 +367,9 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
             data = _utils.pin_memory.pin_memory(data, self._pin_memory_device)
         presend_device = self.presend_device
         if presend_device is not None:
+            ddp_info = get_ddp_info()
+            if presend_device == "cuda" and ddp_info is not None:
+                presend_device = f"cuda:{ddp_info.local_rank}"
             data = send_to_device(data, presend_device, non_blocking=self._pin_memory)
         self._results[cursor] = data
 
