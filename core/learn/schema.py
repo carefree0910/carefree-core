@@ -27,7 +27,6 @@ from typing import Iterator
 from typing import Optional
 from typing import NamedTuple
 from typing import ContextManager
-from onnxsim import simplify as onnx_simplify
 from datetime import timedelta
 from accelerate import Accelerator
 from accelerate import InitProcessGroupKwargs
@@ -1904,6 +1903,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             if not simplify:
                 return self.to(device)
             try:
+                from onnxsim import simplify as onnx_simplify
+
                 onnx_model = onnx.load(export_file)
                 final_input_names = get_input_names(onnx_model)
                 model_simplified, check = onnx_simplify(
