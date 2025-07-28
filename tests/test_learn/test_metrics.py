@@ -63,8 +63,7 @@ class TestMetrics(unittest.TestCase):
         # empty
         metric = cflearn.IMetric.fuse([])
         outputs = metric.evaluate(None, None)
-        self.assertEqual(outputs.final_score, 0.0)
-        self.assertDictEqual(outputs.metric_values, {})
+        self.assertIsNone(outputs)
 
 
 if __name__ == "__main__":
