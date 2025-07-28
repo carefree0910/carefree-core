@@ -187,11 +187,11 @@ class Trainer(ITrainer):
         # accelerator
         cpu = False
         if not is_ddp():
-            device = get_torch_device(device)
-            if device.type == "cpu":
+            parsed = get_torch_device(device)
+            if parsed.type == "cpu":
                 cpu = True
             else:
-                torch.cuda.set_device(device)  # pragma: no cover
+                torch.cuda.set_device(parsed)  # pragma: no cover
         self.config.init_process_group(cpu=cpu)
         self.accelerator = Accelerator(
             cpu=cpu,

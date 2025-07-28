@@ -579,10 +579,10 @@ def empty_cuda_cache(device: device_type) -> None:
 
     """
 
-    device = get_torch_device(device)
-    if device.type != "cuda":
+    parsed = get_torch_device(device)
+    if parsed.type != "cuda":
         return
-    with torch.cuda.device(device):  # pragma: no cover
+    with torch.cuda.device(parsed):  # pragma: no cover
         torch.cuda.empty_cache()
 
 
