@@ -1246,6 +1246,7 @@ class MultipleMetrics(IMetric):
         weights: List[float] = []
         metrics_values: Dict[str, float] = {}
         is_positive: Dict[str, bool] = {}
+        metric_outputs: MetricsOutputs
         for metric in self.metrics:
             if isinstance(metric, IStreamMetric):
                 if not for_streaming:
@@ -1254,7 +1255,9 @@ class MultipleMetrics(IMetric):
             else:
                 if for_streaming:
                     continue
-                metric_outputs = metric.evaluate(tensor_batch, tensor_outputs, loader)
+                metric_outputs = metric.evaluate(tensor_batch, tensor_outputs, loader)  # type: ignore
+                if metric_outputs is None:
+                    raise RuntimeError("non streaming metric should not return None")
             metrics_values.update(metric_outputs.metric_values)
             is_positive.update(metric_outputs.is_positive)
             if not metric.not_include_in_score:
@@ -1282,7 +1285,10 @@ class MultipleMetrics(IMetric):
                 metric.update(tensor_batch, tensor_outputs, loader)
 
     def finalize(self) -> MetricsOutputs:
-        return self.evaluate({}, {}, for_streaming=True)
+        metric_outputs = self.evaluate({}, {}, for_streaming=True)
+        if metric_outputs is None:
+            raise RuntimeError("no streaming metrics found but `finalize` is called")
+        return metric_outputs
 
 
 # inference
