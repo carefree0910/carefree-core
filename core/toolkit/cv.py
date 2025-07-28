@@ -119,7 +119,7 @@ def read_image(
             image = alpha  # type: ignore
         else:
             image = image.convert("L")
-    original_w, original_h = image.size
+    original_w, original_h = image.size  # type: ignore
     to_masked = image if to_mask else None
     if max_wh is None:
         w, h = original_w, original_h
@@ -130,7 +130,7 @@ def read_image(
     if w != original_w or h != original_h:
         if resample == "auto":
             resample = Image.Resampling.LANCZOS
-        image = image.resize((w, h), resample=resample)
+        image = image.resize((w, h), resample=resample)  # type: ignore
     anchored = image
     anchored_size = w, h
     image_array = np.array(image)

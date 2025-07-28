@@ -389,11 +389,11 @@ class WandBCallback(TrainerCallback):
         if self._log_histograms:
             m = trainer.model.m
             hists = {
-                k: wandb.Histogram(v.detach().cpu().numpy())
+                k: wandb.Histogram(v.detach().cpu().numpy())  # type: ignore
                 for k, v in m.named_parameters()
             }
             for k, v in m.named_buffers():
-                hists[k] = wandb.Histogram(v.detach().cpu().numpy())
+                hists[k] = wandb.Histogram(v.detach().cpu().numpy())  # type: ignore
             wandb.log(hists, step=self._wandb_step(trainer.state))
         if self._log_artifacts:
             wandb.log_artifact(trainer.workspace)
