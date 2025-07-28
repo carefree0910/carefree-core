@@ -25,6 +25,7 @@ from .schema import MetricsOutputs
 from .schema import MultipleMetrics
 from .schema import InferenceOutputs
 from .toolkit import get_device
+from .toolkit import np_batch_to_tensor
 from .toolkit import tensor_batch_to_np
 from .toolkit import ONNX
 from .constants import LABEL_KEY
@@ -217,6 +218,8 @@ class Inference(IInference):
                     tensor_batch = recover_labels_of(tensor_batch)
                     np_batch = tensor_batch_to_np(tensor_batch)
                     np_outputs = self.onnx.predict(np_batch)
+                    tensor_outputs = np_batch_to_tensor(np_outputs)
+                    tensor_outputs = recover_predictions_of(tensor_outputs)
                 elif self.model is not None:
                     # accelerator will handle the device stuffs
                     if accelerator is None:
@@ -236,18 +239,14 @@ class Inference(IInference):
                     if use_losses_as_metrics:
                         for k, v in step_outputs.loss_tensors.items():
                             loss_tensors_lists.setdefault(k, []).append(v)
-                assert np_outputs is not None or tensor_outputs is not None
+                assert tensor_outputs is not None
                 # metrics
                 if metrics is not None and not metrics.requires_all:
-                    if np_batch is None:
-                        np_batch = to_np_batch(tensor_batch)
-                    if np_outputs is None:
-                        np_outputs = to_np_batch(tensor_outputs)  # type: ignore
                     if should_hold_data():
-                        metric_outputs = metrics.evaluate(np_batch, np_outputs)
+                        metric_outputs = metrics.evaluate(tensor_batch, tensor_outputs)
                         metric_outputs_list.append(metric_outputs)
                         if is_stream_metric:
-                            metrics.update(np_batch, np_outputs)  # type: ignore
+                            metrics.update(tensor_batch, tensor_outputs)  # type: ignore
                 # gather
                 if gather_np_outputs:
                     if np_outputs is not None:
@@ -329,10 +328,11 @@ class Inference(IInference):
                     if not should_hold_data():
                         to_be_broadcasted = [None]
                     else:
+                        metrics_np_batch = stack(all_metrics_requires, True, True)
                         to_be_broadcasted = [
                             metrics.evaluate(
-                                stack(all_metrics_requires, True, True),
-                                stacked_np_outputs,
+                                np_batch_to_tensor(metrics_np_batch),
+                                np_batch_to_tensor(stacked_np_outputs),
                                 loader,
                             )
                         ]

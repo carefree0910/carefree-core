@@ -1,3 +1,5 @@
+import torch
+
 import numpy as np
 
 from abc import abstractmethod
@@ -33,13 +35,15 @@ class GeneralEvaluationPipeline(IEvaluationPipeline):
         self.metrics = b_metrics.metrics
 
     def evaluate(self, loader: DataLoader) -> InferenceOutputs:
-        full_batch = tensor_batch_to_np(loader.get_full_batch())
-        predictions = self.m.predict(full_batch[INPUT_KEY])
-        forward_results = {PREDICTIONS_KEY: predictions}
-        metric_outputs = self.metrics.evaluate(full_batch, forward_results, loader)
+        tensor_batch = loader.get_full_batch()
+        np_batch = tensor_batch_to_np(tensor_batch)
+        predictions = self.m.predict(np_batch[INPUT_KEY])
+        np_results = {PREDICTIONS_KEY: predictions}
+        tensor_results = {PREDICTIONS_KEY: torch.from_numpy(predictions)}
+        metric_outputs = self.metrics.evaluate(tensor_batch, tensor_results, loader)
         return InferenceOutputs(
-            forward_results,
-            {LABEL_KEY: full_batch[LABEL_KEY]},
+            np_results,
+            {LABEL_KEY: np_batch[LABEL_KEY]},
             metric_outputs,
             loss_items=None,
         )

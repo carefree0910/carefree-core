@@ -16,8 +16,8 @@ class TestMetrics(unittest.TestCase):
             metric.is_positive
         with self.assertRaises(NotImplementedError):
             metric.forward(None, None)
-        batch = {cflearn.LABEL_KEY: y.numpy()}
-        predictions = {cflearn.PREDICTIONS_KEY: x.numpy()}
+        batch = {cflearn.LABEL_KEY: y}
+        predictions = {cflearn.PREDICTIONS_KEY: x}
         outputs = metric.evaluate(batch, predictions)
         # mae
         gt_mae = torch.mean(torch.abs(x - y))
@@ -44,8 +44,8 @@ class TestMetrics(unittest.TestCase):
         # weighted score
         metric = cflearn.IMetric.fuse("mae", metric_weights=dict(mae=0.123))
         outputs = metric.evaluate(
-            {cflearn.LABEL_KEY: y.numpy()},
-            {cflearn.PREDICTIONS_KEY: x.numpy()},
+            {cflearn.LABEL_KEY: y},
+            {cflearn.PREDICTIONS_KEY: x},
         )
         torch.testing.assert_close(torch.tensor(outputs.final_score), -gt_mae)
         metric = cflearn.IMetric.fuse(
@@ -53,8 +53,8 @@ class TestMetrics(unittest.TestCase):
             metric_weights=dict(mae=0.1, mse=0.2, corr=0.7),
         )
         outputs = metric.evaluate(
-            {cflearn.LABEL_KEY: y.numpy()},
-            {cflearn.PREDICTIONS_KEY: x.numpy()},
+            {cflearn.LABEL_KEY: y},
+            {cflearn.PREDICTIONS_KEY: x},
         )
         torch.testing.assert_close(
             torch.tensor(outputs.final_score),

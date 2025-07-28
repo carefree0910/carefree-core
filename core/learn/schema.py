@@ -1065,8 +1065,8 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
     @abstractmethod
     def forward(
         self,
-        np_batch: np_dict_type,
-        np_outputs: np_dict_type,
+        tensor_batch: tensor_dict_type,
+        tensor_outputs: tensor_dict_type,
         loader: Optional[DataLoader] = None,
     ) -> float:
         """this method should return the metric value, which should be a float"""
@@ -1125,12 +1125,12 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
 
     def evaluate(
         self,
-        np_batch: np_dict_type,
-        np_outputs: np_dict_type,
+        tensor_batch: tensor_dict_type,
+        tensor_outputs: tensor_dict_type,
         loader: Optional[DataLoader] = None,
     ) -> MetricsOutputs:
         k = self.__identifier__
-        metric = self.forward(np_batch, np_outputs, loader)
+        metric = self.forward(tensor_batch, tensor_outputs, loader)
         score = metric * (1.0 if self.is_positive else -1.0)
         return MetricsOutputs(score, {k: metric}, {k: self.is_positive})
 
@@ -1158,8 +1158,8 @@ class IStreamMetric(IMetric):
     @abstractmethod
     def update(
         self,
-        np_batch: np_dict_type,
-        np_outputs: np_dict_type,
+        tensor_batch: tensor_dict_type,
+        tensor_outputs: tensor_dict_type,
         loader: Optional[DataLoader] = None,
     ) -> None:
         """update the streaming context with new batch & outputs"""
@@ -1170,8 +1170,8 @@ class IStreamMetric(IMetric):
 
     def forward(
         self,
-        np_batch: np_dict_type,
-        np_outputs: np_dict_type,
+        tensor_batch: tensor_dict_type,
+        tensor_outputs: tensor_dict_type,
         loader: Optional[DataLoader] = None,
     ) -> float:
         raise RuntimeError(
@@ -1181,8 +1181,8 @@ class IStreamMetric(IMetric):
 
     def evaluate(
         self,
-        np_batch: np_dict_type,
-        np_outputs: np_dict_type,
+        tensor_batch: tensor_dict_type,
+        tensor_outputs: tensor_dict_type,
         loader: Optional[DataLoader] = None,
     ) -> MetricsOutputs:
         raise RuntimeError(
@@ -1229,16 +1229,16 @@ class MultipleMetrics(IMetric):
 
     def forward(
         self,
-        np_batch: np_dict_type,
-        np_outputs: np_dict_type,
+        tensor_batch: tensor_dict_type,
+        tensor_outputs: tensor_dict_type,
         loader: Optional[DataLoader] = None,
     ) -> float:
         raise NotImplementedError
 
     def evaluate(
         self,
-        np_batch: np_dict_type,
-        np_outputs: np_dict_type,
+        tensor_batch: tensor_dict_type,
+        tensor_outputs: tensor_dict_type,
         loader: Optional[DataLoader] = None,
         for_streaming: bool = False,
     ) -> MetricsOutputs:
@@ -1254,7 +1254,7 @@ class MultipleMetrics(IMetric):
             else:
                 if for_streaming:
                     continue
-                metric_outputs = metric.evaluate(np_batch, np_outputs, loader)
+                metric_outputs = metric.evaluate(tensor_batch, tensor_outputs, loader)
             metrics_values.update(metric_outputs.metric_values)
             is_positive.update(metric_outputs.is_positive)
             if not metric.not_include_in_score:
@@ -1274,13 +1274,13 @@ class MultipleMetrics(IMetric):
 
     def update(
         self,
-        np_batch: np_dict_type,
-        np_outputs: np_dict_type,
+        tensor_batch: tensor_dict_type,
+        tensor_outputs: tensor_dict_type,
         loader: Optional[DataLoader] = None,
     ) -> None:
         for metric in self.metrics:
             if isinstance(metric, IStreamMetric):
-                metric.update(np_batch, np_outputs, loader)
+                metric.update(tensor_batch, tensor_outputs, loader)
 
     def finalize(self) -> MetricsOutputs:
         return self.evaluate({}, {}, for_streaming=True)
