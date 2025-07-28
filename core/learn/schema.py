@@ -1128,7 +1128,7 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
         tensor_batch: tensor_dict_type,
         tensor_outputs: tensor_dict_type,
         loader: Optional[DataLoader] = None,
-    ) -> MetricsOutputs:
+    ) -> Optional[MetricsOutputs]:
         k = self.__identifier__
         metric = self.forward(tensor_batch, tensor_outputs, loader)
         score = metric * (1.0 if self.is_positive else -1.0)
@@ -1184,7 +1184,7 @@ class IStreamMetric(IMetric):
         tensor_batch: tensor_dict_type,
         tensor_outputs: tensor_dict_type,
         loader: Optional[DataLoader] = None,
-    ) -> MetricsOutputs:
+    ) -> Optional[MetricsOutputs]:
         raise RuntimeError(
             f"should not call `evaluate` of {self.__class__.__name__} directly, "
             "as it is a streaming metric"
@@ -1241,7 +1241,7 @@ class MultipleMetrics(IMetric):
         tensor_outputs: tensor_dict_type,
         loader: Optional[DataLoader] = None,
         for_streaming: bool = False,
-    ) -> MetricsOutputs:
+    ) -> Optional[MetricsOutputs]:
         scores: List[float] = []
         weights: List[float] = []
         metrics_values: Dict[str, float] = {}
@@ -1262,9 +1262,8 @@ class MultipleMetrics(IMetric):
                 weights.append(w)
                 scores.append(metric_outputs.final_score * w)
         if not scores:
-            final_score = 0.0
-        else:
-            final_score = sum(scores) / (sum(weights) + 1.0e-12)
+            return None
+        final_score = sum(scores) / (sum(weights) + 1.0e-12)
         return MetricsOutputs(final_score, metrics_values, is_positive)
 
     def reset(self) -> None:
