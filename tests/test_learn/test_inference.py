@@ -40,7 +40,9 @@ class TestInference(unittest.TestCase):
         )
         inference = cflearn.Inference(model=cflearn.IModel.from_config(config))
 
-        model_outputs = inference.get_outputs(loader, progress=Progress())
+        progress = Progress()
+        progress.start()
+        model_outputs = inference.get_outputs(loader, progress=progress)
         for v in model_outputs.forward_results.values():
             self.assertEqual(v.shape, (num_samples, output_dim))
         self.assertIsNone(model_outputs.labels.get(cflearn.LABEL_KEY))
