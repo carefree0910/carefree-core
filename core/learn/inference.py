@@ -174,6 +174,7 @@ class Inference(IInference):
 
         def cleanup_progress() -> None:
             if progress is not None and flags.progress_task is not None:
+                progress.stop()
                 progress.remove_task(flags.progress_task)
                 flags.progress_task = None
 
