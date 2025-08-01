@@ -7,6 +7,7 @@ import traceback
 
 import numpy as np
 import torch.nn as nn
+import torch.distributed as dist
 
 from abc import abstractmethod
 from abc import ABC
@@ -1331,6 +1332,43 @@ class IInference(ABC):
         **kwargs: Any,
     ) -> InferenceOutputs:
         """this is an internal interface and will be implemented internally"""
+
+    def gather(
+        self,
+        accelerator: Accelerator,
+        tensors: tensor_dict_type,
+        *,
+        pad_dim: Optional[Union[int, Dict[str, int]]] = None,
+    ) -> Dict[str, List[Tensor]]:
+        if accelerator is None:
+            gathered_tensors = {k: [v] for k, v in tensors.items()}
+        else:
+            if isinstance(pad_dim, int):
+                tensors = accelerator.pad_across_processes(tensors, dim=pad_dim)
+            elif isinstance(pad_dim, dict):
+                new = {}
+                for k, v in tensors.items():
+                    k_pad_dim = pad_dim.get(k)
+                    if k_pad_dim is None:
+                        new[k] = v
+                    else:
+                        new[k] = accelerator.pad_across_processes(v, dim=k_pad_dim)
+                tensors = new
+            gathered_tensors = {}
+            for k, v in tensors.items():
+                v_cuda = v.to(accelerator.device)
+                if not accelerator.is_main_process:
+                    gathered_v = None
+                else:
+                    gathered_v = [
+                        torch.empty_like(v_cuda)
+                        for _ in range(accelerator.num_processes)
+                    ]
+                dist.gather(v_cuda, gather_list=gathered_v, dst=0)
+                if gathered_v is not None:
+                    gathered_v = [v.cpu() for v in gathered_v]
+                gathered_tensors[k] = gathered_v  # type: ignore
+        return gathered_tensors
 
 
 # general model
