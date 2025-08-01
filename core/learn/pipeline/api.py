@@ -176,9 +176,6 @@ class _InferenceMixin:
         kw["pad_dim"] = pad_dim
         outputs = safe_execute(self.build_inference.inference.get_outputs, kw)
         results = outputs.forward_results
-        for k, v in results.items():
-            if isinstance(v, list):
-                raise RuntimeError(f"internal error: '{k}' should be concatenated")
         # handle predict flags
         if return_classes and return_probabilities:
             raise ValueError(
@@ -188,6 +185,9 @@ class _InferenceMixin:
         elif not return_classes and not return_probabilities:
             pass
         else:
+            for k, v in results.items():
+                if isinstance(v, list):
+                    raise RuntimeError(f"internal error: '{k}' should be concatenated")
             predictions = results[PREDICTIONS_KEY]
             if predictions.shape[1] > 2 and return_classes:  # type: ignore
                 results[PREDICTIONS_KEY] = predictions.argmax(1, keepdims=True)  # type: ignore
