@@ -252,16 +252,16 @@ class Inference(IInference):
 
             # gather
             is_rank_0 = accelerator is None or accelerator.is_main_process
-            need_stack = concat_outputs or metrics_requires_all
-            if not need_stack:
-                stacked_inputs = stacked_outputs = stacked_labels = None
+            need_concat = concat_outputs or metrics_requires_all
+            if not need_concat:
+                concated_inputs = concated_outputs = concated_labels = None
             else:
                 if not metrics_requires_all:
-                    stacked_inputs = None
+                    concated_inputs = None
                 else:
-                    stacked_inputs = concat(all_inputs)
-                stacked_outputs = concat(all_outputs)
-                stacked_labels = concat(all_labels)
+                    concated_inputs = concat(all_inputs)
+                concated_outputs = concat(all_outputs)
+                concated_labels = concat(all_labels)
             # gather metric outputs
             if metrics is None:
                 final_metric_outputs = None
@@ -271,10 +271,10 @@ class Inference(IInference):
                     if not is_rank_0:
                         to_be_broadcasted = [None]
                     else:
-                        assert stacked_inputs is not None
-                        assert stacked_outputs is not None
+                        assert concated_inputs is not None
+                        assert concated_outputs is not None
                         to_be_broadcasted = [
-                            metrics.evaluate(stacked_inputs, stacked_outputs, loader)
+                            metrics.evaluate(concated_inputs, concated_outputs, loader)
                         ]
                 else:
                     reduced: Optional[MetricsOutputs] = None
@@ -312,8 +312,8 @@ class Inference(IInference):
                     loss_tensors_lists[k] = vg
 
             return InferenceOutputs(
-                stacked_outputs if concat_outputs else all_outputs,  # type: ignore
-                stacked_labels if return_labels else all_labels,  # type: ignore
+                concated_outputs if concat_outputs else all_outputs,  # type: ignore
+                concated_labels if return_labels else all_labels,  # type: ignore
                 final_metric_outputs,
                 (
                     None
