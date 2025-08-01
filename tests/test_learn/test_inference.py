@@ -47,7 +47,7 @@ class TestInference(unittest.TestCase):
             self.assertEqual(v.shape, (num_samples, output_dim))
         self.assertIsNone(model_outputs.labels.get(cflearn.LABEL_KEY))
 
-        raw_outputs = inference.get_outputs(loader, stack_outputs=False)
+        raw_outputs = inference.get_outputs(loader, concat_outputs=False)
         for v in raw_outputs.forward_results.values():
             self.assertIsInstance(v, list)
             for vv in v[:-1]:
@@ -203,11 +203,11 @@ class TestInference(unittest.TestCase):
 
         config = cflearn.Config(module_name="identity", loss_name="mse")
         inference = cflearn.Inference(model=cflearn.IModel.from_config(config))
-        with self.assertRaises(ValueError):
+        with self.assertRaises(RuntimeError):
             inference.get_outputs(loader)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(RuntimeError):
             inference.get_outputs(loader, pad_dim=0)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(RuntimeError):
             inference.get_outputs(loader, pad_dim={"foo": 0}, accelerator=Accelerator())
         o0 = inference.get_outputs(loader, pad_dim=1)
         o1 = inference.get_outputs(loader, pad_dim=1, accelerator=Accelerator())
@@ -238,4 +238,5 @@ class TestInference(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    # unittest.main()
+    TestInference().test_pad()

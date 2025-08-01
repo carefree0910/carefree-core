@@ -1,8 +1,6 @@
 import math
 import torch
 
-import numpy as np
-
 from torch import Tensor
 from typing import Any
 from typing import Dict
@@ -35,12 +33,13 @@ from .constants import PREDICTIONS_KEY
 from ..toolkit import console
 from ..toolkit.misc import is_local_rank_0
 from ..toolkit.misc import shallow_copy_dict
+from ..toolkit.array import is_int
 from ..toolkit.array import to_device
 from ..toolkit.types import np_dict_type
 from ..toolkit.types import tensor_dict_type
 
 
-TArrays = Dict[str, List[Union[np.ndarray, Any]]]
+TTensors = Dict[str, List[Union[Tensor, Any]]]
 
 
 def no_sync_context(accelerator: Accelerator, model: IModel) -> ContextManager:
@@ -85,13 +84,12 @@ class Inference(IInference):
         recover_predictions: bool = True,
         return_labels: bool = False,
         target_labels: Union[str, List[str]] = LABEL_KEY,
-        stack_outputs: bool = True,
+        concat_outputs: bool = True,
         progress: Optional[Progress] = None,
         progress_kwargs: Optional[Dict[str, Any]] = None,
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
-        only_hold_data_on_rank_0: bool = False,
         verbose: bool = True,
         **kwargs: Any,
     ) -> InferenceOutputs:
@@ -102,34 +100,38 @@ class Inference(IInference):
                 else pad_dim if isinstance(pad_dim, int) else pad_dim.get(k)
             )
 
-        def pad(k: str, arrays: List[np.ndarray]) -> List[np.ndarray]:
-            k_pad_dim = get_pad_dim(k)
-            if k_pad_dim is None:
-                return arrays
-            padded = []
-            max_shape = max([array.shape[k_pad_dim] for array in arrays])
-            if all(array.shape[k_pad_dim] == max_shape for array in arrays):
-                return arrays
-            if verbose and is_local_rank_0():
-                console.warn(
-                    f"padding '{k}' at dim {k_pad_dim} to {max_shape}, please perform "
-                    "post-processing to remove the paddings if necessary."
-                )
-            for array in arrays:
-                i_paddings = [[0, 0] for _ in range(array.ndim)]
-                i_paddings[k_pad_dim][1] = max_shape - array.shape[k_pad_dim]
-                padded.append(np.pad(array, i_paddings))
-            return padded
-
-        def stack(arrays: TArrays, return_arrays: bool, should_stack: bool) -> Any:
-            if not return_arrays:
-                return {k: None for k in arrays}
-            if not should_stack:
-                return arrays
-            return {
-                k: np.vstack(pad(k, v)) if isinstance(v[0], np.ndarray) else v
-                for k, v in arrays.items()
-            }
+        def concat(tensors: TTensors) -> Any:
+            concated: tensor_dict_type = {}
+            for k, v in tensors.items():
+                if not isinstance(v[0], Tensor):
+                    concated[k] = v
+                    continue
+                k_pad_dim = get_pad_dim(k)
+                if k_pad_dim is None:
+                    concated[k] = torch.cat(v)
+                    continue
+                max_shape = max([tensor.shape[k_pad_dim] for tensor in v])
+                if all(tensor.shape[k_pad_dim] == max_shape for tensor in v):
+                    concated[k] = torch.cat(v)
+                    continue
+                if verbose and is_local_rank_0():
+                    console.warn(
+                        f"padding '{k}' at dim {k_pad_dim} to {max_shape}, please perform "
+                        "post-processing to remove the paddings if necessary."
+                    )
+                shapes = [len(v), *v[0].shape]
+                shapes[k_pad_dim + 1] = max_shape
+                if is_int(v[0]):
+                    new = v[0].new_zeros(shapes)
+                else:
+                    new = v[0].new_full(shapes, torch.nan)
+                for i, tensor in enumerate(v):
+                    i_slices = [slice(None)] * len(shapes)
+                    i_slices[0] = slice(i, i + 1)
+                    i_slices[k_pad_dim + 1] = slice(0, tensor.shape[k_pad_dim])
+                    new[tuple(i_slices)] = tensor
+                concated[k] = new.view(shapes[0] * shapes[1], *shapes[2:])
+            return concated
 
         def recover_labels_of(tensors: tensor_dict_type) -> tensor_dict_type:
             if recover_labels:
@@ -147,31 +149,6 @@ class Inference(IInference):
                         tensors[k] = loader.recover_labels(k, v)
             return tensors
 
-        def should_hold_data() -> bool:
-            return (
-                not only_hold_data_on_rank_0
-                or accelerator is None
-                or accelerator.is_main_process
-            )
-
-        def to_np_batch(tensors: tensor_dict_type) -> np_dict_type:
-            if accelerator is not None:
-                if isinstance(pad_dim, int):
-                    tensors = accelerator.pad_across_processes(tensors, dim=pad_dim)
-                elif isinstance(pad_dim, dict):
-                    new = {}
-                    for k, v in tensors.items():
-                        k_pad_dim = pad_dim.get(k)
-                        if k_pad_dim is None:
-                            new[k] = v
-                        else:
-                            new[k] = accelerator.pad_across_processes(v, dim=k_pad_dim)
-                    tensors = new
-                tensors = accelerator.gather_for_metrics(tensors)
-                if not should_hold_data():
-                    tensors = {}
-            return tensor_batch_to_np(tensors)
-
         def cleanup_progress() -> None:
             if progress is not None and flags.progress_task is not None:
                 progress.stop()
@@ -179,11 +156,11 @@ class Inference(IInference):
                 flags.progress_task = None
 
         def _run() -> InferenceOutputs:
-            all_np_outputs: TArrays = {}
-            all_labels: TArrays = {}
-            all_metrics_requires: TArrays = {}
+            all_inputs: TTensors = {}
+            all_labels: TTensors = {}
+            all_outputs: TTensors = {}
             metric_outputs_list: List[MetricsOutputs] = []
-            loss_tensors_lists: Dict[str, List[Tensor]] = {}
+            loss_tensors_lists: TTensors = {}
 
             device = None if self.model is None else get_device(self.model.m)
             iterator = enumerate(loader)
@@ -203,7 +180,7 @@ class Inference(IInference):
                     "detected `requires_all` metrics, it is recommended to implement "
                     "an `IStreamMetric` version to reduce memory footprint."
                 )
-            gather_np_outputs = return_outputs or metrics_requires_all
+            gather_outputs = return_outputs or metrics_requires_all
             remainder = -1
             if is_stream_metric:
                 metrics.reset()  # type: ignore
@@ -212,8 +189,6 @@ class Inference(IInference):
                     break
                 if i == 0 and accelerator is not None:
                     remainder = accelerator.gradient_state.remainder
-                np_batch = None
-                np_outputs = None
                 tensor_outputs = None
                 if self.onnx is not None:
                     # will not consider distributed stuffs at onnx inference
@@ -250,93 +225,57 @@ class Inference(IInference):
                     if is_stream_metric:
                         metrics.update(tensor_batch, tensor_outputs)  # type: ignore
                 # gather
-                if gather_np_outputs:
-                    if np_outputs is not None:
-                        target_np_outputs = {
-                            key: array
-                            for key, array in np_outputs.items()
-                            if key in target_outputs
-                            or (metrics_requires_all and metrics.requires(key))  # type: ignore
-                        }
-                    else:
-                        target_tensor_outputs = {
-                            key: tensor
-                            for key, tensor in tensor_outputs.items()  # type: ignore
-                            if key in target_outputs
-                            or (metrics_requires_all and metrics.requires(key))  # type: ignore
-                        }
-                        target_np_outputs = to_np_batch(target_tensor_outputs)
-                    for k, v in target_np_outputs.items():
-                        if v is not None:
-                            all_np_outputs.setdefault(k, []).append(v)
-                gathered_np_batch = {}
+                batch_inputs: tensor_dict_type = {}
+                if gather_outputs:
+                    if metrics_requires_all:
+                        for k, v in tensor_batch.items():
+                            if v is not None and metrics.requires(k):  # type: ignore
+                                v_cpu = v.cpu()
+                                batch_inputs[k] = v_cpu
+                                all_inputs.setdefault(k, []).append(v_cpu)
+                    for k, v in tensor_outputs.items():
+                        if v is not None and (
+                            k in target_outputs
+                            or (metrics_requires_all and metrics.requires(k))  # type: ignore
+                        ):
+                            all_outputs.setdefault(k, []).append(v.cpu())
                 if return_labels:
-                    if np_batch is not None:
-                        for k, v in np_batch.items():
-                            if v is not None and k in target_labels:
-                                all_labels.setdefault(k, []).append(v)
-                    else:
-                        required_tensor_batch = {}
-                        for k, v in tensor_batch.items():
-                            if v is not None and k in target_labels:
-                                required_tensor_batch[k] = v
-                        gathered_np_batch = to_np_batch(required_tensor_batch)
-                        for k, v in gathered_np_batch.items():
-                            all_labels.setdefault(k, []).append(v)
-                if metrics is not None and metrics.requires_all:
-                    if np_batch is not None:
-                        for k, v in np_batch.items():
-                            if v is not None and metrics.requires(k):
-                                all_metrics_requires.setdefault(k, []).append(v)
-                    else:
-                        required_tensor_batch = {}
-                        for k, v in tensor_batch.items():
-                            if (
-                                v is not None
-                                and metrics.requires(k)
-                                and k not in gathered_np_batch
-                            ):
-                                required_tensor_batch[k] = v
-                        if required_tensor_batch:
-                            gathered_np_batch.update(to_np_batch(required_tensor_batch))
-                        for k, v in gathered_np_batch.items():
-                            all_metrics_requires.setdefault(k, []).append(v)
+                    for k, v in tensor_batch.items():
+                        if v is not None and k in target_labels:
+                            v_cpu = batch_inputs.get(k)
+                            if v_cpu is None:
+                                v_cpu = v.cpu()
+                            all_labels.setdefault(k, []).append(v_cpu)
                 # progress
                 if progress is not None and flags.progress_task is not None:
                     progress.advance(flags.progress_task)
             cleanup_progress()
 
-            # stack
-            if not should_hold_data():
-                stacked_broadcast = [None, None]
+            # gather
+            is_rank_0 = accelerator is None or accelerator.is_main_process
+            need_stack = concat_outputs or metrics_requires_all
+            if not need_stack:
+                stacked_inputs = stacked_outputs = stacked_labels = None
             else:
-                sno = stack(all_np_outputs, gather_np_outputs, stack_outputs)
-                sl = stack(all_labels, return_labels, stack_outputs)
-                stacked_broadcast = [sno, sl]
-            if not should_hold_data():
-                stacked_np_outputs: np_dict_type = {}
-                stacked_labels: np_dict_type = {}
-            elif only_hold_data_on_rank_0:
-                stacked_np_outputs, stacked_labels = stacked_broadcast  # type: ignore
-            else:
-                received_broadcast = broadcast_object_list(stacked_broadcast)
-                stacked_np_outputs, stacked_labels = received_broadcast
+                if not metrics_requires_all:
+                    stacked_inputs = None
+                else:
+                    stacked_inputs = concat(all_inputs)
+                stacked_outputs = concat(all_outputs)
+                stacked_labels = concat(all_labels)
             # gather metric outputs
             if metrics is None:
                 final_metric_outputs = None
             else:
                 to_be_broadcasted: List[Optional[MetricsOutputs]]
-                if metrics.requires_all:
-                    if not should_hold_data():
+                if metrics_requires_all:
+                    if not is_rank_0:
                         to_be_broadcasted = [None]
                     else:
-                        metrics_np_batch = stack(all_metrics_requires, True, True)
+                        assert stacked_inputs is not None
+                        assert stacked_outputs is not None
                         to_be_broadcasted = [
-                            metrics.evaluate(
-                                np_batch_to_tensor(metrics_np_batch),
-                                np_batch_to_tensor(stacked_np_outputs),
-                                loader,
-                            )
+                            metrics.evaluate(stacked_inputs, stacked_outputs, loader)
                         ]
                 else:
                     reduced: Optional[MetricsOutputs] = None
@@ -358,7 +297,7 @@ class Inference(IInference):
                             reduced = reduced.union(stream_outputs)
                     if reduced is None:
                         raise RuntimeError("no metric outputs found")
-                    if not should_hold_data():
+                    if not is_rank_0:
                         to_be_broadcasted = [None]
                     else:
                         to_be_broadcasted = [reduced]
@@ -374,8 +313,8 @@ class Inference(IInference):
                     loss_tensors_lists[k] = vg
 
             return InferenceOutputs(
-                stacked_np_outputs,
-                stacked_labels,
+                stacked_outputs if concat_outputs else all_outputs,  # type: ignore
+                stacked_labels if return_labels else all_labels,  # type: ignore
                 final_metric_outputs,
                 (
                     None

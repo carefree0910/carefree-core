@@ -1296,8 +1296,8 @@ class MultipleMetrics(IMetric):
 
 @dataclass
 class InferenceOutputs:
-    forward_results: np_dict_type
-    labels: np_dict_type
+    forward_results: Union[tensor_dict_type, Dict[str, List[Tensor]]]
+    labels: Union[tensor_dict_type, Dict[str, List[Tensor]]]
     metric_outputs: Optional[MetricsOutputs]
     loss_items: Optional[Dict[str, float]]
 
@@ -1321,13 +1321,12 @@ class IInference(ABC):
         recover_predictions: bool = True,
         return_labels: bool = False,
         target_labels: Union[str, List[str]] = LABEL_KEY,
-        stack_outputs: bool = True,
+        concat_outputs: bool = True,
         progress: Optional[Progress] = None,
         progress_kwargs: Optional[Dict[str, Any]] = None,
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
-        only_hold_data_on_rank_0: bool = False,
         verbose: bool = True,
         **kwargs: Any,
     ) -> InferenceOutputs:
@@ -1739,7 +1738,6 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
-        only_hold_data_on_rank_0: bool = False,
         verbose: bool = True,
         **kwargs: Any,
     ) -> InferenceOutputs:
@@ -1759,7 +1757,6 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             use_inference_mode=use_inference_mode,
             accelerator=accelerator,
             pad_dim=pad_dim,
-            only_hold_data_on_rank_0=only_hold_data_on_rank_0,
             verbose=verbose,
             **kwargs,
         )

@@ -100,7 +100,7 @@ class _InferenceMixin:
 
     # optional callbacks
 
-    def predict_callback(self, results: np_dict_type) -> np_dict_type:
+    def predict_callback(self, results: tensor_dict_type) -> tensor_dict_type:
         """changes can happen inplace"""
         return results
 
@@ -161,7 +161,7 @@ class _InferenceMixin:
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
         **kwargs: Any,
-    ) -> np_dict_type:
+    ) -> tensor_dict_type:
         if not self.is_built:
             raise RuntimeError(
                 f"`{self.__class__.__name__}` should be built beforehand, please use "
@@ -177,6 +177,9 @@ class _InferenceMixin:
         kw["pad_dim"] = pad_dim
         outputs = safe_execute(self.build_inference.inference.get_outputs, kw)
         results = outputs.forward_results
+        for k, v in results.items():
+            if isinstance(v, list):
+                raise RuntimeError(f"internal error: '{k}' should be concatenated")
         # handle predict flags
         if return_classes and return_probabilities:
             raise ValueError(
@@ -187,21 +190,21 @@ class _InferenceMixin:
             pass
         else:
             predictions = results[PREDICTIONS_KEY]
-            if predictions.shape[1] > 2 and return_classes:
+            if predictions.shape[1] > 2 and return_classes:  # type: ignore
                 results[PREDICTIONS_KEY] = predictions.argmax(1, keepdims=True)  # type: ignore
             else:
-                if predictions.shape[1] == 2:
+                if predictions.shape[1] == 2:  # type: ignore
                     probabilities = softmax(predictions)
                 else:
                     pos = sigmoid(predictions)
-                    probabilities = np.hstack([1.0 - pos, pos])
+                    probabilities = torch.hstack([1.0 - pos, pos])
                 if return_probabilities:
                     results[PREDICTIONS_KEY] = probabilities
                 else:
-                    classes = (probabilities[..., [1]] >= binary_threshold).astype(int)
+                    classes = (probabilities[..., [1]] >= binary_threshold).to(int)
                     results[PREDICTIONS_KEY] = classes
         # optional callback
-        results = self.predict_callback(results)
+        results = self.predict_callback(results)  # type: ignore
         # return
         return results
 
@@ -236,7 +239,6 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
-        only_hold_data_on_rank_0: bool = False,
         verbose: bool = True,
         **kwargs: Any,
     ) -> InferenceOutputs:
@@ -257,7 +259,6 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
             use_inference_mode=use_inference_mode,
             accelerator=accelerator,
             pad_dim=pad_dim,
-            only_hold_data_on_rank_0=only_hold_data_on_rank_0,
             verbose=verbose,
             **kwargs,
         )

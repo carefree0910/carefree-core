@@ -10,7 +10,6 @@ from .blocks import BuildMetricsBlock
 from ..schema import Config
 from ..schema import DataLoader
 from ..schema import InferenceOutputs
-from ..toolkit import tensor_batch_to_np
 from ..constants import INPUT_KEY
 from ..constants import LABEL_KEY
 from ..constants import PREDICTIONS_KEY
@@ -36,14 +35,12 @@ class GeneralEvaluationPipeline(IEvaluationPipeline):
 
     def evaluate(self, loader: DataLoader) -> InferenceOutputs:
         tensor_batch = loader.get_full_batch()
-        np_batch = tensor_batch_to_np(tensor_batch)
-        predictions = self.m.predict(np_batch[INPUT_KEY])
-        np_results = {PREDICTIONS_KEY: predictions}
+        predictions = self.m.predict(tensor_batch[INPUT_KEY].cpu().numpy())
         tensor_results = {PREDICTIONS_KEY: torch.from_numpy(predictions)}
         metric_outputs = self.metrics.evaluate(tensor_batch, tensor_results, loader)
         return InferenceOutputs(
-            np_results,
-            {LABEL_KEY: np_batch[LABEL_KEY]},
+            tensor_results,
+            {LABEL_KEY: tensor_batch[LABEL_KEY]},
             metric_outputs,
             loss_items=None,
         )

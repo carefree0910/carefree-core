@@ -481,7 +481,6 @@ class Trainer(ITrainer):
             state=self.state,
             progress=progress,
             accelerator=self.accelerator,
-            only_hold_data_on_rank_0=True,
             **kw,
         )
         return outputs.metric_outputs  # type: ignore
