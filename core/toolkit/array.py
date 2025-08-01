@@ -27,6 +27,8 @@ if TYPE_CHECKING:
     import torch
     import numpy as np
 
+    from torch import Tensor
+
 TEndian = Literal["<", ">", "|"]
 
 
@@ -257,13 +259,13 @@ def to_standard(arr: "np.ndarray") -> "np.ndarray":
     return arr
 
 
-def to_torch(arr: "np.ndarray") -> "torch.Tensor":
+def to_torch(arr: "np.ndarray") -> "Tensor":
     import torch
 
     return torch.from_numpy(to_standard(arr))
 
 
-def to_numpy(tensor: "torch.Tensor") -> "np.ndarray":
+def to_numpy(tensor: "Tensor") -> "np.ndarray":
     return tensor.detach().cpu().numpy()
 
 
@@ -723,7 +725,7 @@ def get_full_logits(logits: "np.ndarray") -> "np.ndarray":
     return logits
 
 
-def make_grid(arr: arr_type, n_row: Optional[int] = None) -> "torch.Tensor":
+def make_grid(arr: arr_type, n_row: Optional[int] = None) -> "Tensor":
     import torchvision
     import numpy as np
 
