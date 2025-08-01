@@ -69,7 +69,6 @@ from ...toolkit.array import sigmoid
 from ...toolkit.array import softmax
 from ...toolkit.array import is_float
 from ...toolkit.types import TPath
-from ...toolkit.types import np_dict_type
 from ...toolkit.types import tensor_dict_type
 from ...toolkit.pipeline import get_folder
 
