@@ -35,7 +35,6 @@ from ..toolkit.misc import is_local_rank_0
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.array import is_int
 from ..toolkit.array import to_device
-from ..toolkit.types import np_dict_type
 from ..toolkit.types import tensor_dict_type
 
 
