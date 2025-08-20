@@ -31,7 +31,6 @@ from .constants import LABEL_KEY
 from .constants import INFERENCE_COLOR
 from .constants import PREDICTIONS_KEY
 from ..toolkit import console
-from ..toolkit.misc import is_local_rank_0
 from ..toolkit.misc import shallow_copy_dict
 from ..toolkit.array import is_int
 from ..toolkit.array import to_device
@@ -86,6 +85,7 @@ class Inference(IInference):
         concat_outputs: bool = True,
         progress: Optional[Progress] = None,
         progress_kwargs: Optional[Dict[str, Any]] = None,
+        should_stop_progress: bool = True,
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
@@ -151,7 +151,8 @@ class Inference(IInference):
 
         def cleanup_progress() -> None:
             if progress is not None and flags.progress_task is not None:
-                progress.stop()
+                if should_stop_progress:
+                    progress.stop()
                 progress.remove_task(flags.progress_task)
                 flags.progress_task = None
 

@@ -461,15 +461,18 @@ class Trainer(ITrainer):
     def get_metrics(self, loader: DataLoader, portion: float = 1.0) -> MetricsOutputs:
         if not self.use_tqdm_in_validation:
             progress = None
+            should_stop_progress = True
         else:
             for c in self.callbacks:
                 if isinstance(c, ProgressCallback):
                     if c.epoch_progress is None:
                         c._update_time_column()
                     progress = c.progress
+                    should_stop_progress = False
                     break
             else:
                 progress = Progress()  # pragma: no cover
+                should_stop_progress = True
         kw = shallow_copy_dict(self.config.metric_forward_kwargs or {})
         kw["return_outputs"] = False
         outputs = self.model.evaluate(
@@ -480,6 +483,7 @@ class Trainer(ITrainer):
             portion=portion,
             state=self.state,
             progress=progress,
+            should_stop_progress=should_stop_progress,
             accelerator=self.accelerator,
             **kw,
         )
