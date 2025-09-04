@@ -2485,6 +2485,8 @@ class TrainerConfig:
     non_blocking: bool = False
     find_unused_parameters: bool = False
     timeout: int = 2400
+    # this is a universal patch for special cases
+    extra: Optional[Dict[str, Any]] = None
 
     def init_process_group(self, *, cpu: bool) -> None:
         timeout = timedelta(seconds=self.timeout)
