@@ -177,6 +177,7 @@ class Trainer(ITrainer):
         callbacks: List[TrainerCallback],
         schedulers_requires_metric: Set[str],
         *,
+        do_summary: bool = True,
         show_summary: bool = True,
         loaded_state: Optional[Dict[str, Any]] = None,
         skip_final_evaluation: bool = False,
@@ -264,18 +265,21 @@ class Trainer(ITrainer):
         # summary
         for callback in self.callbacks:
             callback.before_summary(self)
-        ## should always summary to sync the statuses in distributed training
-        input_sample = train_loader.get_input_sample(self.device)
-        with self.accelerator.autocast():
-            summary_msg = summary(
-                self.model.m,
-                input_sample,
-                return_only=not show_summary or not self.is_local_rank_0 or only_touch,
-                summary_forward=self.model.summary_forward,
-            )
-        if self.is_local_rank_0:
-            with open(os.path.join(self.workspace, self.summary_log_file), "w") as f:
-                f.write(summary_msg)
+        if do_summary:
+            input_sample = train_loader.get_input_sample(self.device)
+            with self.accelerator.autocast():
+                summary_msg = summary(
+                    self.model.m,
+                    input_sample,
+                    return_only=not show_summary
+                    or not self.is_local_rank_0
+                    or only_touch,
+                    summary_forward=self.model.summary_forward,
+                )
+            if self.is_local_rank_0:
+                summary_path = os.path.join(self.workspace, self.summary_log_file)
+                with open(summary_path, "w") as f:
+                    f.write(summary_msg)
         # train
         has_ckpt = terminate = False
         self.accelerator.wait_for_everyone()

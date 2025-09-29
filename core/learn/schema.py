@@ -2392,6 +2392,7 @@ class ITrainer(ABC):
         callbacks: List[TrainerCallback],
         schedulers_requires_metric: Set[str],
         *,
+        do_summary: bool = True,
         show_summary: bool = True,
         loaded_state: Optional[Dict[str, Any]] = None,
         skip_final_evaluation: bool = False,

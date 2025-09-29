@@ -323,6 +323,7 @@ class TrainingPipeline(Pipeline["TrainingPipeline"], _DeviceMixin, _EvaluationMi
         data: IData,
         *,
         sample_weights: sample_weights_type = None,
+        do_summary: bool = True,
         skip_final_evaluation: bool = False,
         only_touch: bool = False,
         device: device_type = None,
@@ -341,6 +342,7 @@ class TrainingPipeline(Pipeline["TrainingPipeline"], _DeviceMixin, _EvaluationMi
         # run pipeline
         self.run(
             data,
+            do_summary=do_summary,
             skip_final_evaluation=skip_final_evaluation,
             only_touch=only_touch,
             device=device,
