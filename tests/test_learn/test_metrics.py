@@ -65,6 +65,47 @@ class TestMetrics(unittest.TestCase):
         outputs = metric.evaluate(None, None)
         self.assertIsNone(outputs)
 
+        # custom
+
+        @cflearn.IMetric.register("moment", allow_duplicate=True)
+        class Moment(cflearn.IMetric):
+            @property
+            def is_positive(self) -> bool:
+                return True
+
+            def forward(
+                self,
+                tensor_batch: cflearn.tensor_dict_type,
+                tensor_outputs: cflearn.tensor_dict_type,
+                loader: None = None,
+            ) -> cflearn.MetricValues:
+                predictions = tensor_outputs[cflearn.PREDICTIONS_KEY]
+                mean = torch.mean(predictions).item()
+                std = torch.std(predictions).item()
+                return cflearn.MetricValues(
+                    values={"mean": mean, "std": std, cflearn.SCORE_KEY: mean - std},
+                    is_positive={"mean": True, "std": False, cflearn.SCORE_KEY: True},
+                )
+
+        metric = Moment()
+        outputs = metric.evaluate(
+            {cflearn.LABEL_KEY: y},
+            {cflearn.PREDICTIONS_KEY: x},
+        )
+        torch.testing.assert_close(to_tensor("mean"), torch.mean(x))
+        torch.testing.assert_close(to_tensor("std"), torch.std(x))
+        torch.testing.assert_close(to_tensor("moment"), torch.mean(x) - torch.std(x))
+
+        metric = cflearn.IMetric.fuse(["moment", "mae"])
+        outputs = metric.evaluate(
+            {cflearn.LABEL_KEY: y},
+            {cflearn.PREDICTIONS_KEY: x},
+        )
+        torch.testing.assert_close(to_tensor("moment_mean"), torch.mean(x))
+        torch.testing.assert_close(to_tensor("moment_std"), torch.std(x))
+        torch.testing.assert_close(to_tensor("moment"), torch.mean(x) - torch.std(x))
+        torch.testing.assert_close(to_tensor("mae"), gt_mae)
+
 
 if __name__ == "__main__":
     unittest.main()
