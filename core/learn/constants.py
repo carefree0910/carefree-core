@@ -1,6 +1,7 @@
 WORKSPACE_ENVIRON_KEY = "CFLEARN_WORKSPACE"
 
 LOSS_KEY = "loss"
+SCORE_KEY = "score"
 INPUT_KEY = "input"
 LATENT_KEY = "latent"
 PREDICTIONS_KEY = "predictions"

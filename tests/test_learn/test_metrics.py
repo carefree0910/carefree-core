@@ -12,7 +12,7 @@ class TestMetrics(unittest.TestCase):
         x = torch.randn(11, 1)
         y = torch.randn(11, 1)
         metric = cflearn.IMetric.fuse(["mae", "mse", "corr", "stream_mse"])
-        with self.assertRaises(NotImplementedError):
+        with self.assertRaises(RuntimeError):
             metric.is_positive
         with self.assertRaises(NotImplementedError):
             metric.forward(None, None)

@@ -61,6 +61,7 @@ from .toolkit import toggle_optimizer
 from .constants import LOSS_KEY
 from .constants import INPUT_KEY
 from .constants import LABEL_KEY
+from .constants import SCORE_KEY
 from .constants import PREDICTIONS_KEY
 from ..toolkit import console
 from ..toolkit.misc import is_fsdp
@@ -95,6 +96,7 @@ configs_type = Optional[Union[List[Dict[str, Any]], Dict[str, Any]]]
 sample_weights_type = Optional[Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]]
 raw_forward_results_type = Union[Tensor, td_type]
 losses_type = Union[Tensor, td_type]
+metric_values_type = Union[float, "MetricValues"]
 
 T_d = TypeVar("T_d", bound="IData", covariant=True)
 TData = TypeVar("TData", bound="IData", covariant=True)
@@ -1047,6 +1049,33 @@ class MetricsOutputs(NamedTuple):
         )
 
 
+class MetricValues(NamedTuple):
+    values: Dict[str, float]
+    is_positive: Dict[str, bool]
+
+
+def replace_keys(d: Dict[str, Any], identifier: str) -> Dict[str, Any]:
+    return {identifier if k == SCORE_KEY else k: v for k, v in d.items()}
+
+
+def to_metric_outputs(
+    identifier: str,
+    is_positive: bool,
+    metric_values: metric_values_type,
+) -> MetricsOutputs:
+    if isinstance(metric_values, float):
+        metric_values = MetricValues(
+            {SCORE_KEY: metric_values},
+            {SCORE_KEY: is_positive},
+        )
+    values = metric_values.values
+    is_positives = metric_values.is_positive
+    score = values[SCORE_KEY] * (1.0 if is_positives[SCORE_KEY] else -1.0)
+    values = replace_keys(values, identifier)
+    is_positives = replace_keys(is_positives, identifier)
+    return MetricsOutputs(score, values, is_positives)
+
+
 class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
     d = metrics
 
@@ -1069,8 +1098,13 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
         tensor_batch: tensor_dict_type,
         tensor_outputs: tensor_dict_type,
         loader: Optional[DataLoader] = None,
-    ) -> float:
-        """this method should return the metric value, which should be a float"""
+    ) -> metric_values_type:
+        """
+        This method should return the metric value(s), which should be a float or a `MetricValues` object.
+
+        > If `MetricValues` is returned, the key `SCORE_KEY` should always be present in the `values` attribute.
+
+        """
 
     # optional callbacks
 
@@ -1130,10 +1164,8 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
         tensor_outputs: tensor_dict_type,
         loader: Optional[DataLoader] = None,
     ) -> Optional[MetricsOutputs]:
-        k = self.__identifier__
-        metric = self.forward(tensor_batch, tensor_outputs, loader)
-        score = metric * (1.0 if self.is_positive else -1.0)
-        return MetricsOutputs(score, {k: metric}, {k: self.is_positive})
+        metric_values = self.forward(tensor_batch, tensor_outputs, loader)
+        return to_metric_outputs(self.__identifier__, self.is_positive, metric_values)
 
 
 class IStreamMetric(IMetric):
@@ -1166,8 +1198,8 @@ class IStreamMetric(IMetric):
         """update the streaming context with new batch & outputs"""
 
     @abstractmethod
-    def finalize(self) -> float:
-        """finalize the streaming context and return the final metric"""
+    def finalize(self) -> metric_values_type:
+        """finalize the streaming context and return the final metric value(s)"""
 
     def forward(
         self,
@@ -1191,10 +1223,12 @@ class IStreamMetric(IMetric):
             "as it is a streaming metric"
         )
 
-    def report(self, metric: float) -> MetricsOutputs:
-        k = self.__identifier__
-        score = metric * (1.0 if self.is_positive else -1.0)
-        return MetricsOutputs(score, {k: metric}, {k: self.is_positive})
+    def report(self, metric_values: metric_values_type) -> MetricsOutputs:
+        return to_metric_outputs(self.__identifier__, self.is_positive, metric_values)
+
+
+def prefix_keys(d: Dict[str, Any], prefix: str) -> Dict[str, Any]:
+    return {prefix if k == prefix else f"{prefix}_{k}": v for k, v in d.items()}
 
 
 class MultipleMetrics(IMetric):
@@ -1211,7 +1245,8 @@ class MultipleMetrics(IMetric):
 
     @property
     def is_positive(self) -> bool:
-        raise NotImplementedError
+        err_msg = "should not call `is_positive` of `MultipleMetrics` directly"
+        raise RuntimeError(err_msg)
 
     @property
     def has_streaming(self) -> bool:
@@ -1259,8 +1294,9 @@ class MultipleMetrics(IMetric):
                 metric_outputs = metric.evaluate(tensor_batch, tensor_outputs, loader)  # type: ignore
                 if metric_outputs is None:
                     raise RuntimeError("non streaming metric should not return None")
-            metrics_values.update(metric_outputs.metric_values)
-            is_positive.update(metric_outputs.is_positive)
+            prefix = metric.__identifier__
+            metrics_values.update(prefix_keys(metric_outputs.metric_values, prefix))
+            is_positive.update(prefix_keys(metric_outputs.is_positive, prefix))
             if not metric.not_include_in_score:
                 w = self.weights.get(metric.__identifier__, 1.0)
                 weights.append(w)
