@@ -92,8 +92,8 @@ class TestMetrics(unittest.TestCase):
             {cflearn.LABEL_KEY: y},
             {cflearn.PREDICTIONS_KEY: x},
         )
-        torch.testing.assert_close(to_tensor("mean"), torch.mean(x))
-        torch.testing.assert_close(to_tensor("std"), torch.std(x))
+        torch.testing.assert_close(to_tensor("moment_mean"), torch.mean(x))
+        torch.testing.assert_close(to_tensor("moment_std"), torch.std(x))
         torch.testing.assert_close(to_tensor("moment"), torch.mean(x) - torch.std(x))
 
         metric = cflearn.IMetric.fuse(["moment", "mae"])

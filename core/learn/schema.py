@@ -1055,7 +1055,8 @@ class MetricValues(NamedTuple):
 
 
 def replace_keys(d: Dict[str, Any], identifier: str) -> Dict[str, Any]:
-    return {identifier if k == SCORE_KEY else k: v for k, v in d.items()}
+    prefix = f"{identifier}_"
+    return {identifier if k == SCORE_KEY else f"{prefix}{k}": v for k, v in d.items()}
 
 
 def to_metric_outputs(
@@ -1227,10 +1228,6 @@ class IStreamMetric(IMetric):
         return to_metric_outputs(self.__identifier__, self.is_positive, metric_values)
 
 
-def prefix_keys(d: Dict[str, Any], prefix: str) -> Dict[str, Any]:
-    return {prefix if k == prefix else f"{prefix}_{k}": v for k, v in d.items()}
-
-
 class MultipleMetrics(IMetric):
     def __init__(
         self,
@@ -1294,9 +1291,8 @@ class MultipleMetrics(IMetric):
                 metric_outputs = metric.evaluate(tensor_batch, tensor_outputs, loader)  # type: ignore
                 if metric_outputs is None:
                     raise RuntimeError("non streaming metric should not return None")
-            prefix = metric.__identifier__
-            metrics_values.update(prefix_keys(metric_outputs.metric_values, prefix))
-            is_positive.update(prefix_keys(metric_outputs.is_positive, prefix))
+            metrics_values.update(metric_outputs.metric_values)
+            is_positive.update(metric_outputs.is_positive)
             if not metric.not_include_in_score:
                 w = self.weights.get(metric.__identifier__, 1.0)
                 weights.append(w)
