@@ -78,6 +78,7 @@ class Inference(IInference):
         use_losses_as_metrics: bool = False,
         return_outputs: bool = True,
         target_outputs: Union[str, List[str]] = PREDICTIONS_KEY,
+        target_inputs: Optional[List[str]] = None,
         recover_labels: bool = True,
         recover_predictions: bool = True,
         return_labels: bool = False,
@@ -240,6 +241,12 @@ class Inference(IInference):
                             or (metrics_requires_all and metrics.requires(k))  # type: ignore
                         ):
                             all_outputs.setdefault(k, []).append(v.cpu())
+                if target_inputs is not None:
+                    for k in target_inputs:
+                        v = tensor_batch[k]
+                        if isinstance(v, Tensor):
+                            v = v.cpu()
+                        all_outputs.setdefault(k, []).append(v)
                 if return_labels:
                     for k, v in tensor_batch.items():
                         if v is not None and k in target_labels:
