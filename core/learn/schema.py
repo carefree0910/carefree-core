@@ -1407,6 +1407,11 @@ class IInference(ABC):
 # general model
 
 
+class ClosurePack(NamedTuple):
+    loss_fn: Callable[[], "TrainStepLoss"]
+    accelerator: Accelerator
+
+
 def weighted_loss_score(config: "TrainerConfig", loss_items: Dict[str, float]) -> float:
     if not config.loss_metrics_weights:
         if not loss_items:
@@ -1427,11 +1432,20 @@ def weighted_loss_score(config: "TrainerConfig", loss_items: Dict[str, float]) -
 def get_update_fn(
     trainer: "ITrainer",
 ) -> Callable[
-    [tensor_dict_type, tensor_dict_type, "TrainStepLoss", Optimizer, bool], None
+    [
+        tensor_dict_type,
+        tensor_dict_type,
+        Optional[Callable[[], "TrainStepLoss"]],
+        "TrainStepLoss",
+        Optimizer,
+        bool,
+    ],
+    None,
 ]:
     def update_fn(
         batch: tensor_dict_type,
         forward: tensor_dict_type,
+        loss_fn: Optional[Callable[[], TrainStepLoss]],
         loss_res: TrainStepLoss,
         optimizer: Optimizer,
         update: bool,
@@ -1440,7 +1454,11 @@ def get_update_fn(
         for c in trainer.callbacks:
             c.before_gradient_update(trainer, batch, forward, loss_res, update)
         if update:
-            optimizer.step()
+            # Here, we assume that when `loss_fn` is provided, `optimizer` will be a
+            # custom optimizer that takes in `ClosurePack` instead of `closure`.
+            # We provides `ClosurePack` in case users need access to `scaler` stuffs.
+            cp = None if loss_fn is None else ClosurePack(loss_fn, trainer.accelerator)
+            optimizer.step(cp)  # type: ignore
             optimizer.zero_grad()
 
     return update_fn
@@ -1774,8 +1792,14 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                 should_toggle = train_step.enable_toggle_optimizer
                 with toggle_optimizer(self.m, optimizer, enabled=should_toggle):
                     loss_args = self, state, batch, forward
+                    if not trainer.config.use_closure_pack:
+                        loss_fn = None
+                    else:
+                        loss_fn = lambda: train_step.loss_fn(
+                            self, state, batch, get_fw(), **loss_kwargs
+                        )
                     loss_res = train_step.loss_fn(*loss_args, **loss_kwargs)
-                    update_fn(batch, forward, loss_res, optimizer, update)
+                    update_fn(batch, forward, loss_fn, loss_res, optimizer, update)
                     i_losses = {k: v.detach() for k, v in loss_res.loss_tensors.items()}
                     loss_tensors.update(i_losses)
             if update:
@@ -2502,6 +2526,7 @@ class TrainerConfig:
     scheduler_name: Optional[str] = None
     optimizer_config: Optional[Dict[str, Any]] = None
     scheduler_config: Optional[Dict[str, Any]] = None
+    use_closure_pack: bool = False
     update_scheduler_per_epoch: bool = False
     optimizer_settings: Optional[Dict[str, Optional[Dict[str, Any]]]] = None
     use_zero: bool = False
