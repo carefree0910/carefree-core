@@ -1634,7 +1634,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             setattr(cloned, k, args[i])
         return cloned
 
-    def params_groups(self) -> List[Dict[str, Any]]:
+    def param_groups(self) -> List[Dict[str, Any]]:
         return [{"params": [p for p in self.parameters() if p.requires_grad]}]
 
     def init_with_trainer(self, trainer: "ITrainer") -> None:

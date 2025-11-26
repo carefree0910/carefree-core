@@ -553,7 +553,7 @@ class BuildOptimizersBlock(InjectDefaultsMixin, Block):
         model = self.build_model.model
         parameters: Any
         if pack.scope == "all":
-            parameters = model.params_groups()
+            parameters = model.param_groups()
         else:
             attr = model
             scopes = pack.scope.split(".")
