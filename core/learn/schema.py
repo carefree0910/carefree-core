@@ -1635,7 +1635,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         return cloned
 
     def param_groups(self) -> List[Dict[str, Any]]:
-        param_group = {"names": [], "params": []}
+        param_group: Dict[str, Any] = {"names": [], "params": []}
         for name, param in self.named_parameters():
             if param.requires_grad:
                 param_group["names"].append(name)
