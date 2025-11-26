@@ -1635,7 +1635,12 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         return cloned
 
     def param_groups(self) -> List[Dict[str, Any]]:
-        return [{"params": [p for p in self.parameters() if p.requires_grad]}]
+        param_group = {"names": [], "params": []}
+        for name, param in self.named_parameters():
+            if param.requires_grad:
+                param_group["names"].append(name)
+                param_group["params"].append(param)
+        return [param_group]
 
     def init_with_trainer(self, trainer: "ITrainer") -> None:
         pass
