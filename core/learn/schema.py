@@ -1358,6 +1358,7 @@ class IInference(ABC):
         concat_outputs: bool = True,
         progress: Optional[Progress] = None,
         progress_kwargs: Optional[Dict[str, Any]] = None,
+        should_stop_progress: bool = True,
         use_inference_mode: Optional[bool] = None,
         accelerator: Optional[Accelerator] = None,
         pad_dim: Optional[Union[int, Dict[str, int]]] = None,
