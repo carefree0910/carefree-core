@@ -6,6 +6,7 @@ from typing import Any
 from typing import Dict
 from typing import List
 from typing import Union
+from typing import Callable
 from typing import Optional
 from typing import ContextManager
 from accelerate import Accelerator
@@ -17,6 +18,7 @@ from accelerate.utils import broadcast_object_list
 
 from .schema import IModel
 from .schema import IMetric
+from .schema import InjectFn
 from .schema import IInference
 from .schema import DataLoader
 from .schema import IStreamMetric
@@ -83,6 +85,7 @@ class Inference(IInference):
         recover_predictions: bool = True,
         return_labels: bool = False,
         target_labels: Union[str, List[str]] = LABEL_KEY,
+        inject_outputs_fn: Optional[InjectFn] = None,
         concat_outputs: bool = True,
         progress: Optional[Progress] = None,
         progress_kwargs: Optional[Dict[str, Any]] = None,
@@ -219,6 +222,8 @@ class Inference(IInference):
                         for k, v in step_outputs.loss_tensors.items():
                             loss_tensors_lists.setdefault(k, []).append(v)
                 assert tensor_outputs is not None
+                if inject_outputs_fn is not None:
+                    inject_outputs_fn(tensor_batch, tensor_outputs)
                 # metrics
                 if metrics is not None and not metrics.requires_all:
                     metric_outputs = metrics.evaluate(tensor_batch, tensor_outputs)

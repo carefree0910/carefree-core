@@ -26,6 +26,7 @@ from typing import TypeVar
 from typing import Callable
 from typing import Iterator
 from typing import Optional
+from typing import Protocol
 from typing import NamedTuple
 from typing import ContextManager
 from datetime import timedelta
@@ -1327,6 +1328,15 @@ class MultipleMetrics(IMetric):
 # inference
 
 
+class InjectFn(Protocol):
+    def __call__(
+        self,
+        tensor_batch: tensor_dict_type,
+        tensor_outputs: tensor_dict_type,
+    ) -> None:
+        """inject something to `tensor_outputs` in case we need."""
+
+
 @dataclass
 class InferenceOutputs:
     forward_results: Union[tensor_dict_type, Dict[str, List[Tensor]]]
@@ -1355,6 +1365,7 @@ class IInference(ABC):
         recover_predictions: bool = True,
         return_labels: bool = False,
         target_labels: Union[str, List[str]] = LABEL_KEY,
+        inject_outputs_fn: Optional[InjectFn] = None,
         concat_outputs: bool = True,
         progress: Optional[Progress] = None,
         progress_kwargs: Optional[Dict[str, Any]] = None,
@@ -1830,6 +1841,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         recover_predictions: bool = True,
         return_labels: bool = False,
         target_labels: Union[str, List[str]] = LABEL_KEY,
+        inject_outputs_fn: Optional[InjectFn] = None,
         progress: Optional[Progress] = None,
         progress_kwargs: Optional[Dict[str, Any]] = None,
         should_stop_progress: bool = True,
@@ -1851,6 +1863,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             recover_predictions=recover_predictions,
             return_labels=return_labels,
             target_labels=target_labels,
+            inject_outputs_fn=inject_outputs_fn,
             progress=progress,
             progress_kwargs=progress_kwargs,
             should_stop_progress=should_stop_progress,

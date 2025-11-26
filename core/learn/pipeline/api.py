@@ -46,6 +46,7 @@ from ..schema import device_type
 from ..schema import sample_weights_type
 from ..schema import IData
 from ..schema import Config
+from ..schema import InjectFn
 from ..schema import DataLoader
 from ..schema import InferenceOutputs
 from ..toolkit import get_device
@@ -236,6 +237,7 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
         recover_predictions: bool = True,
         return_labels: bool = False,
         target_labels: Union[str, List[str]] = LABEL_KEY,
+        inject_outputs_fn: Optional[InjectFn] = None,
         progress: Optional[Progress] = None,
         progress_kwargs: Optional[Dict[str, Any]] = None,
         use_inference_mode: Optional[bool] = None,
@@ -257,6 +259,7 @@ class _EvaluationMixin(_InferenceMixin, IEvaluationPipeline):
             recover_predictions=recover_predictions,
             return_labels=return_labels,
             target_labels=target_labels,
+            inject_outputs_fn=inject_outputs_fn,
             progress=progress,
             progress_kwargs=progress_kwargs,
             use_inference_mode=use_inference_mode,
