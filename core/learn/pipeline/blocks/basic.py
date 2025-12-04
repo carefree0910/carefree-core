@@ -324,10 +324,10 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
                 wandb_config["tags"] = [module_name]
                 self._defaults["callback_configs.wandb.tags"] = tags_str
             if "config" not in wandb_config:
-                module_configs = shallow_copy_dict(config.module_config or {})
-                config_str = json.dumps(module_configs)
-                wandb_config["config"] = module_configs
-                self._defaults["callback_configs.wandb.config"] = config_str
+                config_for_wandb = config.to_info()
+                config_for_wandb_str = json.dumps(config_for_wandb)
+                wandb_config["config"] = config_for_wandb
+                self._defaults["callback_configs.wandb.config"] = config_for_wandb_str
         training_loop_callback = TrainingLoopCallback.__identifier__
         if training_loop_callback not in callback_names:
             callback_names.append(training_loop_callback)
