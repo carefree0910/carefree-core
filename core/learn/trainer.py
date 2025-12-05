@@ -27,6 +27,7 @@ from .schema import IMetric
 from .schema import ITrainer
 from .schema import IInference
 from .schema import DataLoader
+from .schema import SortMethod
 from .schema import StepOutputs
 from .schema import TqdmSettings
 from .schema import TrainerState
@@ -55,11 +56,6 @@ from ..toolkit.types import tensor_dict_type
 
 
 T_Lo = Optional[DataLoader]
-
-
-class SortMethod(str, Enum):
-    BEST = "best"
-    LATEST = "latest"
 
 
 def get_scores(checkpoint_folder: TPath) -> Dict[str, float]:

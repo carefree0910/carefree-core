@@ -48,10 +48,10 @@ from ..schema import IData
 from ..schema import Config
 from ..schema import InjectFn
 from ..schema import DataLoader
+from ..schema import SortMethod
 from ..schema import InferenceOutputs
 from ..toolkit import get_device
 from ..toolkit import get_torch_device
-from ..trainer import SortMethod
 from ..trainer import get_scores
 from ..trainer import get_sorted_checkpoints
 from ..constants import LABEL_KEY

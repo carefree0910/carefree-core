@@ -34,6 +34,7 @@ from ...schema import Config
 from ...schema import IMetric
 from ...schema import ITrainer
 from ...schema import IInference
+from ...schema import SortMethod
 from ...schema import OptimizerPack
 from ...schema import TrainerMonitor
 from ...schema import TrainerCallback
@@ -41,7 +42,6 @@ from ...losses import losses
 from ...models import EnsembleModel
 from ...toolkit import get_environ_workspace
 from ...toolkit import scheduler_requires_metric
-from ...trainer import SortMethod
 from ...trainer import get_scores
 from ...trainer import get_sorted_checkpoints
 from ...trainer import Trainer

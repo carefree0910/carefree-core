@@ -12,6 +12,7 @@ import torch.distributed as dist
 from abc import abstractmethod
 from abc import ABC
 from abc import ABCMeta
+from enum import Enum
 from torch import device
 from torch import Tensor
 from typing import Any
@@ -2506,6 +2507,11 @@ class ITrainer(ABC):
 
 
 # configs
+
+
+class SortMethod(str, Enum):
+    BEST = "best"
+    LATEST = "latest"
 
 
 @pydantic_dataclass
