@@ -38,7 +38,7 @@ class UpdateArtifactsCallback(TrainerCallback):
             if not trainer.config.save_realtime_pipeline_individually:
                 p_folder = None
             else:
-                p_folder = f"{PipelineSerializer.pipeline_folder}_{trainer.state.epoch}"
+                p_folder = f"{PipelineSerializer.pipeline_folder}_{trainer.state.step}"
             fn(trainer.pipeline, trainer.workspace, pipeline_folder=p_folder, verbose=False)  # type: ignore
 
 
