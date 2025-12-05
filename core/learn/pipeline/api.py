@@ -410,18 +410,30 @@ class PipelineSerializer:
     @classmethod
     def save(
         cls,
-        pipeline: Pipeline,
+        p: Pipeline,
         workspace: TPath,
         *,
+        pipeline_folder: Optional[str] = None,
         compress: bool = False,
         verbose: bool = True,
     ) -> None:
-        folder = os.path.join(workspace, cls.pipeline_folder)
-        cls._save(pipeline, folder, compress=compress, verbose=verbose)
+        if pipeline_folder is None:
+            pipeline_folder = cls.pipeline_folder
+        folder = os.path.join(workspace, pipeline_folder)
+        cls._save(p, folder, compress=compress, verbose=verbose)
 
     @classmethod
-    def update(cls, p: Pipeline, workspace: TPath, verbose: bool = True) -> None:
-        folder = os.path.join(workspace, cls.pipeline_folder)
+    def update(
+        cls,
+        p: Pipeline,
+        workspace: TPath,
+        *,
+        pipeline_folder: Optional[str] = None,
+        verbose: bool = True,
+    ) -> None:
+        if pipeline_folder is None:
+            pipeline_folder = cls.pipeline_folder
+        folder = os.path.join(workspace, pipeline_folder)
         if os.path.isdir(folder):
             compress = False
             shutil.rmtree(folder)
