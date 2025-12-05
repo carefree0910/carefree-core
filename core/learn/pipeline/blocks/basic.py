@@ -840,6 +840,7 @@ class SerializeModelBlock(Block):
     target_ckpt_step: Optional[int] = None
 
     def build(self, config: Config) -> None:
+        self.sort_ckpt_by = config.sort_ckpt_by
         resume = config.resume_training_from
         if resume is None:
             return None

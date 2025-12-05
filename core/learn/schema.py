@@ -2555,6 +2555,7 @@ class TrainerConfig:
     update_scheduler_per_epoch: bool = False
     optimizer_settings: Optional[Dict[str, Optional[Dict[str, Any]]]] = None
     use_zero: bool = False
+    sort_ckpt_by: SortMethod = SortMethod.BEST
     finetune_config: Optional[Dict[str, Any]] = None
     resume_training_from: Optional[str] = None
     tqdm_settings: Optional[Union[Dict[str, Any], TqdmSettings]] = None
