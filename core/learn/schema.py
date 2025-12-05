@@ -2553,6 +2553,7 @@ class TrainerConfig:
     resume_training_from: Optional[str] = None
     tqdm_settings: Optional[Union[Dict[str, Any], TqdmSettings]] = None
     save_pipeline_in_realtime: bool = False
+    save_realtime_pipeline_individually: bool = False
     # profile settings
     profile: bool = False
     profile_config: Optional[Dict[str, Any]] = None
