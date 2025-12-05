@@ -356,10 +356,13 @@ class TrainingPipeline(Pipeline["TrainingPipeline"], _DeviceMixin, _EvaluationMi
         )
         # save / update pipeline serialization
         if workspace is not None:
-            if not self.config.save_pipeline_in_realtime:
-                PipelineSerializer.save(self, workspace)
-            else:
+            if (
+                self.config.save_pipeline_in_realtime
+                and not self.config.save_realtime_pipeline_individually
+            ):
                 PipelineSerializer.update(self, workspace)
+            else:
+                PipelineSerializer.save(self, workspace)
         # return
         return self
 
