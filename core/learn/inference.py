@@ -6,7 +6,6 @@ from typing import Any
 from typing import Dict
 from typing import List
 from typing import Union
-from typing import Callable
 from typing import Optional
 from typing import ContextManager
 from accelerate import Accelerator
@@ -201,6 +200,9 @@ class Inference(IInference):
                     np_batch = tensor_batch_to_np(tensor_batch)
                     np_outputs = self.onnx.predict(np_batch)
                     tensor_outputs = np_batch_to_tensor(np_outputs)
+                    if inject_outputs_fn is not None:
+                        inject_outputs_fn(tensor_batch, tensor_outputs)
+                    tensor_outputs = recover_predictions_of(tensor_outputs)
                 elif self.model is not None:
                     # accelerator will handle the device stuffs
                     if accelerator is None:
@@ -213,6 +215,8 @@ class Inference(IInference):
                             tensor_batch,
                             shallow_copy_dict(kwargs),
                             get_losses=use_losses_as_metrics,
+                            inject_outputs_fn=inject_outputs_fn,
+                            recover_predictions_fn=recover_predictions_of,
                         )
                     flags.in_step = False
                     tensor_outputs = step_outputs.forward_results
@@ -220,9 +224,6 @@ class Inference(IInference):
                         for k, v in step_outputs.loss_tensors.items():
                             loss_tensors_lists.setdefault(k, []).append(v)
                 assert tensor_outputs is not None
-                if inject_outputs_fn is not None:
-                    inject_outputs_fn(tensor_batch, tensor_outputs)
-                tensor_outputs = recover_predictions_of(tensor_outputs)
                 # metrics
                 if metrics is not None and not metrics.requires_all:
                     metric_outputs = metrics.evaluate(tensor_batch, tensor_outputs)

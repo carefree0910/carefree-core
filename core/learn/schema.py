@@ -1685,23 +1685,29 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         get_losses: bool = False,
         detach_losses: bool = True,
         loss_kwargs: Optional[Dict[str, Any]] = None,
+        inject_outputs_fn: Optional[InjectFn] = None,
         recover_predictions_fn: Optional[Callable[[td_type], td_type]] = None,
     ) -> StepOutputs:
+        def postprocess(fw: td_type) -> td_type:
+            if inject_outputs_fn is not None:
+                inject_outputs_fn(batch, fw)
+            if recover_predictions_fn is not None:
+                fw = recover_predictions_fn(fw)
+            return fw
+
         loss_tensors = {}
         loss_kwargs = loss_kwargs or {}
         forward_kwargs = forward_kwargs or {}
         get_fw = lambda: self.run(batch_idx, batch, None, **forward_kwargs)
         train_steps = self.train_steps
         if not train_steps:
-            return StepOutputs(get_fw(), {})
+            return StepOutputs(postprocess(get_fw()), {})
         fw = None
         for train_step in self.train_steps:
             if train_step.should_skip(self, None):
                 continue
             if fw is None or train_step.requires_new_forward:
-                fw = get_fw()
-                if recover_predictions_fn is not None:
-                    fw = recover_predictions_fn(fw)
+                fw = postprocess(get_fw())
             if get_losses:
                 loss_res = train_step.loss_fn(self, None, batch, fw, **loss_kwargs)
                 if not detach_losses:
