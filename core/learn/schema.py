@@ -352,7 +352,15 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         raise StopIteration
 
     def _async_submit(self, cursor: int, index: Any) -> None:
+        presend_device = self.presend_device
         try:  # pragma: no cover
+            if presend_device is not None:
+                cpu_cursor = max(0, cursor - self.async_prefetch_factor)
+                for i in range(cpu_cursor, cursor):
+                    cpu_data = self._results.pop(f"cpu_{i}", None)
+                    if cpu_data is not None:
+                        del cpu_data
+                        break
             if not self._dataset.async_submit(cursor, index):
                 err_msg = "async submit failed"
                 self._results[cursor] = AsyncExceptionPack(cursor, index, err_msg)
@@ -369,12 +377,13 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
             return None
         if self._pin_memory:  # pragma: no cover
             data = _utils.pin_memory.pin_memory(data, self._pin_memory_device)
-        presend_device = self.presend_device
         if presend_device is not None:
             ddp_info = get_ddp_info()
             if presend_device == "cuda" and ddp_info is not None:
                 presend_device = f"cuda:{ddp_info.local_rank}"
+            cpu_data = data
             data = send_to_device(data, presend_device, non_blocking=self._pin_memory)
+            self._results[f"cpu_{cursor}"] = cpu_data
         self._results[cursor] = data
 
     def _submit_next(self) -> None:
