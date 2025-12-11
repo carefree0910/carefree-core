@@ -357,7 +357,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
             if presend_device is not None:
                 cpu_cursor = max(0, cursor - self.async_prefetch_factor)
                 for i in range(cpu_cursor, cursor):
-                    cpu_data = self._results.pop(f"cpu_{i}", None)
+                    cpu_data = self._results.pop(f"cpu_{i}", None)  # type: ignore
                     if cpu_data is not None:
                         del cpu_data
                         break
@@ -383,7 +383,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
                 presend_device = f"cuda:{ddp_info.local_rank}"
             cpu_data = data
             data = send_to_device(data, presend_device, non_blocking=self._pin_memory)
-            self._results[f"cpu_{cursor}"] = cpu_data
+            self._results[f"cpu_{cursor}"] = cpu_data  # type: ignore
         self._results[cursor] = data
 
     def _submit_next(self) -> None:
