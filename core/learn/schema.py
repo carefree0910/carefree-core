@@ -354,13 +354,12 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
     def _async_submit(self, cursor: int, index: Any) -> None:
         presend_device = self.presend_device
         try:  # pragma: no cover
-            if presend_device is not None:
-                cpu_cursor = max(0, cursor - self.async_prefetch_factor)
-                for i in range(cpu_cursor, cursor):
+            if presend_device is not None and cursor > self.async_prefetch_factor:
+                cpu_cursor = cursor - self.async_prefetch_factor - 1
+                for i in range(cpu_cursor + 1):
                     cpu_data = self._results.pop(f"cpu_{i}", None)  # type: ignore
                     if cpu_data is not None:
                         del cpu_data
-                        break
             if not self._dataset.async_submit(cursor, index):
                 err_msg = "async submit failed"
                 self._results[cursor] = AsyncExceptionPack(cursor, index, err_msg)
