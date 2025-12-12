@@ -27,7 +27,6 @@ from pathlib import Path
 from contextlib import nullcontext
 from collections import defaultdict
 from collections import OrderedDict
-from onnxruntime import InferenceSession
 from torch.optim import Optimizer
 from matplotlib.figure import Figure
 from safetensors.torch import load_file
@@ -45,6 +44,11 @@ from ..toolkit.types import TPath
 from ..toolkit.types import TArray
 from ..toolkit.types import np_dict_type
 from ..toolkit.types import tensor_dict_type
+
+try:
+    from onnxruntime import InferenceSession
+except ImportError:
+    InferenceSession = None
 
 
 param_type = Union[Tensor, nn.Parameter]
