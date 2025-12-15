@@ -119,7 +119,7 @@ class Inference(IInference):
                 if verbose:
                     rank = 0 if accelerator is None else accelerator.process_index
                     console.warn(
-                        f"\[rank {rank}] padding '{k}' at dim {k_pad_dim} to {max_shape}, please perform "
+                        rf"\[rank {rank}] padding '{k}' at dim {k_pad_dim} to {max_shape}, please perform "
                         "post-processing to remove the paddings if necessary."
                     )
                 shapes = [len(v), *v[0].shape]
