@@ -535,9 +535,9 @@ def prepare_dataloaders(accelerator: Accelerator, *loaders: TL) -> TLs:
             base.presend_device = loader.presend_device
             base.async_prefetch = loader.async_prefetch
             base.async_prefetch_factor = loader.async_prefetch_factor
-            if base.presend_device is not None:
-                d.device = None
             if base.async_prefetch:
+                if base.presend_device is not None:
+                    d.device = None
                 get_iterator = (lambda ins: lambda: DataLoader._get_iterator(ins))(base)
                 base._get_iterator = get_iterator
             td = type(d)
