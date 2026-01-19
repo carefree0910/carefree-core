@@ -36,7 +36,6 @@ from ..toolkit.array import is_int
 from ..toolkit.array import to_device
 from ..toolkit.types import tensor_dict_type
 
-
 TTensors = Dict[str, List[Union[Tensor, Any]]]
 
 

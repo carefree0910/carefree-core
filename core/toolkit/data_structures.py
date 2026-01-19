@@ -16,7 +16,6 @@ from . import console
 from .misc import sort_dict_by_value
 from .constants import TIME_FORMAT
 
-
 TTypes = TypeVar("TTypes")
 TBundle = TypeVar("TBundle", bound="Bundle")
 TItemData = TypeVar("TItemData")

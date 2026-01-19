@@ -20,7 +20,6 @@ from ...toolkit.pipeline import IBlock
 from ...toolkit.pipeline import IPipeline
 from ...toolkit.pipeline import TPipeline
 
-
 T_p = TypeVar("T_p", bound="Pipeline", covariant=True)
 
 

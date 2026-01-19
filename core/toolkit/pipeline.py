@@ -23,7 +23,6 @@ from .misc import ISerializable
 from .misc import ISerializableDataClass
 from .types import TPath
 
-
 TB = TypeVar("TB", bound="IBlock")
 TBlock = TypeVar("TBlock", bound="IBlock")
 TConfig = TypeVar("TConfig", bound="ISerializableDataClass")

@@ -24,7 +24,6 @@ from ..constants import PREDICTIONS_KEY
 from ...toolkit.types import TConfig
 from ...toolkit.types import tensor_dict_type
 
-
 # router
 
 

@@ -7,7 +7,6 @@ from ..schema import ILoss
 from ..modules.common import PrefixModules
 from ...toolkit.types import TConfig
 
-
 TLoss = TypeVar("TLoss", bound=Type[ILoss])
 
 losses = PrefixModules("loss")

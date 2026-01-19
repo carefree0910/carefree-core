@@ -15,7 +15,6 @@ from .common import Lambda
 from .common import PrefixModules
 from ...toolkit.types import TConfig
 
-
 activations = PrefixModules("activation")
 
 

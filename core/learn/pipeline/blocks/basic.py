@@ -72,7 +72,6 @@ from ....toolkit.misc import Serializer
 from ....toolkit.misc import DataClassBase
 from ....toolkit.types import TPath
 
-
 # static blocks
 
 

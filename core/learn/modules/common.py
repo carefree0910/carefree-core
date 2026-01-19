@@ -24,7 +24,6 @@ from ...toolkit.array import is_int
 from ...toolkit.types import TConfig
 from ...toolkit.types import tensor_dict_type
 
-
 # managements
 
 

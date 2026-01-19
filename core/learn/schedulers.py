@@ -23,7 +23,6 @@ from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 from .toolkit import scheduler_requires_metric
 
-
 TTScheduler = TypeVar("TTScheduler", bound=Type[LRScheduler])
 
 

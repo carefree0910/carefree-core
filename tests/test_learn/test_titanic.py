@@ -5,7 +5,6 @@ from pathlib import Path
 
 from ddp_titanic_task import main
 
-
 ddp_task_path = str(Path(__file__).parent / "ddp_titanic_task.py")
 
 

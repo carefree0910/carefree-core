@@ -12,7 +12,6 @@ from .. import flow as cflow
 from ..toolkit import console
 from ..toolkit.misc import to_path
 
-
 RAG_SEPARATOR = "__RAG__"
 UNDEFINED_PLACEHOLDER = "*Undefined*"
 
@@ -74,13 +73,11 @@ def fetch_doc_sources(t_base: type) -> List[str]:
         if not inspect.isclass(sub):
             continue
         if issubclass(sub, t_base) and sub is not t_base:
-            sources.append(
-                f"""### `{sub.__name__}`
+            sources.append(f"""### `{sub.__name__}`
 
 ```python
 {inspect.getsource(sub).replace("`", "'")}```
-"""
-            )
+""")
     return sources
 
 

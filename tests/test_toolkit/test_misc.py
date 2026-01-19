@@ -13,7 +13,6 @@ from unittest.mock import patch
 from unittest.mock import Mock
 from core.toolkit.misc import *
 
-
 test_dict = {}
 
 

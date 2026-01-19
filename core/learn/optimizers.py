@@ -13,7 +13,6 @@ from typing import Iterable
 from typing import Optional
 from torch.optim.optimizer import Optimizer
 
-
 optimizer_dict: Dict[str, Type[Optimizer]] = {}
 
 

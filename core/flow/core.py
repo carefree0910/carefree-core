@@ -31,7 +31,6 @@ from ..toolkit.types import TPath
 from ..toolkit.data_structures import Item
 from ..toolkit.data_structures import Bundle
 
-
 TNode = TypeVar("TNode", bound="Node")
 TTNode = TypeVar("TTNode", bound=Type["Node"])
 nodes: Dict[str, Type["Node"]] = {}

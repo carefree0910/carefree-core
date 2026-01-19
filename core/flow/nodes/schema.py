@@ -23,7 +23,6 @@ from ...toolkit.cv import to_base64
 from ...toolkit.web import download_raw_with_retry
 from ...toolkit.web import download_image_with_retry
 
-
 HTTP_SESSION_KEY = "$http_session$"
 
 

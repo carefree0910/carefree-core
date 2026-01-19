@@ -73,7 +73,6 @@ from ...toolkit.types import TPath
 from ...toolkit.types import tensor_dict_type
 from ...toolkit.pipeline import get_folder
 
-
 TInferPipeline = TypeVar("TInferPipeline", bound="InferencePipeline", covariant=True)
 
 states_callback_type = Optional[Callable[[Any, Dict[str, Any]], Dict[str, Any]]]

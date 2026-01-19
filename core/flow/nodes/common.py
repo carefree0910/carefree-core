@@ -34,7 +34,6 @@ from ..core import LoopBackInjectionModel
 from ...toolkit import console
 from ...toolkit.misc import shallow_copy_dict
 
-
 # functional nodes
 
 
