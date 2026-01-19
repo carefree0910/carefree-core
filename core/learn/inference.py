@@ -13,7 +13,6 @@ from contextlib import nullcontext
 from rich.progress import TaskID
 from rich.progress import Progress
 from accelerate.utils import gather_object
-from accelerate.utils import broadcast_object_list
 
 from .schema import IModel
 from .schema import IMetric
@@ -277,45 +276,33 @@ class Inference(IInference):
                 concated_outputs = concat(all_outputs)
                 concated_labels = concat(all_labels)
             # gather metric outputs
-            if metrics is None:
-                final_metric_outputs = None
-            else:
-                to_be_broadcasted: List[Optional[MetricsOutputs]]
+            final_metric_outputs = None
+            if metrics is not None:
+                reduced = None
                 if metrics_requires_all:
-                    if not is_rank_0:
-                        to_be_broadcasted = [None]
+                    assert concated_inputs is not None
+                    assert concated_outputs is not None
+                    mo = metrics.evaluate(concated_inputs, concated_outputs, loader)
+                    metric_outputs_list = [mo]  # type: ignore
+                if accelerator is not None:
+                    gathered_metric_outputs_lists = gather_object([metric_outputs_list])
+                    metric_outputs_list = []
+                    for mol in gathered_metric_outputs_lists:
+                        metric_outputs_list.extend(mol)
+                if metric_outputs_list:
+                    reduced = MetricsOutputs.reduce(metric_outputs_list)
+                if is_stream_metric:
+                    if isinstance(metrics, MultipleMetrics):
+                        stream_outputs = metrics.finalize()
                     else:
-                        assert concated_inputs is not None
-                        assert concated_outputs is not None
-                        to_be_broadcasted = [
-                            metrics.evaluate(concated_inputs, concated_outputs, loader)
-                        ]
-                else:
-                    reduced: Optional[MetricsOutputs] = None
-                    if accelerator is not None:
-                        metric_outputs_lists = gather_object([metric_outputs_list])
-                        metric_outputs_list = []
-                        for mol in metric_outputs_lists:
-                            metric_outputs_list.extend(mol)
-                    if metric_outputs_list:
-                        reduced = MetricsOutputs.reduce(metric_outputs_list)
-                    if is_stream_metric:
-                        if isinstance(metrics, MultipleMetrics):
-                            stream_outputs = metrics.finalize()
-                        else:
-                            stream_outputs = metrics.report(metrics.finalize())  # type: ignore
-                        if reduced is None:
-                            reduced = stream_outputs
-                        else:
-                            reduced = reduced.union(stream_outputs)
+                        stream_outputs = metrics.report(metrics.finalize())  # type: ignore
                     if reduced is None:
-                        raise RuntimeError("no metric outputs found")
-                    if not is_rank_0:
-                        to_be_broadcasted = [None]
+                        reduced = stream_outputs
                     else:
-                        to_be_broadcasted = [reduced]
-                to_be_broadcasted = broadcast_object_list(to_be_broadcasted)
-                final_metric_outputs = to_be_broadcasted[0]
+                        reduced = reduced.union(stream_outputs)
+                if reduced is None:
+                    raise RuntimeError("no metric outputs found")
+                final_metric_outputs = reduced
             # handle accelerator stuffs
             if accelerator is not None:
                 accelerator.wait_for_everyone()
