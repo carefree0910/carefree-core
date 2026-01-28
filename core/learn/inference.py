@@ -235,7 +235,10 @@ class Inference(IInference):
                     if metrics_requires_all:
                         for k, v in tensor_batch.items():
                             if v is not None and metrics.requires(k):  # type: ignore
-                                v_cpu = v.cpu()
+                                if not isinstance(v, Tensor):
+                                    v_cpu = v
+                                else:
+                                    v_cpu = v.cpu()
                                 batch_inputs[k] = v_cpu
                                 all_inputs.setdefault(k, []).append(v_cpu)
                     for k, v in tensor_outputs.items():
