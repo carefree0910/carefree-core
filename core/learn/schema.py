@@ -306,6 +306,60 @@ class AsyncIterManager:
                 cur._cleanup()
 
 
+class AsyncDataLoaderIterCallbacks:
+    def __init__(self) -> None:
+        self.del_callbacks: List[Callable[[np.ndarray], None]] = []
+        self.del_once_callbacks: List[Callable[[np.ndarray], None]] = []
+        self.cleanup_callbacks: List[Callable[[], None]] = []
+        self.cleanup_once_callbacks: List[Callable[[], None]] = []
+
+    def register(self, fn: Callable, callbacks: List[Callable]) -> None:
+        callbacks.append(fn)
+
+    def unregister(self, fn: Callable, callbacks: List[Callable]) -> None:
+        for i, callback in enumerate(callbacks):
+            if id(fn) == id(callback):
+                callbacks.pop(i)
+                return None
+        err_msg = f"fn ({id(fn)}) is not registered at {list(map(id, callbacks))}."
+        raise RuntimeError(err_msg)
+
+    def register_del(self, fn: Callable[[np.ndarray], None]) -> None:
+        self.register(fn, self.del_callbacks)
+
+    def register_del_once(self, fn: Callable[[np.ndarray], None]) -> None:
+        self.register(fn, self.del_once_callbacks)
+
+    def unregister_del(self, fn: Callable[[np.ndarray], None]) -> None:
+        self.unregister(fn, self.del_callbacks)
+
+    def register_cleanup(self, fn: Callable[[np.ndarray], None]) -> None:
+        self.register(fn, self.cleanup_callbacks)
+
+    def register_cleanup_once(self, fn: Callable[[np.ndarray], None]) -> None:
+        self.register(fn, self.cleanup_once_callbacks)
+
+    def unregister_cleanup(self, fn: Callable[[np.ndarray], None]) -> None:
+        self.unregister(fn, self.cleanup_callbacks)
+
+    def call_del(self, cpu_data: np.ndarray) -> None:
+        for fn in self.del_callbacks:
+            fn(cpu_data)
+        for fn in self.del_once_callbacks:
+            fn(cpu_data)
+        self.del_once_callbacks.clear()
+
+    def call_cleanup(self) -> None:
+        for fn in self.cleanup_callbacks:
+            fn()
+        for fn in self.cleanup_once_callbacks:
+            fn()
+        self.cleanup_once_callbacks.clear()
+
+
+ADLI_CALLBACKS = AsyncDataLoaderIterCallbacks()
+
+
 class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
     _pool: ThreadPoolExecutor
     _queue: Optional[List[AsyncPack]]
@@ -328,6 +382,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         self._initialized = False
 
     def __del__(self) -> None:
+        ADLI_CALLBACKS.call_cleanup()
         AsyncIterManager.remove(self)
 
     def _initialize(self) -> None:
@@ -341,6 +396,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         self._initialized = True
 
     def _cleanup(self) -> None:
+        ADLI_CALLBACKS.call_cleanup()
         self._pool.shutdown()
         self._results.clear()
         self._dataset.async_finalize()
@@ -358,6 +414,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
                 for i in range(cpu_cursor + 1):
                     cpu_data = self._results.pop(f"cpu_{i}", None)  # type: ignore
                     if cpu_data is not None:
+                        ADLI_CALLBACKS.call_del(cpu_data)
                         del cpu_data
             if not self._dataset.async_submit(cursor, index):
                 err_msg = "async submit failed"
