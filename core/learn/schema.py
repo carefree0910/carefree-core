@@ -309,7 +309,7 @@ class AsyncIterManager:
 class AsyncDataLoaderIterCallbacks:
     def __init__(self) -> None:
         self.del_callbacks: List[Callable[[np.ndarray], None]] = []
-        self.del_once_callbacks: List[Callable[[np.ndarray], None]] = []
+        self.del_once_callbacks: List[Callable[[np.ndarray], bool]] = []
         self.cleanup_callbacks: List[Callable[[], None]] = []
         self.cleanup_once_callbacks: List[Callable[[], None]] = []
 
@@ -342,12 +342,24 @@ class AsyncDataLoaderIterCallbacks:
     def unregister_cleanup(self, fn: Callable[[np.ndarray], None]) -> None:
         self.unregister(fn, self.cleanup_callbacks)
 
+    def unregister_all(self) -> None:
+        for callbacks in [
+            self.del_callbacks,
+            self.del_once_callbacks,
+            self.cleanup_callbacks,
+            self.cleanup_once_callbacks,
+        ]:
+            callbacks.clear()
+
     def call_del(self, cpu_data: np.ndarray) -> None:
         for fn in self.del_callbacks:
             fn(cpu_data)
-        for fn in self.del_once_callbacks:
-            fn(cpu_data)
-        self.del_once_callbacks.clear()
+        to_pop = []
+        for i, fn in enumerate(self.del_once_callbacks):
+            if fn(cpu_data):
+                to_pop.append(i)
+        for i in to_pop[::-1]:
+            self.del_once_callbacks.pop(i)
 
     def call_cleanup(self) -> None:
         for fn in self.cleanup_callbacks:
