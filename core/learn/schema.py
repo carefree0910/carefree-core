@@ -349,14 +349,14 @@ class AsyncDataLoaderIterCallbacks:
             self.cleanup_callbacks,
             self.cleanup_once_callbacks,
         ]:
-            callbacks.clear()
+            callbacks.clear()  # type: ignore
 
     def call_del(self, cpu_data: np.ndarray) -> None:
         for fn in self.del_callbacks:
             fn(cpu_data)
-        to_pop = []
-        for i, fn in enumerate(self.del_once_callbacks):
-            if fn(cpu_data):
+        to_pop: List[int] = []
+        for i, once_fn in enumerate(self.del_once_callbacks):
+            if once_fn(cpu_data):
                 to_pop.append(i)
         for i in to_pop[::-1]:
             self.del_once_callbacks.pop(i)
