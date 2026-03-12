@@ -1497,7 +1497,11 @@ class IInference(ABC):
 
 
 class ClosurePack(NamedTuple):
+    state: "TrainerState"
     loss_fn: Callable[[], "TrainStepLoss"]
+    batch: tensor_dict_type
+    forward: tensor_dict_type
+    loss_res: "TrainStepLoss"
     accelerator: Accelerator
 
 
@@ -1518,9 +1522,7 @@ def weighted_loss_score(config: "TrainerConfig", loss_items: Dict[str, float]) -
     return score
 
 
-def get_update_fn(
-    trainer: "ITrainer",
-) -> Callable[
+def get_update_fn(trainer: "ITrainer") -> Callable[
     [
         tensor_dict_type,
         tensor_dict_type,
@@ -1545,8 +1547,19 @@ def get_update_fn(
         if update:
             # Here, we assume that when `loss_fn` is provided, `optimizer` will be a
             # custom optimizer that takes in `ClosurePack` instead of `closure`.
-            # We provides `ClosurePack` in case users need access to `scaler` stuffs.
-            cp = None if loss_fn is None else ClosurePack(loss_fn, trainer.accelerator)
+            # We provide `ClosurePack` in case users need access to `state` / `scaler` / ... stuffs.
+            cp = (
+                None
+                if loss_fn is None
+                else ClosurePack(
+                    trainer.state,
+                    loss_fn,
+                    batch,
+                    forward,
+                    loss_res,
+                    trainer.accelerator,
+                )
+            )
             optimizer.step(cp)  # type: ignore
             optimizer.zero_grad()
 
