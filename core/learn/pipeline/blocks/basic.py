@@ -412,7 +412,9 @@ class OptimizerSettings(DataClassBase):
             opt_config = update_dict(opt_config, self_pack.optimizer_config or {})
         if self_pack.scheduler_name == sch_name:
             sch_config = update_dict(sch_config, self_pack.scheduler_config or {})
-        return OptimizerPack(pack.scope, opt_name, sch_name, opt_config, sch_config)
+        return OptimizerPack(
+            pack.scope, opt_name, sch_name, opt_config, sch_config, pack.param_groups
+        )
 
 
 @Block.register("build_optimizers")
@@ -464,6 +466,7 @@ class BuildOptimizersBlock(InjectDefaultsMixin, Block):
                     sub_settings.get("scheduler"),
                     sub_settings.get("optimizer_config"),
                     sub_settings.get("scheduler_config"),
+                    sub_settings.get("param_groups"),
                 )
             if scope in injected_defaults:
                 converted_defaults[scope] = str(scope_pack)
@@ -548,14 +551,14 @@ class BuildOptimizersBlock(InjectDefaultsMixin, Block):
             "plateau": plateau_default_cfg,
         }
 
-    def _define_optimizer(self, pack: OptimizerPack) -> Optimizer:
-        model = self.build_model.model
-        parameters: Any
-        if pack.scope == "all":
-            parameters = model.param_groups()
+    def _get_param_group(self, scope: str) -> Dict[str, Any]:
+        model = self.build_model.model.m
+        if scope == "all":
+            m = model
+            parameters = None
         else:
             attr = model
-            scopes = pack.scope.split(".")
+            scopes = scope.split(".")
             for scope in scopes:
                 new_attr = getattr(attr, scope, None)
                 if new_attr is None:
@@ -564,10 +567,31 @@ class BuildOptimizersBlock(InjectDefaultsMixin, Block):
             if not isinstance(attr, nn.Module):
                 parameters = attr
             else:
-                parameters = attr.parameters()
+                m = attr
+                parameters = None
+        if parameters is not None:
+            d = {p: n for n, p in model.named_parameters()}
+            param_group = {"names": [d[p] for p in parameters], "params": parameters}
+        else:
+            param_group = {"names": [], "params": []}
+            for name, param in m.named_parameters():
+                if param.requires_grad:
+                    param_group["names"].append(name)
+                    param_group["params"].append(param)
+        return param_group
+
+    def _define_optimizer(self, pack: OptimizerPack) -> Optimizer:
+        if pack.param_groups is None:
+            param_groups = [self._get_param_group(pack.scope)]
+        else:
+            param_groups = []
+            for pg in pack.param_groups:
+                pg = pg.copy()
+                pg.update(self._get_param_group(pg["scope"]))
+                param_groups.append(pg)
         optimizer_base = optimizer_dict[pack.optimizer_name]
         opt_config = pack.optimizer_config or {}
-        opt = optimizer_base(parameters, **opt_config)
+        opt = optimizer_base(param_groups, **opt_config)
         self.optimizers[pack.scope] = opt
         return opt
 

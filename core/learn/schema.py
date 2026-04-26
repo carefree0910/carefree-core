@@ -2329,6 +2329,7 @@ class OptimizerPack(DataClassBase):
     scheduler_name: Optional[str] = None
     optimizer_config: Optional[Dict[str, Any]] = None
     scheduler_config: Optional[Dict[str, Any]] = None
+    param_groups: Optional[List[Dict[str, Any]]] = None
 
 
 class TrainerCallback(WithRegister["TrainerCallback"]):
