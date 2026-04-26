@@ -174,6 +174,7 @@ class Trainer(ITrainer):
         *,
         do_summary: bool = True,
         show_summary: bool = True,
+        summary_kwargs: Optional[Dict[str, Any]] = None,
         loaded_state: Optional[Dict[str, Any]] = None,
         skip_final_evaluation: bool = False,
         only_touch: bool = False,
@@ -269,7 +270,9 @@ class Trainer(ITrainer):
                     return_only=not show_summary
                     or not self.is_local_rank_0
                     or only_touch,
-                    summary_forward=self.model.summary_forward,
+                    summary_forward=lambda batch: self.model.summary_forward(
+                        batch, **(summary_kwargs or {})
+                    ),
                 )
             if self.is_local_rank_0:
                 summary_path = os.path.join(self.workspace, self.summary_log_file)
