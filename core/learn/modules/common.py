@@ -87,12 +87,16 @@ class Lambda(Module):
         return self.fn(*args, **kwargs)
 
 
-def get_tgt_params(named_parameters: TParams) -> List[Any]:
-    return [
-        [name.replace(".", "_"), parameter]
+def convert_ema_param_name(name: str) -> str:
+    return name.replace(".", "_")
+
+
+def get_tgt_params(named_parameters: TParams) -> Dict[str, Union[Tensor, nn.Parameter]]:
+    return {
+        convert_ema_param_name(name): parameter
         for name, parameter in named_parameters
         if not is_int(parameter.data)
-    ]
+    }
 
 
 class EMA(Module):
@@ -109,7 +113,7 @@ class EMA(Module):
         self._cache: tensor_dict_type = {}
         self._decay = decay
         self.tgt_params = get_tgt_params(named_parameters)
-        for name, param in self.tgt_params:
+        for name, param in self.tgt_params.items():
             self.register_buffer(name, param.data.clone())
         if not use_num_updates:
             self.num_updates = None
@@ -125,7 +129,7 @@ class EMA(Module):
             self.num_updates += 1
             num_updates = self.num_updates.item()
             decay = min(self._decay, (1 + num_updates) / (10 + num_updates))
-        for name, param in self.tgt_params:
+        for name, param in self.tgt_params.items():
             if not param.requires_grad:
                 continue
             ema_attr = getattr(self, name)
@@ -135,24 +139,29 @@ class EMA(Module):
     def train(self, mode: bool = True) -> "EMA":
         super().train(mode)
         if mode:
-            for name, param in self.tgt_params:
+            for name, param in self.tgt_params.items():
                 cached = self._cache.pop(name, None)
                 if cached is not None:
                     param.data.copy_(cached)
         else:
-            for name, param in self.tgt_params:
+            for name, param in self.tgt_params.items():
                 if name not in self._cache:
                     self._cache[name] = param.data.clone()
                 param.data.copy_(getattr(self, name).clone())
         return self
 
+    def detach(self, name: str) -> None:
+        name = convert_ema_param_name(name)
+        self.tgt_params.pop(name)
+        delattr(self, name)
+
     def extra_repr(self) -> str:
-        max_str_len = max(len(name) for name, _ in self.tgt_params)
+        max_str_len = max(len(name) for name, _ in self.tgt_params.items())
         return "\n".join(
             [f"(0): decay_rate={self._decay}\n(1): Params("]
             + [
                 f"  {name:<{max_str_len}s} - Tensor({list(param.shape)})"
-                for name, param in self.tgt_params
+                for name, param in self.tgt_params.items()
             ]
             + [")"]
         )
