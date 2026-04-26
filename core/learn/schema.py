@@ -1651,32 +1651,13 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
     __repr__ = __str__
 
     def __call__(self, *args: Any, **kwargs: Any) -> raw_forward_results_type:
-        use_checkpoint = kwargs.pop("use_checkpoint", False)
-        with self.checkpoint_context(enable=use_checkpoint):
-            return self.forward(*args, **kwargs)
-
-    def checkpoint_context(self, *, enable: bool = True) -> ContextManager:
-
-        class ctx:
-            m: nn.Module
-
-            def __enter__(self) -> None:
-                def ckpt_fw(*args: Any, **kwargs: Any) -> raw_forward_results_type:
-                    kwargs.setdefault("use_reentrant", False)
-                    return checkpoint(self.m, *args, **kwargs)
-
-                if not enable:
-                    return None
-                self.m = model.m
-                model.m = ckpt_fw  # type: ignore
-
-            def __exit__(self, *args: Any) -> None:
-                if not enable:
-                    return None
-                model.m = self.m
-
-        model = self
-        return ctx()
+        if kwargs.pop("use_no_grad", False):
+            with torch.no_grad():
+                return self.forward(*args, **kwargs)
+        if kwargs.pop("use_checkpoint", False):
+            kwargs.setdefault("use_reentrant", False)
+            return checkpoint(self.forward, *args, **kwargs)
+        return self.forward(*args, **kwargs)
 
     # constructors
     ## this class is not supposed to be instantiated directly, but to be constructed
@@ -1748,7 +1729,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         return self.run(0, batch, **kwargs)
 
     def summary_forward(self, batch: tensor_dict_type, **kwargs: Any) -> None:
-        kwargs.setdefault("use_checkpoint", True)
+        kwargs.setdefault("use_no_grad", True)
         self.onnx_forward(batch, **kwargs)
 
     def postprocess(
