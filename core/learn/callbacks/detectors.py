@@ -141,6 +141,7 @@ class GradientDetectorCallback(TrainerCallback):
                 param_path = debug_folder / f"{k}{appendix}.pt"
                 batch_paths[k] = param_path
                 torch.save(p, param_path)
+            torch.save(m.state_dict(), debug_folder / "m.pt")
         if need_raise:
             console.error(
                 f"following errors occurred: {errors}, current batch / states / grads "
