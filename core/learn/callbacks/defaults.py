@@ -73,8 +73,10 @@ class TrainingLoopCallback(TrainerCallback):
                 )
             if self.is_local_rank_0:
                 console.log(f"loading pretrained checkpoint from '{ckpt}'...")
-            full_states = torch.load(ckpt, weights_only=False, map_location=device)
-            states: tensor_dict_type = full_states["states"]
+            states: tensor_dict_type
+            states = torch.load(ckpt, weights_only=False, map_location=device)
+            if "states" in states:
+                states = states["states"]
             exclude = finetune_config.get("exclude", "")
             exclude_names: List[str]
             if not exclude:
