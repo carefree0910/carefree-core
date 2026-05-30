@@ -25,6 +25,7 @@ from ..schema import DataLoader
 from ..schema import StepOutputs
 from ..schema import TqdmSettings
 from ..schema import TrainerState
+from ..schema import TrainStepLoss
 from ..schema import MetricsOutputs
 from ..schema import TrainerCallback
 from ..constants import INFERENCE_COLOR
@@ -340,6 +341,7 @@ class WandBCallback(TrainerCallback):
         anonymous: Literal["must", "allow", "never"] = "allow",
         log_histograms: bool = True,
         log_artifacts: bool = False,
+        log_grad_norms: bool = False,
     ):
         super().__init__()
         self.init_kwargs = dict(
@@ -357,6 +359,7 @@ class WandBCallback(TrainerCallback):
         self._anonymous = anonymous
         self._log_histograms = log_histograms
         self._log_artifacts = log_artifacts
+        self._log_grad_norms = log_grad_norms
 
     def initialize(self) -> None:
         if self.is_local_rank_0:
@@ -373,12 +376,32 @@ class WandBCallback(TrainerCallback):
         if self.is_local_rank_0:
             self.log_artifacts(trainer)
 
+    def before_gradient_update(
+        self,
+        trainer: ITrainer,
+        batch: tensor_dict_type,
+        forward: tensor_dict_type,
+        loss_res: TrainStepLoss,
+        update: bool,
+    ) -> None:
+        if not self._log_grad_norms:
+            return None
+        m = trainer.model.m
+        self._grad_norms = {}
+        for k, p in m.named_parameters():
+            p_grad = p.grad
+            if p_grad is None:
+                continue  # pragma: no cover
+            self._grad_norms[f"{k}_grad_norm"] = p.grad.norm()
+
     def log_lr(self, key: str, lr: float, trainer: "ITrainer") -> None:
         wandb.log({key: lr}, step=self._wandb_step(trainer.state))
 
     def log_train_step(self, step_outputs: StepOutputs, state: TrainerState) -> None:
         if state.should_log_losses:
             wandb.log(prefix_dict(step_outputs.loss_items, "tr"), step=state.step)
+        if self._log_grad_norms:
+            wandb.log(self._grad_norms, step=self._wandb_step(state))
 
     def log_metrics(self, metric_outputs: MetricsOutputs, state: TrainerState) -> None:
         metrics = shallow_copy_dict(metric_outputs.metric_values)
