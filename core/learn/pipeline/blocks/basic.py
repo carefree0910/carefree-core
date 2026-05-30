@@ -329,8 +329,8 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
                 self._defaults["callback_configs.wandb.config"] = config_for_wandb_str
         training_loop_callback = TrainingLoopCallback.__identifier__
         if training_loop_callback not in callback_names:
-            callback_names.append(training_loop_callback)
-            self._defaults["additional_callbacks"].append(training_loop_callback)
+            callback_names.insert(0, training_loop_callback)
+            self._defaults["additional_callbacks"].insert(0, training_loop_callback)
         config.tqdm_settings = tqdm_settings
         config.callback_names = callback_names
         config.callback_configs = callback_configs
@@ -363,9 +363,9 @@ class BuildCallbacksBlock(Block):
             self.callbacks = TrainerCallback.make_multiple(cb_names, cb_configs)
         else:
             self.callbacks = [
+                TrainingLoopCallback(),
                 LogMetricsMsgCallback(not use_tqdm),
                 UpdateArtifactsCallback(),
-                TrainingLoopCallback(),
             ]
         for callback in self.callbacks:
             callback.initialize()
