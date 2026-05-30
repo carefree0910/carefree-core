@@ -76,7 +76,7 @@ class TrainingLoopCallback(TrainerCallback):
             states: tensor_dict_type
             states = torch.load(ckpt, weights_only=False, map_location=device)
             if "states" in states:
-                states = states["states"]
+                states = states["states"]  # type: ignore
             exclude = finetune_config.get("exclude", "")
             exclude_names: List[str]
             if not exclude:

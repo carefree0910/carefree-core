@@ -13,6 +13,7 @@ from PIL import Image
 from torch import device
 from torch import Tensor
 from typing import Any
+from typing import Set
 from typing import Dict
 from typing import List
 from typing import Tuple
@@ -377,7 +378,7 @@ class WeightsStrategy:
 # dl
 
 
-warnings = set()
+warnings: Set[str] = set()
 GenericM = TypeVar("GenericM", bound=nn.Module)
 
 

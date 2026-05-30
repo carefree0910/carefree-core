@@ -392,7 +392,7 @@ class WandBCallback(TrainerCallback):
             p_grad = p.grad
             if p_grad is None:
                 continue  # pragma: no cover
-            self._grad_norms[f"{k}_grad_norm"] = p.grad.norm()
+            self._grad_norms[f"{k}_grad_norm"] = p.grad.norm()  # type: ignore
 
     def log_lr(self, key: str, lr: float, trainer: "ITrainer") -> None:
         wandb.log({key: lr}, step=self._wandb_step(trainer.state))

@@ -110,7 +110,7 @@ class ExponentialLRWithFloor(ExponentialLR):
 
 
 @register_scheduler("plateau")
-class ReduceLROnPlateauWithGet(ReduceLROnPlateau):
+class ReduceLROnPlateauWithGet(ReduceLROnPlateau):  # type: ignore
     @no_type_check
     def get_lr(self) -> List[float]:
         return [group["lr"] for group in self.optimizer.param_groups]
