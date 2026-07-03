@@ -1505,6 +1505,19 @@ class ClosurePack(NamedTuple):
     accelerator: Accelerator
 
 
+def get_backward_loss(
+    optimizer: Optimizer,
+    state: "TrainerState",
+    loss_res: "TrainStepLoss",
+    update: bool,
+) -> Optional[Tensor]:
+    base_optimizer = getattr(optimizer, "optimizer", optimizer)
+    fn = getattr(base_optimizer, "get_backward_loss", None)
+    if fn is None:
+        return loss_res.loss
+    return fn(state, loss_res, update)
+
+
 def weighted_loss_score(config: "TrainerConfig", loss_items: Dict[str, float]) -> float:
     if not config.loss_metrics_weights:
         if not loss_items:
@@ -1541,7 +1554,10 @@ def get_update_fn(trainer: "ITrainer") -> Callable[
         optimizer: Optimizer,
         update: bool,
     ) -> None:
-        trainer.accelerator.backward(loss_res.loss)
+        backward_loss = get_backward_loss(optimizer, trainer.state, loss_res, update)
+        if backward_loss is None:
+            return
+        trainer.accelerator.backward(backward_loss)
         for c in trainer.callbacks:
             c.before_gradient_update(trainer, batch, forward, loss_res, update)
         if update:
