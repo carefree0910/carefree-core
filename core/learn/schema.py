@@ -1555,11 +1555,10 @@ def get_update_fn(trainer: "ITrainer") -> Callable[
         update: bool,
     ) -> None:
         backward_loss = get_backward_loss(optimizer, trainer.state, loss_res, update)
-        if backward_loss is None:
-            return
-        trainer.accelerator.backward(backward_loss)
-        for c in trainer.callbacks:
-            c.before_gradient_update(trainer, batch, forward, loss_res, update)
+        if backward_loss is not None:
+            trainer.accelerator.backward(backward_loss)
+            for c in trainer.callbacks:
+                c.before_gradient_update(trainer, batch, forward, loss_res, update)
         if update:
             # Here, we assume that when `loss_fn` is provided, `optimizer` will be a
             # custom optimizer that takes in `ClosurePack` instead of `closure`.
