@@ -1518,6 +1518,18 @@ def get_backward_loss(
     return fn(state, loss_res, update)
 
 
+def will_skip_backward(
+    optimizer: Optimizer,
+    state: "TrainerState",
+    update: bool,
+) -> bool:
+    base_optimizer = getattr(optimizer, "optimizer", optimizer)
+    fn = getattr(base_optimizer, "will_skip_backward", None)
+    if fn is None:
+        return False
+    return fn(state, update)
+
+
 def weighted_loss_score(config: "TrainerConfig", loss_items: Dict[str, float]) -> float:
     if not config.loss_metrics_weights:
         if not loss_items:
@@ -1884,7 +1896,18 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         update_fn = get_update_fn(trainer)
         any_update = False
         get_fw = lambda: self.run(batch_idx, batch, state, **forward_kwargs)
-        for train_step in self.train_steps:
+
+        def can_disable_forward_grad(train_step_idx: int) -> bool:
+            for next_train_step in self.train_steps[train_step_idx + 1 :]:
+                if next_train_step.should_skip(self, state):
+                    continue
+                if next_train_step.requires_new_forward:
+                    return True
+                if next_train_step.requires_grad_in_forward:
+                    return False
+            return True
+
+        for train_step_idx, train_step in enumerate(self.train_steps):
             if train_step.should_skip(self, state):
                 continue
             update = (
@@ -1892,12 +1915,15 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                 % (train_step.grad_accumulate or trainer.config.grad_accumulate)
                 == 0
             )
+            optimizer = trainer.optimizers[train_step.scope]
+            skip_backward = will_skip_backward(optimizer, state, update)
             with no_sync_context(update, trainer):
                 if forward is None or train_step.requires_new_forward:
                     no_grad = not train_step.requires_grad_in_forward
+                    if skip_backward and can_disable_forward_grad(train_step_idx):
+                        no_grad = True
                     with no_grad_context(enabled=no_grad):
                         forward = get_fw()
-                optimizer = trainer.optimizers[train_step.scope]
                 should_toggle = train_step.enable_toggle_optimizer
                 with toggle_optimizer(self.m, optimizer, enabled=should_toggle):
                     loss_args = self, state, batch, forward
