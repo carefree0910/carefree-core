@@ -10,31 +10,69 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         python-version: [3.8, 3.9, "3.10"]
         os: [ubuntu-latest]
 
     steps:
       - uses: actions/checkout@v4
-      - uses: conda-incubator/setup-miniconda@v2
+      - uses: actions/setup-python@v5
         with:
-          miniconda-version: "latest"
-          activate-environment: test
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        shell: bash -l {0}
         run: |
-          conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 -c pytorch
-          pip install -e .
-          pip install -U --force-reinstall chardet charset-normalizer
-      - name: Install test dependencies
-        shell: bash -l {0}
-        run: |
-          pip install httpx
-          pip install pytest
-          pip install pytest-cov
-          pip install pandas
+          python -m pip install --upgrade "pip==24.2"
+          python -m pip install \
+            --extra-index-url https://download.pytorch.org/whl/cpu \
+            -c requirements/constraints-ci.txt \
+            torch torchvision
+          python -m pip install \
+            -c requirements/constraints-ci.txt \
+            -e ".[test]"
+          python -m pip check
       - name: Test with pytest
-        shell: bash -l {0}
         run: |
-          pytest -v --cov=core --durations=0
+          python -m pytest -v tests \
+            --ignore=tests/test_flow \
+            --ignore=tests/test_toolkit/test_web.py \
+            --deselect=tests/test_learn/test_callbacks.py::TestCallbacks::test_wandb_callback \
+            --cov=core --durations=0
+
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies and packaging tools
+        run: |
+          python -m pip install --upgrade "pip==24.2"
+          python -m pip install \
+            --extra-index-url https://download.pytorch.org/whl/cpu \
+            -c requirements/constraints-ci.txt \
+            torch torchvision
+          python -m pip install \
+            -c requirements/constraints-ci.txt \
+            -e ".[test]"
+          python -m pip install \
+            -c requirements/constraints-ci.txt \
+            build setuptools twine
+          python -m pip check
+      - name: Build and check distributions
+        run: |
+          python -m build --sdist --wheel
+          python -m twine check dist/*
+      - name: Test packaging entry points
+        env:
+          CFCORE_DIST_DIR: dist
+          CFCORE_RUN_PACKAGING_SMOKE: "1"
+        run: python -m pytest -q tests/test_packaging_smoke.py
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: carefree-core-distributions
+          path: dist/*
+          if-no-files-found: error

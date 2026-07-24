@@ -2,20 +2,55 @@ Meta framework for Deep Learning frameworks with [PyTorch](https://pytorch.org/)
 
 ## Getting Started
 
-`carefree-core` requires:
+### Supported runtime
 
-- Python 3.8 or higher.
-- A suitable [PyTorch](https://pytorch.org/) installation.
+The package metadata allows installation on Python 3.8 or newer. The combinations
+actively exercised by CI are narrower:
 
-`carefree-core` is not meant to be installed, but rather as a 'portable' package that integrates into your own project.
+| Platform | Python | PyTorch | Torchvision | Accelerate |
+| --- | --- | --- | --- | --- |
+| Linux | 3.8, 3.9, 3.10 | 2.3.1 | 0.18.1 | 0.34.2 |
 
-To use this library, follow the instructions below:
+Other Python and operating-system combinations are installable on a best-effort
+basis, but are not part of the guaranteed matrix yet. PyTorch is deliberately not
+declared as a direct project dependency, but Accelerate may still pull in a
+default PyTorch wheel transitively. Preinstall the tested PyTorch/Torchvision pair
+with the [official selector](https://pytorch.org/get-started/locally/) so the
+wheel matches the target CPU/CUDA environment.
 
-- Copy the `core` folder to somewhere in your project.
-- Copy the `install_requires` listed in `setup.py` into your own `setup.py`.
-- Copy the `setup.cfg` file into your own project, if you want to follow the `mypy` style.
+### Standard installation
 
-And that's all - the codes are yours, modify them as you wish!
+From a checkout:
+
+```bash
+python -m pip install torch==2.3.1 torchvision==0.18.1
+python -m pip install .
+```
+
+For development on the supported Linux x86_64 runtime, use the repository's
+fixed CI constraints. On other platforms, select PyTorch first and treat the
+remaining combinations as best effort:
+
+```bash
+python -m pip install --upgrade "pip==24.2"
+python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -c requirements/constraints-ci.txt torch torchvision
+python -m pip install -c requirements/constraints-ci.txt -e ".[dev]"
+python -m pip check
+```
+
+### Copy-in installation
+
+`carefree-core` can still be used as a portable package:
+
+- Copy the `core` folder into your project.
+- Preinstall the tested PyTorch/Torchvision pair.
+- Declare the runtime dependencies from `project.dependencies` in
+  [`pyproject.toml`](pyproject.toml) in your own project.
+- Copy the relevant `[tool.black]`, `[tool.mypy]`, and `[tool.coverage.*]`
+  sections if you want to inherit this repository's tooling policy.
+
+The copied sources are then yours to modify. Both standard installation and this
+copy-in workflow are covered by packaging smoke tests.
 
 ## Introductions
 

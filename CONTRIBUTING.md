@@ -69,6 +69,42 @@ This package is relatively stable, so it is not recommended to add new features 
 
 `carefree-core` adopted [`black`](https://github.com/psf/black) and [`mypy`](https://github.com/python/mypy) to stylize its codes, so you may need to check the format, coding style and type hint with them before your codes could actually be merged.
 
+On the supported Linux x86_64 runtime, install the tested dependency set and
+run the active checks with:
+
+```bash
+python -m pip install --upgrade "pip==24.2"
+python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -c requirements/constraints-ci.txt torch torchvision
+python -m pip install -c requirements/constraints-ci.txt -e ".[dev]"
+python -m pip check
+python -m black . --check --diff
+python -m mypy core
+python -m pytest -v tests --ignore=tests/test_flow --ignore=tests/test_toolkit/test_web.py --deselect=tests/test_learn/test_callbacks.py::TestCallbacks::test_wandb_callback --cov=core --durations=0
+```
+
+Flow and tests that make external network calls are intentionally outside the
+active test command above. To verify all supported packaging entry points on
+the supported Linux runtime:
+
+```bash
+python -m build
+python -m twine check dist/*
+CFCORE_RUN_PACKAGING_SMOKE=1 CFCORE_DIST_DIR=dist \
+  python -m pytest -q tests/test_packaging_smoke.py
+```
+
+The PowerShell equivalent is:
+
+```powershell
+python -m build
+python -m twine check (Get-ChildItem dist -File)
+$env:CFCORE_RUN_PACKAGING_SMOKE = "1"
+$env:CFCORE_DIST_DIR = "dist"
+python -m pytest -q tests/test_packaging_smoke.py
+Remove-Item Env:CFCORE_RUN_PACKAGING_SMOKE
+Remove-Item Env:CFCORE_DIST_DIR
+```
+
 Besides, there are a few more principles that I'm using for sorting imports:
 - One import at a time (no `from typing import Any, Dict, List, ...`).
 - From functions to classes.

@@ -1,0 +1,137 @@
+[build-system]
+requires = [
+    "setuptools==75.3.2",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "carefree-core"
+version = "0.1.0"
+description = "Meta framework for Deep Learning frameworks with PyTorch"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+authors = [
+    { name = "carefree0910", email = "syameimaru.saki@gmail.com" },
+]
+keywords = [
+    "deep-learning",
+    "framework",
+    "pytorch",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "accelerate==0.34.2",
+    "aiohttp",
+    "fastapi",
+    "filelock",
+    "matplotlib",
+    "networkx",
+    "numpy>=1.22.3",
+    "onnx",
+    "onnx-simplifier>=0.4.1",
+    "onnxruntime",
+    "pillow",
+    "psutil",
+    "pydantic>=2.0.0",
+    "requests",
+    "rich",
+    "safetensors",
+    "wandb",
+    "websockets>=12.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "anyio",
+    "build",
+    "coverage[toml]",
+    "packaging",
+    "pandas",
+    "pytest",
+    "pytest-cov",
+    "pytest-timeout",
+    "setuptools",
+    "wheel",
+]
+typing = [
+    "black",
+    "mypy",
+    "types-requests",
+]
+benchmark = [
+    "jsonschema",
+    "pandas",
+    "psutil",
+    "pyperf",
+]
+dev = [
+    "anyio",
+    "black",
+    "build",
+    "coverage[toml]",
+    "jsonschema",
+    "mypy",
+    "packaging",
+    "pandas",
+    "pyperf",
+    "pytest",
+    "pytest-cov",
+    "pytest-timeout",
+    "setuptools",
+    "twine",
+    "types-requests",
+    "wheel",
+]
+
+[project.urls]
+Homepage = "https://github.com/carefree0910/carefree-core"
+Issues = "https://github.com/carefree0910/carefree-core/issues"
+Repository = "https://github.com/carefree0910/carefree-core"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core", "core.*"]
+exclude = ["tests", "tests.*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+core = ["py.typed"]
+
+[tool.black]
+target-version = ["py38"]
+extend-exclude = '''
+/(
+    core/flow
+  | tests/test_flow
+)/
+'''
+
+[tool.mypy]
+disallow_untyped_defs = true
+ignore_missing_imports = true
+python_version = "3.8"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+]
