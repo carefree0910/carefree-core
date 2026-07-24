@@ -2,14 +2,16 @@ import torch
 import unittest
 
 import numpy as np
-import core.learn as cflearn
 import torch.nn as nn
+import core.learn as cflearn
 
 from torch import Tensor
 from typing import Optional
 from accelerate import Accelerator
 from rich.progress import Progress
 from unittest.mock import patch
+from unittest.mock import Mock
+from unittest.mock import MagicMock
 from unittest.mock import PropertyMock
 from core.learn.schema import DataLoader
 from core.toolkit.types import np_dict_type
@@ -70,6 +72,27 @@ class TestInference(unittest.TestCase):
             model_outputs.metric_outputs.metric_values["mse"],
             model_outputs.metric_outputs.metric_values["stream_mse"],
         )
+        stream_metric = cflearn.StreamMSE()
+        with patch.object(stream_metric, "evaluate", return_value=None):
+            stream_outputs = inference.get_outputs(
+                loader,
+                metrics=stream_metric,
+            )
+        self.assertAlmostEqual(
+            stream_outputs.metric_outputs.metric_values["stream_mse"],
+            model_outputs.metric_outputs.metric_values["stream_mse"],
+        )
+
+        onnx = Mock()
+        onnx.predict.side_effect = lambda batch: {
+            cflearn.PREDICTIONS_KEY: batch[cflearn.INPUT_KEY][:, :output_dim]
+        }
+        inject_outputs = Mock()
+        cflearn.Inference(onnx=onnx).get_outputs(
+            loader,
+            inject_outputs_fn=inject_outputs,
+        )
+        self.assertEqual(inject_outputs.call_count, len(loader))
 
         @cflearn.IMetric.register("foo", allow_duplicate=True)
         class FooMetric(cflearn.IMetric):
@@ -148,6 +171,54 @@ class TestInference(unittest.TestCase):
             mock.return_value = False
             inference.get_outputs(loader, metrics=metrics, accelerator=Accelerator())
 
+        @cflearn.IMetric.register("metadata", allow_duplicate=True)
+        class MetadataMetric(cflearn.IMetric):
+            @property
+            def is_positive(self) -> bool:
+                return True
+
+            @property
+            def requires_all(self) -> bool:
+                return True
+
+            def requires(self, key: str) -> bool:
+                return key == "metadata"
+
+            def forward(
+                self,
+                np_batch: np_dict_type,
+                np_outputs: np_dict_type,
+                loader: Optional[DataLoader] = None,
+            ) -> float:
+                case.assertListEqual(np_batch["metadata"], ["first", "second"])
+                return 0.25
+
+        batches = [
+            {
+                cflearn.INPUT_KEY: torch.randn(2, input_dim),
+                cflearn.LABEL_KEY: torch.randn(2, output_dim),
+                "metadata": "first",
+            },
+            {
+                cflearn.INPUT_KEY: torch.randn(3, input_dim),
+                cflearn.LABEL_KEY: torch.randn(3, output_dim),
+                "metadata": "second",
+            },
+        ]
+        metadata_loader = MagicMock()
+        metadata_loader.__len__.return_value = len(batches)
+        metadata_loader.__iter__.side_effect = lambda: iter(batches)
+        metadata_loader.recover_labels.side_effect = lambda key, value: value
+        metadata_outputs = inference.get_outputs(
+            metadata_loader,
+            metrics=MetadataMetric(),
+            target_inputs=[cflearn.INPUT_KEY, "metadata"],
+        )
+        self.assertEqual(
+            metadata_outputs.forward_results["metadata"],
+            ["first", "second"],
+        )
+
         @cflearn.IMetric.register("ve", allow_duplicate=True)
         class ValueErrorMetric(cflearn.IMetric):
             @property
@@ -161,6 +232,28 @@ class TestInference(unittest.TestCase):
                 loader: Optional[DataLoader] = None,
             ) -> float:
                 raise ValueError
+
+        @cflearn.IMetric.register("empty", allow_duplicate=True)
+        class EmptyMetric(cflearn.IMetric):
+            @property
+            def is_positive(self) -> bool:
+                return True
+
+            def forward(
+                self,
+                np_batch: np_dict_type,
+                np_outputs: np_dict_type,
+                loader: Optional[DataLoader] = None,
+            ) -> float:
+                return 0.0
+
+            def evaluate(
+                self,
+                tensor_batch,
+                tensor_outputs,
+                loader=None,
+            ):
+                return None
 
         @cflearn.IModel.register("kim", allow_duplicate=True)
         class KeyboardInterruptModel(cflearn.CommonModel):
@@ -183,6 +276,10 @@ class TestInference(unittest.TestCase):
             run("vem", cflearn.MAE())
         with self.assertRaises(ValueError):
             run("vem", ValueErrorMetric())
+        config.model = "common"
+        inference = cflearn.Inference(model=cflearn.IModel.from_config(config))
+        with self.assertRaises(RuntimeError):
+            inference.get_outputs(loader, metrics=EmptyMetric())
 
     def test_pad(self) -> None:
         @cflearn.register_module("identity", allow_duplicate=True)
@@ -235,6 +332,34 @@ class TestInference(unittest.TestCase):
         np.testing.assert_array_equal(o0.forward_results[cflearn.PREDICTIONS_KEY], gt)
         np.testing.assert_array_equal(o1.forward_results[cflearn.PREDICTIONS_KEY], gt)
         np.testing.assert_array_equal(o2.forward_results[cflearn.PREDICTIONS_KEY], gt)
+
+        x_float = np.empty_like(x)
+        x_float[:] = [sample.astype(np.float32) for sample in x]
+        float_data = cflearn.ArrayData.init().fit(x_float)
+        float_data.config.batch_size = 1
+        float_loader = float_data.build_loader(x_float)
+        float_outputs = inference.get_outputs(
+            float_loader,
+            pad_dim=1,
+            verbose=False,
+        )
+        float_predictions = float_outputs.forward_results[cflearn.PREDICTIONS_KEY]
+        self.assertTrue(torch.isnan(float_predictions[0, 1:]).all())
+        self.assertTrue(torch.isnan(float_predictions[3, 2:]).all())
+
+        same_x = np.empty(2, dtype=object)
+        same_x[:] = [
+            np.ones((3, 2), dtype=np.float32),
+            np.zeros((3, 2), dtype=np.float32),
+        ]
+        same_data = cflearn.ArrayData.init().fit(same_x)
+        same_data.config.batch_size = 1
+        same_loader = same_data.build_loader(same_x)
+        same_outputs = inference.get_outputs(same_loader, pad_dim=1)
+        self.assertEqual(
+            same_outputs.forward_results[cflearn.PREDICTIONS_KEY].shape,
+            (6, 2),
+        )
 
 
 if __name__ == "__main__":

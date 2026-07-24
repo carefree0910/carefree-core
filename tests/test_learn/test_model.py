@@ -181,8 +181,10 @@ class TestModel(unittest.TestCase):
             get_train_outputs(GradBuggyModel2)
 
     def test_with_state_model(self):
-        @cflearn.register_module("foo", allow_duplicate=True)
-        class _(torch.nn.Module):
+        module_name = "$test_with_state_model"
+
+        @cflearn.register_module(module_name, allow_duplicate=True)
+        class WithStateModule(torch.nn.Module):
             def __init__(self):
                 super().__init__()
                 self.param = torch.nn.Parameter(torch.ones(1))
@@ -191,7 +193,11 @@ class TestModel(unittest.TestCase):
                 return self.param * torch.zeros_like(batch[cflearn.LABEL_KEY])
 
         data = cflearn.testing.linear_data(10)[0]
-        config = cflearn.Config(model="with_state", module_name="foo", loss_name="mse")
+        config = cflearn.Config(
+            model="with_state",
+            module_name=module_name,
+            loss_name="mse",
+        )
         config.to_debug()
         p = cflearn.TrainingPipeline.init(config).fit(data)
         m = p.training.build_model.model

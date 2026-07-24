@@ -66,6 +66,15 @@ class TestPipeline(unittest.TestCase):
             cflearn.TrainingPipeline.init(config).predict(test_loader)
         with self.assertRaises(ValueError):
             p0.predict(test_loader, return_classes=True, return_probabilities=True)
+        malformed_outputs = Mock()
+        malformed_outputs.forward_results = {cflearn.PREDICTIONS_KEY: []}
+        with patch.object(
+            p0.build_inference.inference,
+            "get_outputs",
+            return_value=malformed_outputs,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "should be concatenated"):
+                p0.predict(test_loader, return_classes=True)
         p0.predict(test_loader, return_classes=True)
         p0.predict(test_loader, return_probabilities=True)
 
@@ -376,7 +385,22 @@ class TestBlocks(unittest.TestCase):
         with patch("core.learn.pipeline.blocks.basic.inspect") as mock_inspect:
             mock_inspect.currentframe.return_value = None
             block.save_extra(None)
-        block.save_extra(None)
+            frame = Mock()
+            frame.f_back = None
+            mock_inspect.currentframe.return_value = frame
+            mock_inspect.getsource.return_value = "source = True\n"
+            script_folder = self.tmp_path / "script"
+            block.save_extra(script_folder)
+            mock_inspect.getsource.side_effect = RuntimeError("source unavailable")
+            with patch("core.learn.pipeline.blocks.basic.console.warn") as mock_warn:
+                block.save_extra(self.tmp_path / "missing_source")
+            mock_warn.assert_called_once_with(
+                "failed to save source script: source unavailable"
+            )
+        self.assertEqual(
+            (script_folder / block.script_file).read_text(),
+            "source = True\n",
+        )
         opt_pack = cflearn.OptimizerPack("all", "adamw")
         opt_settings = OptimizerSettings()
         opt_state_info = StateInfo(1, 1, 1, 1, 1)
@@ -410,6 +434,19 @@ class TestBlocks(unittest.TestCase):
 
         p = cflearn.TrainingPipeline.init(config).fit(data)
         self.assertIn("linear", p.config.callback_names)
+
+        block = cflearn.SetTrainerDefaultsBlock()
+        wandb_config = cflearn.Config(
+            module_name="linear",
+            callback_names=["wandb"],
+            callback_configs={},
+        )
+        block.build(wandb_config)
+        configured_wandb = wandb_config.callback_configs["wandb"]
+        self.assertListEqual(configured_wandb["tags"], ["linear"])
+        self.assertEqual(configured_wandb["config"]["module_name"], "linear")
+        self.assertIn("callback_configs.wandb.tags", block._defaults)
+        self.assertIn("callback_configs.wandb.config", block._defaults)
 
         environ_workspace = self._workspace("_foo")
         cflearn.set_environ_workspace(environ_workspace)
@@ -487,6 +524,14 @@ class TestBlocks(unittest.TestCase):
 
         config.module_name = "custom_linear"
         config.optimizer_settings["linear"] = config.optimizer_settings.pop("all")
+        cflearn.TrainingPipeline.init(config).fit(data)
+
+        config.optimizer_settings = {
+            "all": {
+                "optimizer": "adam",
+                "param_groups": [{"scope": "linear"}],
+            }
+        }
         cflearn.TrainingPipeline.init(config).fit(data)
 
     def test_training(self):

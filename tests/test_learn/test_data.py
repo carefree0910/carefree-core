@@ -46,12 +46,15 @@ class TestData(unittest.TestCase):
             np.testing.assert_allclose(x0, x1)
             np.testing.assert_allclose(y0, y1)
         self.assertEqual(cursor, len(loader))
+        AsyncIterManager.cleanup(id(async_loader))
         data.config.async_prefetch_factor = 1
         async_loader = data.build_loader(x, y, drop_last=True)
+        async_loader.dataset.async_recover()
         cursor = 0
         for _ in async_loader:
             cursor += 1
         self.assertEqual(cursor, len(async_loader))
+        AsyncIterManager.cleanup(id(async_loader))
 
         with self.assertRaises(ValueError):
             data.fit(None).build_loaders()

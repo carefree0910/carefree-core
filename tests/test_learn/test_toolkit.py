@@ -1,12 +1,14 @@
+import sys
 import pytest
 import unittest
+import importlib
 
 from core.learn.toolkit import *
 from pathlib import Path
 from unittest.mock import patch
 from unittest.mock import Mock
-from safetensors.torch import save_file
 from core.toolkit.misc import random_hash
+from safetensors.torch import save_file
 
 
 class TestToolkit(unittest.TestCase):
@@ -19,6 +21,18 @@ class TestToolkit(unittest.TestCase):
             seed = new_seed()
             self.assertLessEqual(seed, max_seed_value)
             self.assertGreaterEqual(seed, min_seed_value)
+
+    def test_optional_onnxruntime_import(self) -> None:
+        toolkit = importlib.import_module("core.learn.toolkit")
+        spec = importlib.util.spec_from_file_location(
+            "core.learn._toolkit_without_onnxruntime",
+            toolkit.__file__,
+        )
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {"onnxruntime": None}):
+            spec.loader.exec_module(module)
+        self.assertIsNone(module.InferenceSession)
 
     def test_env_workspace(self) -> None:
         env_workspace = "env_workspace"

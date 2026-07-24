@@ -39,12 +39,21 @@ class TestPipeline(unittest.TestCase):
             def block_base(self) -> Type:
                 return TestBlock
 
-        p = TestPipeline.init({})
-        p.build(TestBlock())
+        config = Mock()
+        config.to_pack.return_value.asdict.return_value = {"type": "test"}
+        p = TestPipeline.init(config)
+        first = TestBlock()
+        second = TestBlock2()
+        p.build(first, second)
         with self.assertRaises(ValueError):
             p.get_block(TestBlock).get_previous(TestBlock)
+        self.assertIs(p.get_block(TestBlock2).get_previous(TestBlock), first)
         with self.assertRaises(ValueError):
-            p.get_block(TestBlock2)
+            p.get_block("missing")
+
+        info = p.to_info()
+        restored = TestPipeline.init(Mock()).from_info(info)
+        self.assertEqual(len(restored.blocks), 2)
 
 
 class TestGetFolder(unittest.TestCase):

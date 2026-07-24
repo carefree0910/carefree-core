@@ -43,10 +43,32 @@ class TestMisc(unittest.TestCase):
         mock_get_ddp_info.return_value = mock_ddp_info
         self.assertFalse(is_rank_0())
 
+    @patch("core.toolkit.misc.get_ddp_info")
+    def test_ddp_state_helpers(self, mock_get_ddp_info):
+        mock_get_ddp_info.return_value = None
+        self.assertFalse(is_ddp())
+        self.assertEqual(get_world_size(), 1)
+        mock_get_ddp_info.return_value = DDPInfo(0, 2, 0)
+        self.assertTrue(is_ddp())
+        self.assertEqual(get_world_size(), 2)
+
     @patch("core.toolkit.misc.is_dist_initialized")
     def test_is_fsdp(self, mock_is_dist_initialized):
         mock_is_dist_initialized.return_value = True
         self.assertFalse(is_fsdp())
+
+    @patch("core.toolkit.misc.is_dist_initialized")
+    def test_is_fsdp_without_process_group(self, mock_is_dist_initialized):
+        mock_is_dist_initialized.return_value = False
+        self.assertFalse(is_fsdp())
+
+    @patch("accelerate.PartialState")
+    def test_init_process_group(self, mock_partial_state):
+        from accelerate import InitProcessGroupKwargs
+
+        handler = InitProcessGroupKwargs()
+        init_process_group(cpu=True, handler=handler)
+        mock_partial_state.assert_called_once_with(True, **handler.to_kwargs())
 
     @patch("core.toolkit.misc.is_dist_initialized")
     def test_wait_for_everyone(self, mock_is_dist_initialized):
@@ -729,6 +751,8 @@ class TestMisc(unittest.TestCase):
             Bar(a=1)
         BarPydantic(a=1)
         self.assertDictEqual(Bar().asdict(), {"b": 0, "foo": {"a": 0}})
+        self.assertDictEqual(BarPydantic().asdict(), {"b": 0})
+        self.assertEqual(FooPydantic.construct({"a": 1}), FooPydantic(a=1))
 
     def test_with_register(self):
         class Foo(WithRegister):
@@ -796,6 +820,7 @@ class TestMisc(unittest.TestCase):
                         [sub_sequence.mean(), sub_sequence.std()],
                     )
                 )
+            self.assertTrue(incrementer.is_full)
 
     def test_format_float(self):
         self.assertEqual(format_float(1.0), "1.000000")
@@ -813,6 +838,13 @@ class TestMisc(unittest.TestCase):
         for _ in track(range(3), update_callback=lambda *_: nums.append(1)):
             pass
         self.assertListEqual(nums, [1, 1, 1])
+
+    def test_make_progress_optional_columns(self):
+        from rich.progress import TextColumn
+
+        custom_column = TextColumn("custom")
+        progress = make_progress(use_spinner=True, custom_columns=[custom_column])
+        self.assertIn(custom_column, progress.columns)
 
 
 @pytest.mark.anyio
@@ -1051,6 +1083,8 @@ class TestSerializations(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             with self.assertRaises(ValueError):
                 Serializer.load_empty(tmp_dir, self.Foo)
+            loaded = Serializer.load_empty(tmp_dir, self.Foo, swap_id="foo")
+            self.assertIsInstance(loaded, self.Foo)
 
 
 class TestOPTBase(unittest.TestCase):

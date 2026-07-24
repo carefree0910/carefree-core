@@ -1,9 +1,31 @@
+import torch
 import unittest
 
 import core.learn as cflearn
 
 
 class TestSchedulers(unittest.TestCase):
+    def test_warmup_removes_unsupported_verbose(self) -> None:
+        class NoVerboseScheduler(torch.optim.lr_scheduler.LRScheduler):
+            def __init__(self, optimizer):
+                super().__init__(optimizer)
+
+            def get_lr(self):
+                return self.base_lrs
+
+        parameter = torch.nn.Parameter(torch.ones(1))
+        optimizer = torch.optim.SGD([parameter], lr=0.1)
+        scheduler_config = {"verbose": False}
+        scheduler = cflearn.WarmupScheduler(
+            optimizer,
+            multiplier=2.0,
+            warmup_step=1,
+            scheduler_afterwards_base=NoVerboseScheduler,
+            scheduler_afterwards_config=scheduler_config,
+        )
+        self.assertIsInstance(scheduler.scheduler_afterwards, NoVerboseScheduler)
+        self.assertDictEqual(scheduler_config, {"verbose": False})
+
     def test_schedulers(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data(6, batch_size=4)
         scheduler_config = dict(start_epoch=0, end_epoch=1, warmup_step=2)

@@ -74,6 +74,11 @@ class TestArray(unittest.TestCase):
         self.assertFalse(is_string(torch.tensor(1, dtype=torch.float32)))
         self.assertFalse(is_string(torch.tensor(1, dtype=torch.float64)))
 
+    def test_is_real_numeric(self):
+        self.assertTrue(is_real_numeric(np.int64(1)))
+        self.assertTrue(is_real_numeric(np.float64(1)))
+        self.assertFalse(is_real_numeric(torch.tensor(1.0j)))
+
     def test_functions(self):
         array = np.random.randn(3, 5, 7)
         tensor = torch.randn(3, 5, 7)
@@ -204,9 +209,11 @@ class TestArray(unittest.TestCase):
             "a": torch.randn(3, 5, 7),
             "b": [torch.randn(3, 5, 7)],
             "c": {"d": torch.randn(3, 5, 7)},
+            "e": "unchanged",
         }
         to_device(tensors, None)
-        to_device(tensors, "cpu")
+        converted = to_device(tensors, "cpu")
+        self.assertEqual(converted["e"], "unchanged")
 
     def test_corr(self) -> None:
         pred = np.random.randn(100, 5)
@@ -223,6 +230,7 @@ class TestArray(unittest.TestCase):
         corr12 = corr(w_target, w_pred)
         self.assertTrue(allclose(corr00, corr10))
         self.assertTrue(allclose(corr01, corr11, corr02.T, corr12.T))
+        np.testing.assert_allclose(corr(pred, pred, get_diagonal=True), np.ones(5))
         with self.assertRaises(ValueError):
             corr(pred, target[:, :4], get_diagonal=True)
 
@@ -415,6 +423,13 @@ class TestArray(unittest.TestCase):
         np.testing.assert_allclose(logits, full_logits[..., [1]])
         np.testing.assert_allclose(-logits, full_logits[..., [0]])
 
+    def test_array_from_pointer(self):
+        source = np.arange(6, dtype=np.int64).reshape(2, 3)
+        typestr = BaseType.INT.to_typestr(source.dtype.itemsize)
+        loaded = arr_from_ptr(source.ctypes.data, typestr, list(source.shape))
+        np.testing.assert_array_equal(loaded, source)
+        self.assertFalse(loaded.flags.writeable)
+
 
 class TestNpSafeSerializer(unittest.TestCase):
     @pytest.fixture(autouse=True)
@@ -463,6 +478,18 @@ class TestNpSafeSerializer(unittest.TestCase):
         np.testing.assert_array_equal(NpSafeSerializer.try_load(self.folder), self.data)
         (self.folder / NpSafeSerializer.size_file).unlink()
         self.assertIsNone(NpSafeSerializer.try_load(self.folder))
+
+    def test_try_load_raw_validation(self):
+        NpSafeSerializer.save(self.folder, self.data, to_raw=True)
+        with self.assertRaisesRegex(ValueError, "kwargs"):
+            NpSafeSerializer.try_load(
+                self.folder,
+                dtype=self.data.dtype,
+                from_raw=True,
+                allow_pickle=False,
+            )
+        with self.assertRaisesRegex(ValueError, "dtype"):
+            NpSafeSerializer.try_load(self.folder, from_raw=True)
 
     def test_try_load_no_load(self):
         NpSafeSerializer.save(self.folder, self.data)

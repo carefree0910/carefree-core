@@ -4,8 +4,8 @@ import unittest
 
 import torch.nn as nn
 import core.learn as cflearn
-import core.toolkit.console as console
 import torch.nn.functional as F
+import core.toolkit.console as console
 
 from typing import Optional
 from core.learn.schema import losses_type
@@ -183,6 +183,9 @@ class TestModules(unittest.TestCase):
             with cflearn.eval_context(ema):
                 with self.assertRaises(RuntimeError):
                     ema()
+            ema.detach("test")
+            self.assertNotIn("test", ema.tgt_params)
+            self.assertFalse(hasattr(ema, "test"))
 
     def test_ema_training(self) -> None:
         dim = 11

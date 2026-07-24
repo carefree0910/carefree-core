@@ -133,7 +133,19 @@ python_version = "3.8"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.coverage.run]
+omit = [
+    "core/flow/*",
+    "core/toolkit/web.py",
+]
+
 [tool.coverage.report]
+fail_under = 100
+show_missing = true
+omit = [
+    "core/flow/*",
+    "core/toolkit/web.py",
+]
 exclude_also = [
     "if TYPE_CHECKING:",
 ]

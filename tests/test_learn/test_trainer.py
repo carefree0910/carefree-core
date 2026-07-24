@@ -40,6 +40,22 @@ class TestTrainer(unittest.TestCase):
         self.assertFalse(cflearn.trainer.is_finished_workspace(workspace))
         self.assertTrue(cflearn.trainer.is_crashed_workspace(workspace))
 
+    def test_metrics_progress_without_callback(self) -> None:
+        trainer = cflearn.Trainer(self.config)
+        expected = cflearn.MetricsOutputs(0.0, {}, {})
+        trainer.state = Mock(is_terminate=False)
+        trainer.model = Mock()
+        trainer.model.evaluate.return_value = Mock(metric_outputs=expected)
+        trainer.metrics = Mock()
+        trainer.inference = Mock()
+        trainer.callbacks = []
+        trainer.accelerator = Mock(is_local_main_process=True)
+        trainer.tqdm_settings.use_tqdm_in_validation = True
+        with patch("core.learn.trainer.Progress") as mock_progress:
+            output = trainer.get_metrics(Mock())
+        self.assertIs(output, expected)
+        mock_progress.assert_called_once_with()
+
     def test_training(self):
         config = self.config.copy()
         config.num_steps = 10
