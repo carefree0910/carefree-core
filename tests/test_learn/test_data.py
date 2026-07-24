@@ -1,10 +1,12 @@
 import torch
+import pytest
 import unittest
 
 import numpy as np
 import core.learn as cflearn
 
 from accelerate import Accelerator
+from core.learn.schema import AsyncIterManager
 from core.toolkit.types import tensor_dict_type
 
 
@@ -222,20 +224,24 @@ class TestData(unittest.TestCase):
             use_async=True,
         )
         train_loader, valid_loader = data.build_loaders()
-        for i, _ in enumerate(train_loader):
-            if i == 2:
-                for _ in valid_loader:
+        try:
+            for i, _ in enumerate(train_loader):
+                if i == 2:
+                    for _ in valid_loader:
+                        break
+                    for _ in valid_loader:
+                        break
+                    for _ in valid_loader:
+                        break
+                if i == 4:
                     break
-                for _ in valid_loader:
-                    break
-                for _ in valid_loader:
-                    break
-            if i == 4:
+            for _ in train_loader:
                 break
-        for _ in train_loader:
-            break
-        for _ in train_loader:
-            break
+            for _ in train_loader:
+                break
+        finally:
+            AsyncIterManager.cleanup(id(train_loader))
+            AsyncIterManager.cleanup(id(valid_loader))
 
     def test_seeding(self) -> None:
         data = cflearn.testing.arange_data()[0]
@@ -250,6 +256,31 @@ class TestData(unittest.TestCase):
         loader = data.build_loaders()[0]
         b1 = next(iter(loader))[cflearn.INPUT_KEY]
         np.testing.assert_allclose(b0, b1)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="P0-05: abandoning an async DataLoader retains its iterator and worker pool",
+)
+def test_abandoned_async_loader_releases_iterator() -> None:
+    x = np.random.randn(64, 4)
+    y = np.random.randn(64, 1)
+    data = cflearn.ArrayData.init().fit(x, y)
+    data.config.batch_size = 8
+    data.config.async_prefetch = True
+    data.config.async_prefetch_factor = 2
+    loader = data.build_loader(x, y)
+    loader_id = id(loader)
+    iterator = iter(loader)
+
+    try:
+        next(iterator)
+        del iterator
+        retained_iterator = loader_id in AsyncIterManager._cur
+    finally:
+        AsyncIterManager.cleanup(loader_id)
+
+    assert not retained_iterator, "async DataLoader retained its abandoned iterator"
 
 
 if __name__ == "__main__":

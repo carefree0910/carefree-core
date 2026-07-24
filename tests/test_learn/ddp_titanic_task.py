@@ -23,7 +23,6 @@ def read(path: Path, delimiter: str) -> Tuple[List[str], List[List[str]]]:
     return header, data
 
 
-@cflearn.IDataBlock.register("titanic")
 class TitanicBlock(cflearn.IDataBlock):
     num_features: int
     num_classes: int
@@ -93,7 +92,12 @@ class TitanicBlock(cflearn.IDataBlock):
         )
 
 
+def register_titanic_block() -> None:
+    cflearn.IDataBlock.register("titanic", allow_duplicate=True)(TitanicBlock)
+
+
 def main() -> None:
+    register_titanic_block()
     seed_everything(123)
     assets_folder = Path(__file__).parent / "assets" / "titanic"
     train_path = assets_folder / "train.csv"

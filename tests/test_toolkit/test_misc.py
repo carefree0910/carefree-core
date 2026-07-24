@@ -1,22 +1,29 @@
 import json
-import asyncio
+import anyio
+import pytest
 import tempfile
 import unittest
+import threading
 
 import numpy as np
 
+from core.toolkit.misc import *
 from typing import Any
 from typing import Dict
+from pathlib import Path
 from unittest import mock
 from dataclasses import field
 from unittest.mock import patch
 from unittest.mock import Mock
-from core.toolkit.misc import *
 
 test_dict = {}
 
 
 class TestMisc(unittest.TestCase):
+    @pytest.fixture(autouse=True)
+    def _prepare_tmp_path(self, tmp_path: Path) -> None:
+        self.tmp_path = tmp_path
+
     @patch("core.toolkit.misc.get_ddp_info")
     def test_ddp_info_is_none(self, mock_get_ddp_info):
         mock_get_ddp_info.return_value = None
@@ -511,26 +518,9 @@ class TestMisc(unittest.TestCase):
         except RuntimeError as err:
             get_err_msg(err)
 
-    def test_offload(self):
-        async def sleep():
-            time.sleep(unit)
-
-        async def main():
-            t0 = time.time()
-            await asyncio.gather(*[sleep() for _ in range(num_tasks)])
-            t1 = time.time()
-            await asyncio.gather(*[offload(sleep()) for _ in range(num_tasks)])
-            t2 = time.time()
-            self.assertGreater(t1 - t0, unit * (num_tasks - 1))
-            self.assertLess(t2 - t1, unit * 0.5 * num_tasks)
-
-        unit = 0.01
-        num_tasks = 50
-        asyncio.run(main())
-
     def test_get_file_info(self) -> None:
         text = "This is a test file."
-        test_file = Path("test_file.txt")
+        test_file = self.tmp_path / "test_file.txt"
         test_file.write_text(text)
 
         file_info = get_file_info(test_file)
@@ -539,10 +529,8 @@ class TestMisc(unittest.TestCase):
         self.assertEqual(file_info.sha, hashlib.sha256(text.encode()).hexdigest())
         self.assertEqual(file_info.st_size, len(text))
 
-        test_file.unlink()
-
     def test_check_sha_with_matching_hash(self) -> None:
-        path = Path("test_file.txt")
+        path = self.tmp_path / "matching.txt"
         path.write_text("This is a test file.")
         tgt_sha = hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -550,18 +538,14 @@ class TestMisc(unittest.TestCase):
 
         self.assertTrue(result)
 
-        path.unlink()
-
     def test_check_sha_with_non_matching_hash(self) -> None:
-        path = Path("test_file.txt")
+        path = self.tmp_path / "non_matching.txt"
         path.write_text("This is a test file.")
         tgt_sha = "0"
 
         result = check_sha_with(path, tgt_sha)
 
         self.assertFalse(result)
-
-        path.unlink()
 
     def test_to_set_with_set(self):
         inp = {1, 2, 3}
@@ -831,63 +815,127 @@ class TestMisc(unittest.TestCase):
         self.assertListEqual(nums, [1, 1, 1])
 
 
-class TestRetry(unittest.TestCase):
-    def setUp(self):
+@pytest.mark.anyio
+@pytest.mark.usefixtures("no_async_resource_leaks")
+async def test_offload() -> None:
+    caller_thread = threading.get_ident()
+
+    async def get_worker_thread() -> int:
+        return threading.get_ident()
+
+    worker_thread = await offload(get_worker_thread())
+    assert worker_thread != caller_thread
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="P0-01: offload waits for its worker when the caller is cancelled",
+)
+@pytest.mark.anyio
+@pytest.mark.usefixtures("no_async_resource_leaks")
+async def test_offload_cancellation_is_prompt() -> None:
+    unit = 0.2
+    started_at = time.monotonic()
+
+    async def sleep() -> None:
+        time.sleep(unit)
+
+    with anyio.move_on_after(0.01) as cancel_scope:
+        await offload(sleep())
+
+    assert cancel_scope.cancel_called
+    assert time.monotonic() - started_at < unit * 0.75
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("no_async_resource_leaks")
+class TestAsyncResourceProbe:
+    async def test_success(self) -> None:
+        await anyio.sleep(0)
+
+    async def test_exception(self) -> None:
+        async def fail() -> None:
+            raise RuntimeError("original async error")
+
+        with pytest.raises(RuntimeError, match="original async error"):
+            await fail()
+
+    async def test_cancellation(self) -> None:
+        cancelled = False
+
+        async def wait_until_cancelled() -> None:
+            nonlocal cancelled
+            try:
+                await anyio.sleep_forever()
+            finally:
+                cancelled = True
+
+        async with anyio.create_task_group() as task_group:
+            task_group.start_soon(wait_until_cancelled)
+            await anyio.sleep(0)
+            task_group.cancel_scope.cancel()
+
+        assert cancelled
+
+    async def test_timeout(self) -> None:
+        with pytest.raises(TimeoutError):
+            with anyio.fail_after(0.01):
+                await anyio.sleep_forever()
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("no_async_resource_leaks")
+class TestRetry:
+    def setup_method(self) -> None:
         self.counter = 0
 
-    async def async_fn(self):
+    async def async_fn(self) -> str:
         self.counter += 1
         if self.counter > 2:
             return "success"
         return "failure"
 
-    def health_check(self, response):
+    def health_check(self, response: str) -> bool:
         return response == "success"
 
-    def error_verbose(self, message):
+    def error_verbose(self, message: str) -> None:
         self.counter = -1
 
-    def test_retry_success_after_retries(self):
-        self.counter = 0
-        result = asyncio.run(retry(self.async_fn, 3, health_check=self.health_check))
-        self.assertEqual(result, "success")
-        self.assertEqual(self.counter, 3)
+    async def test_retry_success_after_retries(self) -> None:
+        result = await retry(self.async_fn, 3, health_check=self.health_check)
+        assert result == "success"
+        assert self.counter == 3
 
-    def test_retry_never_succeeds(self):
+    async def test_retry_never_succeeds(self) -> None:
+        with pytest.raises(ValueError):
+            await retry(self.async_fn, health_check=self.health_check)
+        assert self.counter == 1
         self.counter = 0
-        with self.assertRaises(ValueError):
-            asyncio.run(retry(self.async_fn, health_check=self.health_check))
-        self.assertEqual(self.counter, 1)
+        with pytest.raises(ValueError):
+            await retry(self.async_fn, 2, health_check=self.health_check)
+        assert self.counter == 2
         self.counter = 0
-        with self.assertRaises(ValueError):
-            asyncio.run(retry(self.async_fn, 2, health_check=self.health_check))
-        self.assertEqual(self.counter, 2)
-        self.counter = 0
-        with self.assertRaises(ValueError):
-            asyncio.run(
-                retry(
-                    self.async_fn,
-                    2,
-                    health_check=self.health_check,
-                    error_verbose_fn=self.error_verbose,
-                )
+        with pytest.raises(ValueError):
+            await retry(
+                self.async_fn,
+                2,
+                health_check=self.health_check,
+                error_verbose_fn=self.error_verbose,
             )
-        self.assertEqual(self.counter, -1)
+        assert self.counter == -1
 
-    def test_retry_raises_exception(self):
-        async def async_fn_raises_exception():
+    async def test_retry_raises_exception(self) -> None:
+        async def async_fn_raises_exception() -> None:
             raise Exception("test exception")
 
-        with self.assertRaises(Exception):
-            asyncio.run(retry(async_fn_raises_exception, num_retry=1))
+        with pytest.raises(ValueError, match="failed after 1 retries"):
+            await retry(async_fn_raises_exception, num_retry=1)
 
 
 class TestCompress(unittest.TestCase):
-    def setUp(self):
-        self.test_dir = tempfile.mkdtemp()
-
-    def tearDown(self):
-        shutil.rmtree(self.test_dir)
+    @pytest.fixture(autouse=True)
+    def _prepare_tmp_path(self, tmp_path: Path) -> None:
+        self.test_dir = tmp_path
 
     def test_compress_remove_original(self):
         test_dir = os.path.join(self.test_dir, "test_dir0")

@@ -1,14 +1,20 @@
+import pytest
 import unittest
 
 import numpy as np
 import core.learn as cflearn
 
 from typing import Optional
+from pathlib import Path
 from core.learn.schema import DataLoader
 from core.toolkit.types import np_dict_type
 
 
 class TestONNX(unittest.TestCase):
+    @pytest.fixture(autouse=True)
+    def _prepare_tmp_path(self, tmp_path: Path) -> None:
+        self.tmp_path = tmp_path
+
     def test_onnx(self) -> None:
         input_dim = 11
         output_dim = 7
@@ -30,10 +36,10 @@ class TestONNX(unittest.TestCase):
         model_inference = cflearn.Inference(model=model)
         model_outputs = model_inference.get_outputs(loader).forward_results
 
-        onnx_file = "test.onnx"
-        model.to_onnx(onnx_file, loader.get_input_sample())
+        onnx_file = self.tmp_path / "test.onnx"
+        model.to_onnx(str(onnx_file), loader.get_input_sample())
         model.to_onnx(
-            onnx_file,
+            str(onnx_file),
             loader.get_input_sample(),
             dynamic_axes=[0],
             simplify=False,
@@ -59,7 +65,7 @@ class TestONNX(unittest.TestCase):
             ) -> float:
                 return 0.12
 
-        onnx_inference = cflearn.Inference(onnx=onnx_file)
+        onnx_inference = cflearn.Inference(onnx=str(onnx_file))
         onnx_inference.get_outputs(loader, metrics=FooMetric(), return_labels=True)
         onnx_outputs = onnx_inference.get_outputs(loader).forward_results
 

@@ -1,15 +1,15 @@
-import shutil
-import tempfile
+import pytest
 import unittest
 
-from typing import Any, Type
+from typing import Any
+from typing import Type
 from pathlib import Path
 from zipfile import ZipFile
 from unittest.mock import Mock
-from core.toolkit.pipeline import IBlock
-from core.toolkit.pipeline import IPipeline
 from core.toolkit.pipeline import get_folder
 from core.toolkit.pipeline import check_requirement
+from core.toolkit.pipeline import IBlock
+from core.toolkit.pipeline import IPipeline
 
 
 class TestPipeline(unittest.TestCase):
@@ -48,17 +48,16 @@ class TestPipeline(unittest.TestCase):
 
 
 class TestGetFolder(unittest.TestCase):
-    def setUp(self):
-        self.test_dir = Path(tempfile.mkdtemp())
+    @pytest.fixture(autouse=True)
+    def _prepare_folder(self, tmp_path: Path) -> None:
+        self.test_dir = tmp_path / "source"
+        self.test_dir.mkdir()
         self.test_file = self.test_dir / "test.txt"
         with self.test_file.open("w") as f:
             f.write("Hello, World!")
         self.zip_file = self.test_dir / "test.zip"
         with ZipFile(self.zip_file, "w") as zipf:
             zipf.write(self.test_file, "test.txt")
-
-    def tearDown(self):
-        shutil.rmtree(self.test_dir)
 
     def test_existing_folder(self):
         with get_folder(self.test_dir) as folder:

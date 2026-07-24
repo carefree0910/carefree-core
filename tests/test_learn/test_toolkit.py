@@ -1,6 +1,8 @@
+import pytest
 import unittest
 
 from core.learn.toolkit import *
+from pathlib import Path
 from unittest.mock import patch
 from unittest.mock import Mock
 from safetensors.torch import save_file
@@ -8,6 +10,10 @@ from core.toolkit.misc import random_hash
 
 
 class TestToolkit(unittest.TestCase):
+    @pytest.fixture(autouse=True)
+    def _prepare_tmp_path(self, tmp_path: Path) -> None:
+        self.tmp_path = tmp_path
+
     def test_new_seed(self) -> None:
         for _ in range(10):
             seed = new_seed()
@@ -104,7 +110,7 @@ class TestToolkit(unittest.TestCase):
         plt.close()
 
     def test_get_tensors_from_safetensors(self) -> None:
-        path = Path("example.safetensors")
+        path = self.tmp_path / "example.safetensors"
         expected_tensors = {
             "tensor1": torch.tensor([1, 2, 3]),
             "tensor2": torch.tensor([4, 5, 6]),
@@ -115,10 +121,9 @@ class TestToolkit(unittest.TestCase):
 
         self.assertIsInstance(tensors, dict)
         torch.testing.assert_close(tensors, expected_tensors)
-        path.unlink()
 
     def test_get_tensors_from_pt(self) -> None:
-        file_path = "example.pt"
+        file_path = self.tmp_path / "example.pt"
         expected_tensors = {
             "tensor1": torch.tensor([1, 2, 3]),
             "tensor2": torch.tensor([4, 5, 6]),
@@ -129,7 +134,6 @@ class TestToolkit(unittest.TestCase):
 
         self.assertIsInstance(tensors, dict)
         torch.testing.assert_close(tensors, expected_tensors)
-        os.remove(file_path)
 
     def test_get_tensors_from_state_dict(self) -> None:
         state_dict = {
@@ -472,6 +476,10 @@ class TestInitializations(unittest.TestCase):
 
 
 class TestWeightsStrategy(unittest.TestCase):
+    @pytest.fixture(autouse=True)
+    def _prepare_tmp_path(self, tmp_path: Path) -> None:
+        self.tmp_path = tmp_path
+
     def _test_decay(self, num: int, decay: str, expected: np.ndarray) -> None:
         ws = WeightsStrategy(decay)
         weights = ws(num)
@@ -506,15 +514,17 @@ class TestWeightsStrategy(unittest.TestCase):
 
     def test_decay_visualize(self) -> None:
         with self.assertRaises(RuntimeError):
-            WeightsStrategy(None).visualize()
+            WeightsStrategy(None).visualize(str(self.tmp_path / "no_strategy.png"))
         ws = WeightsStrategy("linear_decay")
+        export_path = self.tmp_path / "weights_strategy.png"
         try:
             import matplotlib.pyplot
 
-            ws.visualize()
+            ws.visualize(str(export_path))
+            self.assertTrue(export_path.is_file())
         except:
             with self.assertRaises(RuntimeError):
-                ws.visualize()
+                ws.visualize(str(export_path))
 
 
 class TestWarnOnce(unittest.TestCase):

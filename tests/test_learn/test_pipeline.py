@@ -1,6 +1,6 @@
 import os
 import torch
-import tempfile
+import pytest
 import unittest
 
 import numpy as np
@@ -12,18 +12,26 @@ from pathlib import Path
 from accelerate import Accelerator
 from unittest.mock import patch
 from unittest.mock import Mock
+from core.learn.schema import losses_type
 from core.toolkit.misc import random_hash
 from core.toolkit.misc import get_latest_workspace
-from core.learn.schema import losses_type
 from core.learn.pipeline.blocks.basic import StateInfo
 from core.learn.pipeline.blocks.basic import OptimizerSettings
 
 
 class TestPipeline(unittest.TestCase):
+    @pytest.fixture(autouse=True)
+    def _prepare_tmp_path(self, tmp_path: Path) -> None:
+        self.tmp_path = tmp_path
+
+    def _workspace(self, name: str) -> str:
+        return str(self.tmp_path / name)
+
     def test_basics(self):
         def build_pipeline(in_dim, out_dim):
             data, *_ = cflearn.testing.linear_data(dim=in_dim, out_dim=out_dim)
             config = cflearn.Config(
+                workspace=self._workspace("basics"),
                 module_name="fcnn",
                 module_config=dict(input_dim=in_dim, output_dim=out_dim),
                 loss_name="mse",
@@ -82,6 +90,7 @@ class TestPipeline(unittest.TestCase):
     def test_load_training(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()
         config = cflearn.Config(
+            workspace=self._workspace("load_training"),
             module_name="fcnn",
             module_config=dict(input_dim=in_dim, output_dim=out_dim),
             loss_name="mse",
@@ -95,6 +104,7 @@ class TestPipeline(unittest.TestCase):
     def test_serializer(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()
         config = cflearn.Config(
+            workspace=self._workspace("serializer"),
             module_name="linear",
             module_config=dict(input_dim=in_dim, output_dim=out_dim),
             loss_name="mse",
@@ -104,53 +114,66 @@ class TestPipeline(unittest.TestCase):
         x, y = data.bundle.x_train, data.bundle.y_train
         test_loader = data.build_loader(x, y)
         r0 = p0.predict(test_loader)[cflearn.PREDICTIONS_KEY]
-        with tempfile.TemporaryDirectory() as tempdir:
-            cflearn.PipelineSerializer.save(p0, tempdir, compress=True)
-            p1 = cflearn.PipelineSerializer.load_inference(tempdir)
-            r1 = p1.predict(test_loader)[cflearn.PREDICTIONS_KEY]
-            np.testing.assert_allclose(r0, r1)
+        save_workspace = self.tmp_path / "serialized"
+        save_workspace.mkdir()
+        cflearn.PipelineSerializer.save(p0, save_workspace, compress=True)
+        p1 = cflearn.PipelineSerializer.load_inference(save_workspace)
+        r1 = p1.predict(test_loader)[cflearn.PREDICTIONS_KEY]
+        np.testing.assert_allclose(r0, r1)
         workspace = p0.config.workspace
         p1 = cflearn.PipelineSerializer.pack_and_load_inference(workspace)
         r1 = p1.predict(test_loader)[cflearn.PREDICTIONS_KEY]
         np.testing.assert_allclose(r0, r1)
         for pt in [cflearn.PackType.TRAINING, cflearn.PackType.EVALUATION]:
-            with tempfile.TemporaryDirectory() as tempdir:
-                cflearn.PipelineSerializer.pack(workspace, tempdir, pack_type=pt)
-        with tempfile.TemporaryDirectory() as tempdir:
-            with self.assertRaises(ValueError):
-                cflearn.PipelineSerializer.pack(workspace, tempdir, pack_type="bla")
-        op = "test.onnx"
+            export_folder = self.tmp_path / f"pack_{pt.value}"
+            export_folder.mkdir()
+            cflearn.PipelineSerializer.pack(workspace, export_folder, pack_type=pt)
+        invalid_pack_folder = self.tmp_path / "invalid_pack"
+        invalid_pack_folder.mkdir()
         with self.assertRaises(ValueError):
-            cflearn.PipelineSerializer.pack_onnx(workspace, op)
-        cflearn.PipelineSerializer.pack_onnx(workspace, op, loader_sample=test_loader)
-        oi = cflearn.Inference(onnx=op)
+            cflearn.PipelineSerializer.pack(
+                workspace,
+                invalid_pack_folder,
+                pack_type="bla",
+            )
+        op = self.tmp_path / "test.onnx"
+        with self.assertRaises(ValueError):
+            cflearn.PipelineSerializer.pack_onnx(workspace, str(op))
+        cflearn.PipelineSerializer.pack_onnx(
+            workspace,
+            str(op),
+            loader_sample=test_loader,
+        )
+        oi = cflearn.Inference(onnx=str(op))
         ro = oi.get_outputs(test_loader).forward_results[cflearn.PREDICTIONS_KEY]
         np.testing.assert_array_almost_equal(r0, ro)
-        scripted_path = "test.pt"
-        cflearn.PipelineSerializer.pack_scripted(workspace, scripted_path)
+        scripted_path = self.tmp_path / "test.pt"
+        cflearn.PipelineSerializer.pack_scripted(workspace, str(scripted_path))
         p1 = cflearn.PipelineSerializer.pack_and_load_inference(workspace)
         p1.build_model.model.m = torch.jit.load(scripted_path)
         self.assertIsInstance(p1.build_model.model.m, torch.jit.ScriptModule)
         r1 = p1.predict(test_loader)[cflearn.PREDICTIONS_KEY]
         np.testing.assert_allclose(r0, r1)
-        with tempfile.TemporaryDirectory() as tempdir:
-            cflearn.PipelineSerializer.save(p1, tempdir, compress=True)
-            cflearn.PipelineSerializer.update(p1, tempdir)
-            p_folder = os.path.join(tempdir, cflearn.PipelineSerializer.pipeline_folder)
-            cflearn.PipelineSerializer._load(p_folder)
-            with self.assertRaises(ValueError):
-                m_block = Mock()
-                m_block.__identifier__ = "foo"
-                cflearn.PipelineSerializer._load(p_folder, focuses=[m_block])
-            p2 = cflearn.PipelineSerializer.load_inference(tempdir)
-            r2 = p2.predict(test_loader)[cflearn.PREDICTIONS_KEY]
-            np.testing.assert_allclose(r1, r2)
+        update_workspace = self.tmp_path / "update"
+        update_workspace.mkdir()
+        cflearn.PipelineSerializer.save(p1, update_workspace, compress=True)
+        cflearn.PipelineSerializer.update(p1, update_workspace)
+        p_folder = update_workspace / cflearn.PipelineSerializer.pipeline_folder
+        cflearn.PipelineSerializer._load(p_folder)
         with self.assertRaises(ValueError):
-            cflearn.PipelineSerializer.update(p1, tempdir)
+            m_block = Mock()
+            m_block.__identifier__ = "foo"
+            cflearn.PipelineSerializer._load(p_folder, focuses=[m_block])
+        p2 = cflearn.PipelineSerializer.load_inference(update_workspace)
+        r2 = p2.predict(test_loader)[cflearn.PREDICTIONS_KEY]
+        np.testing.assert_allclose(r1, r2)
+        with self.assertRaises(ValueError):
+            cflearn.PipelineSerializer.update(p1, self.tmp_path / "missing")
 
     def test_fuse(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()
         config = cflearn.Config(
+            workspace=self._workspace("fuse"),
             module_name="linear",
             module_config=dict(input_dim=in_dim, output_dim=out_dim),
             loss_name="mse",
@@ -189,6 +212,7 @@ class TestPipeline(unittest.TestCase):
 
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()
         config = cflearn.Config(
+            workspace=self._workspace("fuse_ema"),
             module_name="fcnn_ema",
             module_config=dict(input_dim=in_dim, output_dim=out_dim),
             loss_name="mse",
@@ -209,6 +233,7 @@ class TestPipeline(unittest.TestCase):
         self_ensemble = cflearn.PipelineSerializer.self_ensemble_inference
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()
         config = cflearn.Config(
+            workspace=self._workspace("self_ensemble"),
             module_name="linear",
             module_config=dict(input_dim=in_dim, output_dim=out_dim),
             loss_name="mse",
@@ -258,7 +283,7 @@ class TestPipeline(unittest.TestCase):
 
     def test_resume(self):
         cflearn.seed_everything(142857)
-        resume_workspace = "_resume"
+        resume_workspace = self._workspace("_resume")
         data, in_dim, out_dim, _ = cflearn.testing.linear_data(use_validation=True)
         config = cflearn.Config(
             workspace=resume_workspace,
@@ -278,12 +303,19 @@ class TestPipeline(unittest.TestCase):
 
 
 class TestBlocks(unittest.TestCase):
+    @pytest.fixture(autouse=True)
+    def _prepare_tmp_path(self, tmp_path: Path) -> None:
+        self.tmp_path = tmp_path
+
+    def _workspace(self, name: str) -> str:
+        return str(self.tmp_path / name)
+
     def test_basics(self):
         data, *_ = cflearn.testing.linear_data()
-        config = cflearn.Config()
+        config = cflearn.Config(workspace=self._workspace("basics"))
         block = cflearn.PrepareWorkspaceBlock()
         block2 = cflearn.SerializeDataBlock()
-        block.training_workspace = "_foo"
+        block.training_workspace = self._workspace("_foo")
         mock_ddp_info = Mock()
         mock_ddp_info.local_rank = 1
         mock_ddp_info.world_size = 2
@@ -296,10 +328,10 @@ class TestBlocks(unittest.TestCase):
                 mock_info.return_value = mock_ddp_info
                 self.assertFalse(block.is_local_rank_0)
                 block.build(config)
-                block2.save_extra("")
+                block2.save_extra(self._workspace("data"))
         block = cflearn.ExtractStateInfoBlock()
         block.data = None
-        self.assertFalse(block.try_load("_bar"))
+        self.assertFalse(block.try_load(self._workspace("_bar")))
         with self.assertRaises(ValueError):
             block.from_scratch(config)
         with patch("core.learn.pipeline.blocks.basic.get_ddp_info") as mock_info:
@@ -327,6 +359,7 @@ class TestBlocks(unittest.TestCase):
     def test_set_default(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()
         config = cflearn.Config(
+            workspace=self._workspace("set_default"),
             module_name="linear",
             module_config=dict(input_dim=in_dim, output_dim=out_dim),
         )
@@ -351,7 +384,8 @@ class TestBlocks(unittest.TestCase):
         p = cflearn.TrainingPipeline.init(config).fit(data)
         self.assertIn("linear", p.config.callback_names)
 
-        cflearn.set_environ_workspace("_foo")
+        environ_workspace = self._workspace("_foo")
+        cflearn.set_environ_workspace(environ_workspace)
         p = cflearn.TrainingPipeline.init(config).fit(data)
         self.assertEqual(Path(p.config.workspace).parent.name, "_foo")
         cflearn.unset_environ_workspace()
@@ -368,6 +402,7 @@ class TestBlocks(unittest.TestCase):
                 return super().building_blocks[:-1]
 
         config = cflearn.Config(
+            workspace=self._workspace("foo_model"),
             model=FooModel.__identifier__,
             module_name="linear",
             module_config=dict(input_dim=in_dim, output_dim=out_dim),
@@ -378,6 +413,7 @@ class TestBlocks(unittest.TestCase):
     def test_build_metrics(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()
         config = cflearn.Config(
+            workspace=self._workspace("build_metrics"),
             module_name="linear",
             module_config=dict(input_dim=in_dim, output_dim=out_dim),
             loss_name="mse",
@@ -399,6 +435,7 @@ class TestBlocks(unittest.TestCase):
     def test_build_optimizers(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()
         config = cflearn.Config(
+            workspace=self._workspace("build_optimizers"),
             module_name="linear",
             module_config=dict(input_dim=in_dim, output_dim=out_dim),
             optimizer_config={},
@@ -428,6 +465,7 @@ class TestBlocks(unittest.TestCase):
     def test_training(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data(6)
         config = cflearn.Config(
+            workspace=self._workspace("training"),
             module_name="linear",
             module_config=dict(input_dim=in_dim, output_dim=out_dim),
             loss_name="mse",

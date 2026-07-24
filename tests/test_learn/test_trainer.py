@@ -1,19 +1,19 @@
-import os
-import tempfile
+import pytest
 import unittest
 
 import core.learn as cflearn
 
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from unittest.mock import Mock
 
 
 class TestTrainer(unittest.TestCase):
-    def setUp(self) -> None:
+    @pytest.fixture(autouse=True)
+    def _prepare_training_case(self, tmp_path: Path) -> None:
         data, in_dim, out_dim, _ = cflearn.testing.linear_data(4, use_validation=True)
         config = cflearn.Config(
+            workspace=str(tmp_path / "workspace"),
             module_name="linear",
             module_config=dict(input_dim=in_dim, output_dim=out_dim),
             scheduler_name="warmup",
@@ -24,20 +24,21 @@ class TestTrainer(unittest.TestCase):
             state_config=dict(max_snapshot_file=5),
             tqdm_settings=cflearn.TqdmSettings(),
         )
+        self.tmp_path = tmp_path
         self.data = data
         self.config = config.to_debug()
 
     def test_functions(self):
-        with TemporaryDirectory() as tempdir:
-            workspace = Path(tempdir)
-            metrics_path = workspace / cflearn.Trainer.metrics_log_file
-            self.assertEqual(cflearn.trainer.get_metrics_path(workspace), metrics_path)
-            self.assertFalse(cflearn.trainer.is_started_workspace(workspace))
-            self.assertFalse(cflearn.trainer.is_finished_workspace(workspace))
-            metrics_path.touch()
-            self.assertTrue(cflearn.trainer.is_started_workspace(workspace))
-            self.assertFalse(cflearn.trainer.is_finished_workspace(workspace))
-            self.assertTrue(cflearn.trainer.is_crashed_workspace(workspace))
+        workspace = self.tmp_path / "functions"
+        workspace.mkdir()
+        metrics_path = workspace / cflearn.Trainer.metrics_log_file
+        self.assertEqual(cflearn.trainer.get_metrics_path(workspace), metrics_path)
+        self.assertFalse(cflearn.trainer.is_started_workspace(workspace))
+        self.assertFalse(cflearn.trainer.is_finished_workspace(workspace))
+        metrics_path.touch()
+        self.assertTrue(cflearn.trainer.is_started_workspace(workspace))
+        self.assertFalse(cflearn.trainer.is_finished_workspace(workspace))
+        self.assertTrue(cflearn.trainer.is_crashed_workspace(workspace))
 
     def test_training(self):
         config = self.config.copy()
@@ -91,26 +92,26 @@ class TestTrainer(unittest.TestCase):
     def test_finetune(self):
         config = self.config.copy()
         m = cflearn.IModel.from_config(config)
-        with tempfile.TemporaryDirectory() as tempdir:
-            path = os.path.join(tempdir, "model.pt")
-            m.save(path)
-            config.finetune_config = dict(pretrained_ckpt=path)
+        path = self.tmp_path / "model.pt"
+        m.save(str(path))
+        config.finetune_config = dict(pretrained_ckpt=str(path))
+        cflearn.TrainingPipeline.init(config).fit(self.data)
+        pattern = r".*\.weight"
+        config.finetune_config["freeze"] = pattern
+        cflearn.TrainingPipeline.init(config).fit(self.data)
+        config.finetune_config["freeze_except"] = pattern
+        with self.assertRaises(ValueError):
             cflearn.TrainingPipeline.init(config).fit(self.data)
-            pattern = r".*\.weight"
-            config.finetune_config["freeze"] = pattern
+        config.finetune_config.pop("freeze")
+        cflearn.TrainingPipeline.init(config).fit(self.data)
+        config.finetune_config = {}
+        with self.assertRaises(ValueError):
             cflearn.TrainingPipeline.init(config).fit(self.data)
-            config.finetune_config["freeze_except"] = pattern
-            with self.assertRaises(ValueError):
-                cflearn.TrainingPipeline.init(config).fit(self.data)
-            config.finetune_config.pop("freeze")
-            cflearn.TrainingPipeline.init(config).fit(self.data)
-            config.finetune_config = {}
-            with self.assertRaises(ValueError):
-                cflearn.TrainingPipeline.init(config).fit(self.data)
 
     def test_monitor(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data(4)
         config = cflearn.Config(
+            workspace=str(self.tmp_path / "monitor"),
             module_name="linear",
             module_config=dict(input_dim=in_dim, output_dim=out_dim),
             loss_name="mse",

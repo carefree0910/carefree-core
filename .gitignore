@@ -2,7 +2,9 @@
 .mypy_cache/*
 .pytest_cache/*
 .artifacts/*
+/plans*.md
 .coverage
+.coverage.*
 coverage.xml
 .DS_Store
 *.pyc

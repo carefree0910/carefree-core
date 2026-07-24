@@ -1,11 +1,11 @@
 import torch
-import tempfile
+import pytest
 import unittest
 
 import numpy as np
 
-from pathlib import Path
 from core.toolkit.array import *
+from pathlib import Path
 
 
 class TestArray(unittest.TestCase):
@@ -417,14 +417,11 @@ class TestArray(unittest.TestCase):
 
 
 class TestNpSafeSerializer(unittest.TestCase):
-    def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.folder = Path(self.temp_dir.name)
+    @pytest.fixture(autouse=True)
+    def _prepare_folder(self, tmp_path: Path) -> None:
+        self.folder = tmp_path
         self.data = np.array([1, 2, 3, 4, 5], dtype="S7")
         self.rawd = dict(dtype=self.data.dtype)
-
-    def tearDown(self):
-        self.temp_dir.cleanup()
 
     def test_save(self):
         NpSafeSerializer.save(self.folder, self.data)
@@ -447,7 +444,10 @@ class TestNpSafeSerializer(unittest.TestCase):
         loaded_data = NpSafeSerializer.load_raw(self.folder, **rawd)
         np.testing.assert_array_equal(loaded_data, self.data)
         loaded_data = NpSafeSerializer.load_raw(self.folder, **rawd, mmap_mode="r")
-        np.testing.assert_array_equal(loaded_data, self.data)
+        try:
+            np.testing.assert_array_equal(loaded_data, self.data)
+        finally:
+            loaded_data._mmap.close()
 
     def test_try_load(self):
         NpSafeSerializer.save(self.folder, self.data)
