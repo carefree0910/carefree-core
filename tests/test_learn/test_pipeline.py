@@ -422,7 +422,7 @@ class TestBlocks(unittest.TestCase):
                 return self.linear(net)
 
         config.module_name = "custom_linear"
-        config.optimizer_settings["m.linear"] = config.optimizer_settings.pop("all")
+        config.optimizer_settings["linear"] = config.optimizer_settings.pop("all")
         cflearn.TrainingPipeline.init(config).fit(data)
 
     def test_training(self):
@@ -456,7 +456,7 @@ class TestBlocks(unittest.TestCase):
 
         config.module_name = "$test_linear"
         config.module_config = dict(in_features=in_dim, out_features=out_dim)
-        config.optimizer_settings = {"m.bar_params": None}
+        config.optimizer_settings = {"bar_params": None}
         cflearn.TrainingPipeline.init(config).fit(data)
 
         config.scheduler_name = "warmup"
