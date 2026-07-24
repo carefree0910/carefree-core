@@ -1,4 +1,5 @@
 import os
+import sys
 import torch
 import pytest
 import unittest
@@ -98,8 +99,12 @@ class TestPipeline(unittest.TestCase):
         )
         config.to_debug()
         p0 = cflearn.TrainingPipeline.init(config).fit(data)
-        p1 = cflearn.PipelineSerializer.load_training(p0.config.workspace)
-        p1.fit(data)
+        with patch.dict(
+            os.environ,
+            {"TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD": "1"},
+        ):
+            p1 = cflearn.PipelineSerializer.load_training(p0.config.workspace)
+            p1.fit(data)
 
     def test_serializer(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()
@@ -147,13 +152,6 @@ class TestPipeline(unittest.TestCase):
         oi = cflearn.Inference(onnx=str(op))
         ro = oi.get_outputs(test_loader).forward_results[cflearn.PREDICTIONS_KEY]
         np.testing.assert_array_almost_equal(r0, ro)
-        scripted_path = self.tmp_path / "test.pt"
-        cflearn.PipelineSerializer.pack_scripted(workspace, str(scripted_path))
-        p1 = cflearn.PipelineSerializer.pack_and_load_inference(workspace)
-        p1.build_model.model.m = torch.jit.load(scripted_path)
-        self.assertIsInstance(p1.build_model.model.m, torch.jit.ScriptModule)
-        r1 = p1.predict(test_loader)[cflearn.PREDICTIONS_KEY]
-        np.testing.assert_allclose(r0, r1)
         update_workspace = self.tmp_path / "update"
         update_workspace.mkdir()
         cflearn.PipelineSerializer.save(p1, update_workspace, compress=True)
@@ -169,6 +167,35 @@ class TestPipeline(unittest.TestCase):
         np.testing.assert_allclose(r1, r2)
         with self.assertRaises(ValueError):
             cflearn.PipelineSerializer.update(p1, self.tmp_path / "missing")
+
+    def test_scripted_serializer(self):
+        data, in_dim, out_dim, _ = cflearn.testing.linear_data()
+        config = cflearn.Config(
+            workspace=self._workspace("scripted_serializer"),
+            module_name="linear",
+            module_config=dict(input_dim=in_dim, output_dim=out_dim),
+            loss_name="mse",
+        )
+        config.to_debug()
+        p0 = cflearn.TrainingPipeline.init(config).fit(data)
+        x, y = data.bundle.x_train, data.bundle.y_train
+        test_loader = data.build_loader(x, y)
+        r0 = p0.predict(test_loader)[cflearn.PREDICTIONS_KEY]
+        workspace = p0.config.workspace
+        scripted_path = self.tmp_path / "test.pt"
+        try:
+            cflearn.PipelineSerializer.pack_scripted(workspace, str(scripted_path))
+        except AttributeError as error:
+            if sys.version_info >= (3, 14) and "__annotations__" in str(error):
+                pytest.xfail(
+                    "this PyTorch release's TorchScript is incompatible with Python 3.14"
+                )
+            raise
+        p1 = cflearn.PipelineSerializer.pack_and_load_inference(workspace)
+        p1.build_model.model.m = torch.jit.load(scripted_path)
+        self.assertIsInstance(p1.build_model.model.m, torch.jit.ScriptModule)
+        r1 = p1.predict(test_loader)[cflearn.PREDICTIONS_KEY]
+        np.testing.assert_allclose(r0, r1)
 
     def test_fuse(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()

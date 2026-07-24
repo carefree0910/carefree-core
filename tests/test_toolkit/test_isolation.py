@@ -10,7 +10,6 @@ import core.toolkit.pipeline as toolkit_pipeline
 
 from pathlib import Path
 
-
 _ENVIRON = os.environ
 _ENVIRON_SENTINEL = os.environ.get("CFCORE_FIXTURE_SENTINEL")
 _OPT = parameters.OPT

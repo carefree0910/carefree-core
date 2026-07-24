@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.8, 3.9, "3.10"]
+        python-version: ["3.8", "3.14"]
         os: [ubuntu-latest]
 
     steps:
@@ -23,7 +23,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
+      - name: Install constrained dependencies
+        if: matrix.python-version == '3.8'
         run: |
           python -m pip install --upgrade "pip==24.2"
           python -m pip install \
@@ -33,6 +34,15 @@ jobs:
           python -m pip install \
             -c requirements/constraints-ci.txt \
             -e ".[test]"
+          python -m pip check
+      - name: Install Python 3.14 dependencies
+        if: matrix.python-version == '3.14'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            --index-url https://download.pytorch.org/whl/cpu \
+            torch torchvision
+          python -m pip install -e ".[test]"
           python -m pip check
       - name: Test with pytest
         run: |
@@ -44,13 +54,18 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.14"]
 
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
-      - name: Install dependencies and packaging tools
+          python-version: ${{ matrix.python-version }}
+      - name: Install constrained dependencies and packaging tools
+        if: matrix.python-version == '3.8'
         run: |
           python -m pip install --upgrade "pip==24.2"
           python -m pip install \
@@ -64,6 +79,15 @@ jobs:
             -c requirements/constraints-ci.txt \
             build setuptools twine
           python -m pip check
+      - name: Install Python 3.14 dependencies and packaging tools
+        if: matrix.python-version == '3.14'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            --index-url https://download.pytorch.org/whl/cpu \
+            torch torchvision
+          python -m pip install -e ".[test]" build setuptools twine
+          python -m pip check
       - name: Build and check distributions
         run: |
           python -m build --sdist --wheel
@@ -76,6 +100,57 @@ jobs:
       - name: Upload distributions
         uses: actions/upload-artifact@v4
         with:
-          name: carefree-core-distributions
+          name: carefree-core-distributions-py${{ matrix.python-version }}
           path: dist/*
           if-no-files-found: error
+
+  benchmark-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.14"]
+    env:
+      CUDA_VISIBLE_DEVICES: ""
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install constrained dependencies
+        if: matrix.python-version == '3.8'
+        run: |
+          python -m pip install --upgrade "pip==24.2"
+          python -m pip install \
+            --extra-index-url https://download.pytorch.org/whl/cpu \
+            -c requirements/constraints-ci.txt \
+            torch torchvision
+          python -m pip install \
+            -c requirements/constraints-ci.txt \
+            -e ".[benchmark]"
+          python -m pip check
+      - name: Install Python 3.14 dependencies
+        if: matrix.python-version == '3.14'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            --index-url https://download.pytorch.org/whl/cpu \
+            torch torchvision
+          python -m pip install -e ".[benchmark]"
+          python -m pip check
+      - name: Run benchmark smoke
+        run: python -m benchmarks.run --profile smoke --output ".artifacts/benchmarks/smoke-py${{ matrix.python-version }}.json" --validate
+      - name: Upload benchmark smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: carefree-core-benchmark-smoke-py${{ matrix.python-version }}
+          path: .artifacts/benchmarks/**
+          if-no-files-found: warn
+          include-hidden-files: true

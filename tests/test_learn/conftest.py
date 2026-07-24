@@ -17,7 +17,6 @@ from typing import List
 from typing import Tuple
 from pathlib import Path
 
-
 RegistryState = Tuple[Any, str, Dict[str, Any], Dict[str, Any]]
 OwnerState = Tuple[Any, str, Dict[str, Any]]
 

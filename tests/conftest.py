@@ -18,7 +18,6 @@ from typing import Callable
 from typing import Optional
 from pydantic import BaseModel
 
-
 _ORIGINAL_ENVIRON = os.environ
 _OPT = parameters.OPT
 _PIPELINE_REGISTRIES = [

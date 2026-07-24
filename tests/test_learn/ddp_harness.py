@@ -13,7 +13,6 @@ from typing import Optional
 from pathlib import Path
 from dataclasses import dataclass
 
-
 _DISTRIBUTED_ENV_KEYS = (
     "GROUP_RANK",
     "LOCAL_RANK",

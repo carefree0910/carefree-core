@@ -83,8 +83,14 @@ python -m pytest -v tests --ignore=tests/test_flow --ignore=tests/test_toolkit/t
 ```
 
 Flow and tests that make external network calls are intentionally outside the
-active test command above. To verify all supported packaging entry points on
-the supported Linux runtime:
+active test command above. The committed CI constraints reproduce the Python
+3.8 dependency set, including Accelerate 1.0.1, the newest release supporting
+Python 3.8. The Python 3.14 compatibility lane uses current Python 3.14
+PyTorch/Torchvision wheels and Accelerate 1.14.0; its exact environment is still
+visible in the GitHub Actions installation log. Tests, static checks, package
+builds, and benchmark smoke checks all run on both Python 3.8 and Python 3.14.
+
+To verify all supported packaging entry points on the supported Linux runtime:
 
 ```bash
 python -m build

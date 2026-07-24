@@ -5,18 +5,23 @@ Meta framework for Deep Learning frameworks with [PyTorch](https://pytorch.org/)
 ### Supported runtime
 
 The package metadata allows installation on Python 3.8 or newer. The combinations
-actively exercised by CI are narrower:
+covered by the full runtime-test job are narrower:
 
 | Platform | Python | PyTorch | Torchvision | Accelerate |
 | --- | --- | --- | --- | --- |
-| Linux | 3.8, 3.9, 3.10 | 2.3.1 | 0.18.1 | 0.34.2 |
+| Linux | 3.8 | 2.3.1 | 0.18.1 | 1.0.1 |
+| Linux | 3.14 | current compatible CPU wheel | matching wheel | 1.14.0 |
 
-Other Python and operating-system combinations are installable on a best-effort
-basis, but are not part of the guaranteed matrix yet. PyTorch is deliberately not
-declared as a direct project dependency, but Accelerate may still pull in a
-default PyTorch wheel transitively. Preinstall the tested PyTorch/Torchvision pair
-with the [official selector](https://pytorch.org/get-started/locally/) so the
-wheel matches the target CPU/CUDA environment.
+The Python 3.8 row is reproduced by the committed constraints and uses the
+newest Accelerate release that supports Python 3.8. Python 3.14 resolves current
+compatible PyTorch/Torchvision wheels and uses the current Accelerate release.
+Intermediate Python versions and other operating-system combinations are
+installable on a best-effort basis, but are not part of the guaranteed
+runtime-test matrix. PyTorch is deliberately not declared as a direct project
+dependency, but Accelerate may still pull in a default PyTorch wheel transitively.
+Preinstall the appropriate PyTorch/Torchvision pair with the
+[official selector](https://pytorch.org/get-started/locally/) so the wheel
+matches the target CPU/CUDA environment.
 
 ### Standard installation
 
@@ -37,6 +42,10 @@ python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -c 
 python -m pip install -c requirements/constraints-ci.txt -e ".[dev]"
 python -m pip check
 ```
+
+The Python 3.14 CI lane instead installs current CPU PyTorch/Torchvision wheels,
+Accelerate 1.14.0 through the project dependency marker, and `.[test]` without
+the Python 3.8 constraints.
 
 ### Copy-in installation
 

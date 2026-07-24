@@ -10,7 +10,6 @@ import core.learn.pipeline.common as learn_pipeline
 from typing import Any
 from typing import Dict
 
-
 _REGISTRIES = [
     (learn_schema, "data_dict", learn_schema.data_dict),
     (learn_schema, "data_configs", learn_schema.data_configs),

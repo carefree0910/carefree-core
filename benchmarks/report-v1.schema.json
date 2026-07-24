@@ -1,0 +1,528 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://carefree-core.local/schemas/benchmark-report-v1.json",
+  "title": "carefree-core benchmark report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "created_at_utc",
+    "source",
+    "environment",
+    "configuration",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "cfcore-benchmark-report/v1"
+    },
+    "created_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "environment": {
+      "$ref": "#/$defs/environment"
+    },
+    "configuration": {
+      "$ref": "#/$defs/configuration"
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/case"
+      }
+    }
+  },
+  "$defs": {
+    "nullableString": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "nullableInteger": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "git_commit",
+        "dirty",
+        "constraints_path",
+        "constraints_sha256",
+        "benchmark_suite_sha256"
+      ],
+      "properties": {
+        "git_commit": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "dirty": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "constraints_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "constraints_sha256": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "benchmark_suite_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "python",
+        "operating_system",
+        "cpu",
+        "dependencies",
+        "installed_distributions_sha256"
+      ],
+      "properties": {
+        "python": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "implementation",
+            "version",
+            "executable"
+          ],
+          "properties": {
+            "implementation": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "executable": {
+              "type": "string"
+            }
+          }
+        },
+        "operating_system": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "system",
+            "release",
+            "kernel",
+            "architecture"
+          ],
+          "properties": {
+            "system": {
+              "type": "string"
+            },
+            "release": {
+              "type": "string"
+            },
+            "kernel": {
+              "type": "string"
+            },
+            "architecture": {
+              "type": "string"
+            }
+          }
+        },
+        "cpu": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "model",
+            "physical_count",
+            "logical_count",
+            "affinity_count",
+            "total_ram_bytes"
+          ],
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "physical_count": {
+              "$ref": "#/$defs/nullableInteger"
+            },
+            "logical_count": {
+              "$ref": "#/$defs/nullableInteger"
+            },
+            "affinity_count": {
+              "$ref": "#/$defs/nullableInteger"
+            },
+            "total_ram_bytes": {
+              "$ref": "#/$defs/nullableInteger"
+            }
+          }
+        },
+        "dependencies": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "torch",
+            "accelerate",
+            "numpy",
+            "psutil"
+          ],
+          "properties": {
+            "torch": {
+              "$ref": "#/$defs/nullableString"
+            },
+            "accelerate": {
+              "$ref": "#/$defs/nullableString"
+            },
+            "numpy": {
+              "$ref": "#/$defs/nullableString"
+            },
+            "psutil": {
+              "$ref": "#/$defs/nullableString"
+            }
+          }
+        },
+        "installed_distributions_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "seed",
+        "repeats",
+        "worker_timeout_seconds",
+        "suite_timeout_seconds",
+        "process_model",
+        "statistics_algorithm",
+        "timing_clock",
+        "rss_scope",
+        "torch_cpu_memory_measurement",
+        "cuda_policy",
+        "matplotlib_cache",
+        "matplotlib_cache_policy",
+        "thread_environment"
+      ],
+      "properties": {
+        "profile": {
+          "enum": [
+            "smoke",
+            "baseline"
+          ]
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "repeats": {
+          "type": "integer",
+          "minimum": 7
+        },
+        "worker_timeout_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "suite_timeout_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "process_model": {
+          "const": "fresh_exec_per_validation_and_sample"
+        },
+        "statistics_algorithm": {
+          "const": "median_raw_mad_r7_v1"
+        },
+        "timing_clock": {
+          "const": "time.perf_counter_ns"
+        },
+        "rss_scope": {
+          "const": "whole_worker_through_measurement"
+        },
+        "torch_cpu_memory_measurement": {
+          "const": "process_peak_rss"
+        },
+        "cuda_policy": {
+          "const": "disabled_for_cpu_suite"
+        },
+        "matplotlib_cache": {
+          "type": "string"
+        },
+        "matplotlib_cache_policy": {
+          "const": "shared_prewarmed_before_validation"
+        },
+        "thread_environment": {
+          "type": "object",
+          "minProperties": 4,
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "statistics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "median",
+        "mad",
+        "q1",
+        "q3",
+        "iqr",
+        "min",
+        "max"
+      ],
+      "properties": {
+        "median": {
+          "type": "number",
+          "minimum": 0
+        },
+        "mad": {
+          "type": "number",
+          "minimum": 0
+        },
+        "q1": {
+          "type": "number",
+          "minimum": 0
+        },
+        "q3": {
+          "type": "number",
+          "minimum": 0
+        },
+        "iqr": {
+          "type": "number",
+          "minimum": 0
+        },
+        "min": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "torchMemory": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "device",
+        "cpu_peak_bytes",
+        "cpu_measurement",
+        "cuda_peak_allocated_bytes",
+        "cuda_peak_reserved_bytes",
+        "synchronization"
+      ],
+      "properties": {
+        "device": {
+          "const": "cpu"
+        },
+        "cpu_peak_bytes": {
+          "$ref": "#/$defs/nullableInteger"
+        },
+        "cpu_measurement": {
+          "const": "process_peak_rss"
+        },
+        "cuda_peak_allocated_bytes": {
+          "type": "null"
+        },
+        "cuda_peak_reserved_bytes": {
+          "type": "null"
+        },
+        "synchronization": {
+          "const": "not_required_for_cpu"
+        }
+      }
+    },
+    "sample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "pid",
+        "elapsed_ns",
+        "iterations",
+        "ns_per_iteration",
+        "peak_rss_bytes",
+        "rss_method",
+        "torch_memory",
+        "observations"
+      ],
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pid": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "elapsed_ns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "iterations": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ns_per_iteration": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "peak_rss_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "rss_method": {
+          "type": "string",
+          "minLength": 1
+        },
+        "torch_memory": {
+          "$ref": "#/$defs/torchMemory"
+        },
+        "observations": {
+          "type": "object"
+        }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "variant",
+        "description",
+        "target",
+        "tags",
+        "parameters",
+        "behavior",
+        "protocol",
+        "samples",
+        "statistics"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "variant": {
+          "enum": [
+            "smoke",
+            "baseline"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tags": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "parameters": {
+          "type": "object"
+        },
+        "behavior": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "summary",
+            "canonical_sha256"
+          ],
+          "properties": {
+            "status": {
+              "const": "passed"
+            },
+            "summary": {
+              "type": "object"
+            },
+            "canonical_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        "protocol": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repeats",
+            "behavior_validation_runs",
+            "warmups",
+            "iterations_per_sample",
+            "process_model",
+            "synchronization"
+          ],
+          "properties": {
+            "repeats": {
+              "type": "integer",
+              "minimum": 7
+            },
+            "behavior_validation_runs": {
+              "const": 1
+            },
+            "warmups": {
+              "const": 0
+            },
+            "iterations_per_sample": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "process_model": {
+              "const": "fresh_exec_per_validation_and_sample"
+            },
+            "synchronization": {
+              "const": "not_required_for_cpu"
+            }
+          }
+        },
+        "samples": {
+          "type": "array",
+          "minItems": 7,
+          "items": {
+            "$ref": "#/$defs/sample"
+          }
+        },
+        "statistics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "time_ns_per_iteration",
+            "peak_rss_bytes"
+          ],
+          "properties": {
+            "time_ns_per_iteration": {
+              "$ref": "#/$defs/statistics"
+            },
+            "peak_rss_bytes": {
+              "$ref": "#/$defs/statistics"
+            }
+          }
+        }
+      }
+    }
+  }
+}

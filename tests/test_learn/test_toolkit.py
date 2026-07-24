@@ -50,8 +50,15 @@ class TestToolkit(unittest.TestCase):
         cuda1 = torch.device("cuda:1")
         self.assertTrue(get_torch_device(None) == cpu)
         self.assertTrue(get_torch_device("cpu") == cpu)
-        self.assertTrue(get_torch_device(1) == cuda1)
-        self.assertTrue(get_torch_device("1") == cuda1)
+        with patch(
+            "core.learn.toolkit.torch.device", return_value=cuda1
+        ) as mock_device:
+            self.assertTrue(get_torch_device(1) == cuda1)
+            self.assertTrue(get_torch_device("1") == cuda1)
+        self.assertEqual(
+            [mock_call.args for mock_call in mock_device.call_args_list],
+            [(1,), (1,)],
+        )
         self.assertTrue(get_torch_device("cuda:1") == cuda1)
         self.assertTrue(get_torch_device(cuda1) == cuda1)
 

@@ -22,6 +22,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 from .toolkit import scheduler_requires_metric
+from ..toolkit.misc import check_requires
 
 TTScheduler = TypeVar("TTScheduler", bound=Type[LRScheduler])
 
@@ -132,6 +133,13 @@ class WarmupScheduler(LRScheduler):
         self.multiplier = multiplier
         assert self.multiplier > 1.0, "multiplier should be greater than 1"
         self.warmup_step, self.finished_warmup = warmup_step, False
+        if scheduler_afterwards_config.get("verbose") is False and not check_requires(
+            scheduler_afterwards_base,
+            "verbose",
+            strict=False,
+        ):
+            scheduler_afterwards_config = scheduler_afterwards_config.copy()
+            scheduler_afterwards_config.pop("verbose")
         self.scheduler_afterwards = scheduler_afterwards_base(
             optimizer,
             **scheduler_afterwards_config,
