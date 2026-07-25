@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.distributed as dist
 
 from abc import abstractmethod
+from pydantic import field_validator
 from abc import ABC
 from abc import ABCMeta
 from enum import Enum
@@ -2662,7 +2663,7 @@ class TrainerConfig:
     monitor_names: Optional[Union[str, List[str]]] = None
     monitor_configs: Optional[Dict[str, Any]] = None
     auto_callback: bool = True
-    callback_names: Optional[Union[str, List[str]]] = None
+    callback_names: Optional[List[str]] = None
     callback_configs: Optional[Dict[str, Any]] = None
     lr: Optional[float] = None
     optimizer_name: Optional[str] = None
@@ -2693,6 +2694,16 @@ class TrainerConfig:
     timeout: int = 2400
     # this is a universal patch for special cases
     extra: Optional[Dict[str, Any]] = None
+
+    @field_validator("callback_names", mode="before")
+    @classmethod
+    def normalize_callback_names(
+        cls,
+        callback_names: Optional[Union[str, List[str]]],
+    ) -> Optional[List[str]]:
+        if isinstance(callback_names, str):
+            return [callback_names]
+        return callback_names
 
     def init_process_group(self, *, cpu: bool) -> None:
         timeout = timedelta(seconds=self.timeout)

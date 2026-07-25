@@ -74,7 +74,7 @@ jobs:
             torch torchvision
           python -m pip install \
             -c requirements/constraints-ci.txt \
-            -e ".[test]"
+            -e ".[test,typing]"
           python -m pip install \
             -c requirements/constraints-ci.txt \
             build setuptools twine
@@ -86,7 +86,7 @@ jobs:
           python -m pip install \
             --index-url https://download.pytorch.org/whl/cpu \
             torch torchvision
-          python -m pip install -e ".[test]" build setuptools twine
+          python -m pip install -e ".[test,typing]" build setuptools twine
           python -m pip check
       - name: Build and check distributions
         run: |

@@ -93,7 +93,7 @@ class SetDefaultsBlock(InjectDefaultsMixin, Block):
             self._defaults["max_snapshot_file"] = 25
         if callback_names is None:
             if module_name in trainer_callbacks:
-                callback_names = module_name
+                callback_names = [module_name]
                 self._defaults["callback_names"] = callback_names
         environ_workspace = get_environ_workspace()
         if environ_workspace:
@@ -285,8 +285,6 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
             callback_names = []
         if callback_configs is None:
             callback_configs = {}
-        if isinstance(callback_names, str):
-            callback_names = [callback_names]
         auto_callback = config.auto_callback
         progress_id = ProgressCallback.__identifier__
         log_metrics_msg_id = LogMetricsMsgCallback.__identifier__

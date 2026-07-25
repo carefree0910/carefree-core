@@ -177,6 +177,31 @@ class TestPipeline(unittest.TestCase):
         with self.assertRaises(ValueError):
             cflearn.PipelineSerializer.update(p1, self.tmp_path / "missing")
 
+    def test_scripted_serializer_contract(self):
+        pipeline = Mock()
+        scripted = Mock()
+        export_file = "model.pt"
+        with patch.object(
+            cflearn.PipelineSerializer,
+            "pack_and_load_inference",
+            return_value=pipeline,
+        ) as pack_and_load, patch.object(
+            torch.jit,
+            "script",
+            return_value=scripted,
+        ) as script, patch.object(
+            torch.jit,
+            "save",
+        ) as save:
+            returned = cflearn.PipelineSerializer.pack_scripted(
+                "workspace",
+                export_file,
+            )
+        self.assertIs(returned, pipeline)
+        pack_and_load.assert_called_once_with("workspace")
+        script.assert_called_once_with(pipeline.build_model.model.m)
+        save.assert_called_once_with(scripted, export_file)
+
     def test_scripted_serializer(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()
         config = cflearn.Config(

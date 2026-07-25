@@ -70,18 +70,19 @@ class ProgressCallback(TrainerCallback):
         self.settings = TqdmSettings(**settings)
 
     def init(self) -> None:
-        self.progress = make_progress(
+        progress = make_progress(
             use_spinner=True,
             custom_columns=[TextColumn(MetricsFormatter)],  # type: ignore
         )
-        self.time_column: TextColumn = self.progress.columns[0]  # type: ignore
+        self.progress = progress
+        self.time_column: TextColumn = progress.columns[0]  # type: ignore
         self.enabled = self.is_local_rank_0 and (
             self.settings.use_tqdm
             or self.settings.use_step_tqdm
             or self.settings.use_tqdm_in_validation
         )
         if self.enabled:
-            self.progress.start()
+            progress.start()
 
     def before_loop(self, trainer: ITrainer) -> None:
         if self.is_local_rank_0:

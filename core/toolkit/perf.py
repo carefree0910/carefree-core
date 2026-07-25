@@ -1,6 +1,7 @@
 import os
 import psutil
 
+from typing import cast
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -44,7 +45,7 @@ class MemoryMonitor:
         for pid, pid_data in data.items():
             table.append([str(pid)] + [format_num_bytes(pid_data[k]) for k in keys])
         df = pd.DataFrame(table, columns=["PID"] + keys)
-        return df.to_string(index=False, col_space=col_space)
+        return cast(str, df.to_string(index=False, col_space=col_space))
 
 
 __all__ = [

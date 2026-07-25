@@ -71,7 +71,7 @@ test = [
 ]
 typing = [
     "black",
-    "mypy",
+    "mypy==1.11.2",
     "types-requests",
 ]
 benchmark = [
@@ -86,7 +86,7 @@ dev = [
     "build",
     "coverage[toml]",
     "jsonschema",
-    "mypy",
+    "mypy==1.11.2",
     "packaging",
     "pandas",
     "pyperf",
@@ -129,6 +129,12 @@ extend-exclude = '''
 disallow_untyped_defs = true
 ignore_missing_imports = true
 python_version = "3.8"
+
+[[tool.mypy.overrides]]
+module = "core.toolkit.perf"
+disallow_any_generics = true
+warn_return_any = true
+warn_unused_ignores = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -27,7 +27,7 @@ class TestCallbacks(unittest.TestCase):
             module_config=dict(input_dim=in_dim, output_dim=out_dim, bias=False),
             scheduler_name="warmup",
             loss_name="mse",
-            callback_names="wandb",
+            callback_names=["wandb"],
             callback_configs=dict(wandb=dict(anonymous="must", log_artifacts=True)),
             num_steps=20,
             log_steps=4,
@@ -41,7 +41,7 @@ class TestCallbacks(unittest.TestCase):
             module_name="linear",
             module_config=dict(input_dim=in_dim, output_dim=out_dim, bias=False),
             loss_name="mse",
-            callback_names="nan_detector",
+            callback_names=["nan_detector"],
             callback_configs=dict(nan_detector=dict(check_parameters=True)),
         )
         config.to_debug()
@@ -72,7 +72,7 @@ class TestCallbacks(unittest.TestCase):
         config = cflearn.Config(
             module_name="linear",
             module_config=dict(input_dim=in_dim, output_dim=out_dim, bias=False),
-            callback_names="grad_detector",
+            callback_names=["grad_detector"],
         )
         config.to_debug()
         for loss in ["inf_loss", "nan_loss"]:

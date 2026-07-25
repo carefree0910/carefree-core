@@ -13,6 +13,7 @@ import unicodedata
 
 from abc import abstractmethod
 from abc import ABCMeta
+from typing import overload
 from typing import Any
 from typing import Set
 from typing import Dict
@@ -879,8 +880,8 @@ def get_memory_mb(obj: Any) -> float:
 # util modules
 
 
-TRegister = TypeVar("TRegister", bound="WithRegister", covariant=True)
-TTRegister = TypeVar("TTRegister", bound=Type["WithRegister"])
+TRegister = TypeVar("TRegister", bound="WithRegister[Any]", covariant=True)
+TTRegister = TypeVar("TTRegister", bound=Type["WithRegister[Any]"])
 T_s = TypeVar("T_s", bound="ISerializable", covariant=True)
 T_sd = TypeVar("T_sd", bound="ISerializableDataClass", covariant=True)
 TSerializable = TypeVar("TSerializable", bound="ISerializable", covariant=True)
@@ -1035,7 +1036,10 @@ class WithRegister(Generic[TRegister]):
     __identifier__: str
 
     @classmethod
-    def get(cls: Type[TRegister], name: str) -> Type[TRegister]:
+    def get(
+        cls: Type["WithRegister[TRegister]"],
+        name: str,
+    ) -> Type[TRegister]:
         return cls.d[name]
 
     @classmethod
@@ -1044,7 +1048,7 @@ class WithRegister(Generic[TRegister]):
 
     @classmethod
     def make(
-        cls: Type[TRegister],
+        cls: Type["WithRegister[TRegister]"],
         name: str,
         config: Dict[str, Any],
         *,
@@ -1052,22 +1056,42 @@ class WithRegister(Generic[TRegister]):
     ) -> TRegister:
         base = cls.get(name)
         if not ensure_safe:
-            return base(**config)  # type: ignore
+            return base(**config)
         return safe_instantiate(base, config)
 
     @classmethod
+    @overload
     def make_multiple(
-        cls: Type[TRegister],
+        cls: Type["WithRegister[TRegister]"],
+        names: str,
+        configs: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]] = None,
+        *,
+        ensure_safe: bool = False,
+    ) -> TRegister: ...
+
+    @classmethod
+    @overload
+    def make_multiple(
+        cls: Type["WithRegister[TRegister]"],
+        names: List[str],
+        configs: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]] = None,
+        *,
+        ensure_safe: bool = False,
+    ) -> List[TRegister]: ...
+
+    @classmethod
+    def make_multiple(
+        cls: Type["WithRegister[TRegister]"],
         names: Union[str, List[str]],
         configs: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]] = None,
         *,
         ensure_safe: bool = False,
-    ) -> List[TRegister]:
+    ) -> Union[TRegister, List[TRegister]]:
         if configs is None:
             configs = {}
         if isinstance(names, str):
             assert isinstance(configs, dict)
-            return cls.make(names, configs, ensure_safe=ensure_safe)  # type: ignore
+            return cls.make(names, configs, ensure_safe=ensure_safe)
         if not isinstance(configs, list):
             configs = [configs.get(name, {}) for name in names]
         return [

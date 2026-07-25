@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "measurement": {
+    "mode": "combined-no-site-packages",
+    "mypy_version": "1.11.2",
+    "runtime_python": [
+      "3.8",
+      "3.14"
+    ],
+    "target_python": "3.8",
+    "platform_independent": true,
+    "flags": [
+      "--config-file=pyproject.toml",
+      "--python-version=3.8",
+      "--no-incremental",
+      "--no-site-packages",
+      "--warn-unused-ignores",
+      "--disallow-any-generics",
+      "--warn-return-any",
+      "--show-error-codes",
+      "--no-error-summary",
+      "--no-pretty",
+      "--no-color-output"
+    ]
+  },
+  "scope": {
+    "include": [
+      "core"
+    ],
+    "exclude": [
+      "core/flow",
+      "core/toolkit/web.py"
+    ]
+  },
+  "limits": {
+    "diagnostics": {
+      "no-any-return": {
+        "total": 51,
+        "by_file": {
+          "core/learn/inference.py": 1,
+          "core/learn/metrics.py": 4,
+          "core/learn/pipeline/api.py": 5,
+          "core/learn/schedulers.py": 2,
+          "core/learn/schema.py": 7,
+          "core/learn/toolkit.py": 1,
+          "core/learn/trainer.py": 3,
+          "core/toolkit/array.py": 14,
+          "core/toolkit/console.py": 1,
+          "core/toolkit/data_structures.py": 1,
+          "core/toolkit/geometry.py": 2,
+          "core/toolkit/misc.py": 10
+        }
+      },
+      "type-arg": {
+        "total": 113,
+        "by_file": {
+          "core/learn/inference.py": 2,
+          "core/learn/modules/common.py": 1,
+          "core/learn/optimizers.py": 4,
+          "core/learn/pipeline/api.py": 10,
+          "core/learn/pipeline/blocks/basic.py": 9,
+          "core/learn/pipeline/blocks/utils.py": 2,
+          "core/learn/pipeline/common.py": 13,
+          "core/learn/schedulers.py": 2,
+          "core/learn/schema.py": 21,
+          "core/learn/toolkit.py": 5,
+          "core/learn/trainer.py": 1,
+          "core/toolkit/array.py": 2,
+          "core/toolkit/data_structures.py": 5,
+          "core/toolkit/misc.py": 25,
+          "core/toolkit/pipeline.py": 11
+        }
+      },
+      "unused-ignore": {
+        "total": 43,
+        "by_file": {
+          "core/learn/callbacks/defaults.py": 1,
+          "core/learn/callbacks/loggers.py": 6,
+          "core/learn/data/array.py": 2,
+          "core/learn/losses/basic.py": 2,
+          "core/learn/pipeline/api.py": 1,
+          "core/learn/pipeline/blocks/basic.py": 3,
+          "core/learn/schedulers.py": 3,
+          "core/learn/schema.py": 5,
+          "core/learn/toolkit.py": 1,
+          "core/learn/trainer.py": 2,
+          "core/toolkit/array.py": 3,
+          "core/toolkit/cv.py": 5,
+          "core/toolkit/geometry.py": 2,
+          "core/toolkit/misc.py": 6,
+          "core/toolkit/pipeline.py": 1
+        }
+      }
+    },
+    "source": {
+      "no_type_check": {
+        "total": 18,
+        "by_file": {
+          "core/learn/schedulers.py": 6,
+          "core/learn/toolkit.py": 2,
+          "core/toolkit/array.py": 9,
+          "core/toolkit/cv.py": 1
+        }
+      },
+      "type_ignore": {
+        "total": 126,
+        "by_file": {
+          "core/learn/callbacks/defaults.py": 2,
+          "core/learn/callbacks/loggers.py": 7,
+          "core/learn/data/array.py": 2,
+          "core/learn/inference.py": 8,
+          "core/learn/losses/basic.py": 2,
+          "core/learn/losses/schema.py": 1,
+          "core/learn/models/common.py": 2,
+          "core/learn/modules/common.py": 1,
+          "core/learn/modules/moe.py": 1,
+          "core/learn/pipeline/api.py": 16,
+          "core/learn/pipeline/blocks/basic.py": 8,
+          "core/learn/pipeline/common.py": 3,
+          "core/learn/schedulers.py": 3,
+          "core/learn/schema.py": 22,
+          "core/learn/toolkit.py": 1,
+          "core/learn/trainer.py": 5,
+          "core/toolkit/array.py": 3,
+          "core/toolkit/cv.py": 6,
+          "core/toolkit/data_structures.py": 3,
+          "core/toolkit/geometry.py": 3,
+          "core/toolkit/misc.py": 21,
+          "core/toolkit/pipeline.py": 6
+        }
+      }
+    }
+  }
+}

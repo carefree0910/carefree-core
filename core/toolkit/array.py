@@ -1,6 +1,7 @@
 import math
 
 from enum import Enum
+from typing import cast
 from typing import Any
 from typing import Dict
 from typing import List
@@ -427,7 +428,7 @@ def get_indices_from_another(
     import numpy as np
 
     if already_sorted:
-        return np.searchsorted(base, segment)
+        return cast("np.ndarray", np.searchsorted(base, segment))
     base_sorted_args = np.argsort(base)
     positions = np.searchsorted(base[base_sorted_args], segment)
     return base_sorted_args[positions]

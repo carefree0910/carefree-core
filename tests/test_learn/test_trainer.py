@@ -97,7 +97,7 @@ class TestTrainer(unittest.TestCase):
                 raise KeyboardInterrupt
 
         config = self.config.copy()
-        config.callback_names = "test"
+        config.callback_names = ["test"]
         cflearn.TrainingPipeline.init(config).fit(self.data)
 
         with patch("core.learn.trainer.is_dist_initialized") as mock:

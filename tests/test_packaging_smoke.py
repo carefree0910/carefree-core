@@ -1,6 +1,7 @@
 import email
 import json
 import os
+import pytest
 import site
 import shutil
 import subprocess
@@ -16,7 +17,6 @@ from typing import Mapping
 from typing import NamedTuple
 from typing import Optional
 
-import pytest
 from packaging.requirements import Requirement
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -321,6 +321,47 @@ def test_clean_artifact_install(
         expected_core=purelib / "core",
         expected_version=built_distributions.metadata["Version"],
         check_metadata=True,
+    )
+
+
+def test_installed_wheel_is_typed_for_external_consumers(
+    built_distributions: BuiltDistributions,
+    tmp_path: Path,
+) -> None:
+    environment = tmp_path / "venv"
+    python = _create_dependency_sharing_venv(environment)
+    _install_local(python, built_distributions.wheel)
+
+    consumer = tmp_path / "consumer"
+    consumer.mkdir()
+    (consumer / "mypy.ini").write_text(
+        "[mypy]\n"
+        "ignore_missing_imports = False\n"
+        "python_version = 3.8\n"
+        "\n"
+        "[mypy-pandas,pandas.*,psutil,psutil.*]\n"
+        "follow_imports = skip\n",
+        encoding="utf-8",
+    )
+    (consumer / "consumer.py").write_text(
+        "from typing_extensions import assert_type\n"
+        "from core.toolkit.perf import format_num_bytes\n"
+        "\n"
+        "assert_type(format_num_bytes(1024.0), str)\n",
+        encoding="utf-8",
+    )
+    _run(
+        [
+            str(python),
+            "-m",
+            "mypy",
+            "--config-file",
+            "mypy.ini",
+            "--no-error-summary",
+            "consumer.py",
+        ],
+        cwd=consumer,
+        env=_offline_env(),
     )
 
 

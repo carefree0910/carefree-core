@@ -491,6 +491,9 @@ class TestSchema(unittest.TestCase):
             cflearn.Config(mixed_precision=1)
         self.assertTrue(cflearn.Config().to_debug().is_debug)
         self.assertEqual(cflearn.Config().trainer_config, cflearn.TrainerConfig())
+        legacy_config = cflearn.Config.construct({"callback_names": "foo"})
+        self.assertListEqual(legacy_config.callback_names, ["foo"])
+        self.assertListEqual(legacy_config.to_info()["callback_names"], ["foo"])
         config = cflearn.Config(mixed_precision=cflearn.PrecisionType.FP16)
         self.assertEqual(config.mixed_precision, "fp16")
 
