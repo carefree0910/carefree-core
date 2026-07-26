@@ -46,7 +46,6 @@ def no_sync_context(accelerator: Accelerator, model: IModel) -> ContextManager:
 
 
 class Flags:
-    in_step = False
     progress_task: Optional[TaskID] = None
 
 
@@ -152,10 +151,17 @@ class Inference(IInference):
 
         def cleanup_progress() -> None:
             if progress is not None and flags.progress_task is not None:
-                if should_stop_progress:
-                    progress.stop()
-                progress.remove_task(flags.progress_task)
+                progress_task = flags.progress_task
                 flags.progress_task = None
+                if should_stop_progress:
+                    try:
+                        progress.stop()
+                    except:
+                        pass
+                try:
+                    progress.remove_task(progress_task)
+                except:
+                    pass
 
         def _run() -> InferenceOutputs:
             all_inputs: TTensors = {}
@@ -206,7 +212,6 @@ class Inference(IInference):
                     if accelerator is None:
                         tensor_batch = to_device(tensor_batch, device)
                     tensor_batch = recover_labels_of(tensor_batch)
-                    flags.in_step = True
                     with no_sync_context(accelerator, self.model):
                         step_outputs = self.model.step(
                             i,
@@ -216,7 +221,6 @@ class Inference(IInference):
                             inject_outputs_fn=inject_outputs_fn,
                             recover_predictions_fn=recover_predictions_of,
                         )
-                    flags.in_step = False
                     tensor_outputs = step_outputs.forward_results
                     if use_losses_as_metrics:
                         for k, v in step_outputs.loss_tensors.items():
@@ -346,14 +350,9 @@ class Inference(IInference):
             target_labels = [target_labels]
         try:
             return run()
-        except KeyboardInterrupt:
-            raise
         except:
-            if not flags.in_step:
-                raise
-            use_grad = self.use_grad_in_predict = True
             cleanup_progress()
-            return run()
+            raise
 
 
 __all__ = [

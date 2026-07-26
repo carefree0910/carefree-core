@@ -281,6 +281,59 @@ class TestInference(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             inference.get_outputs(loader, metrics=EmptyMetric())
 
+    def test_inference_error_does_not_retry_with_grad(self) -> None:
+        grad_modes = []
+        inference_error = RuntimeError("inference failed")
+
+        @cflearn.IModel.register("inference_error", allow_duplicate=True)
+        class InferenceErrorModel(cflearn.CommonModel):
+            def step(self, *args, **kwargs) -> cflearn.StepOutputs:
+                grad_modes.append(torch.is_grad_enabled())
+                raise inference_error
+
+        x = np.random.randn(2, 3).astype(np.float32)
+        data = cflearn.ArrayData.init().fit(x)
+        loader = data.build_loader(x)
+        config = cflearn.Config(
+            model="inference_error",
+            module_name="linear",
+            module_config={"input_dim": 3, "output_dim": 1},
+            loss_name="mse",
+        )
+        inference = cflearn.Inference(model=cflearn.IModel.from_config(config))
+        progress = MagicMock()
+        progress.add_task.return_value = 1
+        progress.stop.side_effect = RuntimeError("progress cleanup failed")
+        progress.remove_task.side_effect = RuntimeError("task cleanup failed")
+
+        with self.assertRaises(RuntimeError) as context:
+            inference.get_outputs(loader, progress=progress)
+
+        self.assertIs(context.exception, inference_error)
+        self.assertListEqual(grad_modes, [False])
+        self.assertFalse(inference.use_grad_in_predict)
+        progress.add_task.assert_called_once()
+        progress.stop.assert_called_once_with()
+        progress.remove_task.assert_called_once_with(1)
+
+        with self.assertRaises(RuntimeError) as context:
+            inference.get_outputs(loader, use_grad=True)
+
+        self.assertIs(context.exception, inference_error)
+        self.assertListEqual(grad_modes, [False, True])
+        self.assertFalse(inference.use_grad_in_predict)
+
+        inference = cflearn.Inference(
+            model=cflearn.IModel.from_config(config),
+            use_grad_in_predict=True,
+        )
+        with self.assertRaises(RuntimeError) as context:
+            inference.get_outputs(loader)
+
+        self.assertIs(context.exception, inference_error)
+        self.assertListEqual(grad_modes, [False, True, True])
+        self.assertTrue(inference.use_grad_in_predict)
+
     def test_pad(self) -> None:
         @cflearn.register_module("identity", allow_duplicate=True)
         class _(nn.Module):
