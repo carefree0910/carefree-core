@@ -7,6 +7,7 @@ from typing import Any
 from typing import Set
 from typing import Dict
 from typing import List
+from typing import Tuple
 from typing import Callable
 from typing import Optional
 from pathlib import Path
@@ -205,173 +206,229 @@ class Trainer(ITrainer):
                 ),
             ],
         )
-        self.accelerator.wait_for_everyone()
-        # initialize artifact structure
-        if self.is_local_rank_0:
-            os.makedirs(self.workspace, exist_ok=True)
-            for callback in callbacks:
-                callback.after_workspace_prepared(self)
-            self.metrics_log_path = os.path.join(self.workspace, self.metrics_log_file)
-            with open(self.metrics_log_path, "w"):
-                pass
-            os.makedirs(self.checkpoint_folder, exist_ok=True)
-        # initialize
-        self.metrics = metrics
-        self.monitors = monitors
         self.callbacks = callbacks
-        if not any(isinstance(c, TrainingLoopCallback) for c in self.callbacks):
-            console.warn(  # pragma: no cover
-                "`TrainingLoopCallback` is not found in the callbacks, "
-                "some features may not work as expected"
-            )
-        self.schedulers_requires_metric = schedulers_requires_metric
-        if self.is_local_rank_0:
-            with open(os.path.join(self.workspace, self.model_log_file), "w") as f:
-                f.write(str(model))
-        self.inference = inference
-        # accelerator prepare
-        n_optim = len(optimizers)
-        optim_keys = sorted(optimizers)
-        train_loader, valid_loader = data.build_loaders()
-        prepared_lds = prepare_dataloaders(self.accelerator, train_loader, valid_loader)
-        distributed_train_loader = prepared_lds[0]
-        distributed_valid_loader = prepared_lds[1]
-        assert distributed_train_loader is not None
-        prepared = self.accelerator.prepare(
-            *model.all_modules,
-            *[optimizers[k] for k in optim_keys],
-        )
-        self.state = TrainerState(
-            num_epoch=self.config.num_epoch,
-            num_steps=self.config.num_steps,
-            batch_size=train_loader.batch_size,  # type: ignore
-            loader_length=len(distributed_train_loader),
-            **(self.config.state_config or {}),
-        )
-        if loaded_state is not None:
-            self.state.step = loaded_state["step"]
-            self.state.epoch = loaded_state["epoch"]
-        self.model = model.from_accelerator(*prepared[:-n_optim])
-        self.inference.model = self.model
-        self.optimizers = {k: prepared[-n_optim + i] for i, k in enumerate(optim_keys)}
-        self.schedulers = schedulers
-        # Preserve the historical post-prepare compatibility hook. Some scheduler
-        # subclasses rebuild derived state in `load_state_dict`.
-        for sch in schedulers.values():
-            if sch is not None:
-                sch.load_state_dict(sch.state_dict())
-        # summary
-        for callback in self.callbacks:
-            callback.before_summary(self)
-        if do_summary:
-            input_sample = train_loader.get_input_sample(self.device)
-            with self.accelerator.autocast():
-                summary_msg = summary(
-                    self.model.m,
-                    input_sample,
-                    return_only=not show_summary
-                    or not self.is_local_rank_0
-                    or only_touch,
-                    summary_forward=lambda batch: self.model.summary_forward(
-                        batch, **(summary_kwargs or {})
-                    ),
-                )
+        try:
+            self.accelerator.wait_for_everyone()
+            # initialize artifact structure
             if self.is_local_rank_0:
-                summary_path = os.path.join(self.workspace, self.summary_log_file)
-                with open(summary_path, "w") as f:
-                    f.write(summary_msg)
+                os.makedirs(self.workspace, exist_ok=True)
+                for callback in self.callbacks:
+                    callback.after_workspace_prepared(self)
+                self.metrics_log_path = os.path.join(
+                    self.workspace,
+                    self.metrics_log_file,
+                )
+                with open(self.metrics_log_path, "w"):
+                    pass
+                os.makedirs(self.checkpoint_folder, exist_ok=True)
+            # initialize
+            self.metrics = metrics
+            self.monitors = monitors
+            if not any(isinstance(c, TrainingLoopCallback) for c in self.callbacks):
+                console.warn(  # pragma: no cover
+                    "`TrainingLoopCallback` is not found in the callbacks, "
+                    "some features may not work as expected"
+                )
+            self.schedulers_requires_metric = schedulers_requires_metric
+            if self.is_local_rank_0:
+                with open(os.path.join(self.workspace, self.model_log_file), "w") as f:
+                    f.write(str(model))
+            self.inference = inference
+            # accelerator prepare
+            n_optim = len(optimizers)
+            optim_keys = sorted(optimizers)
+            train_loader, valid_loader = data.build_loaders()
+            prepared_lds = prepare_dataloaders(
+                self.accelerator,
+                train_loader,
+                valid_loader,
+            )
+            distributed_train_loader = prepared_lds[0]
+            distributed_valid_loader = prepared_lds[1]
+            assert distributed_train_loader is not None
+            prepared = self.accelerator.prepare(
+                *model.all_modules,
+                *[optimizers[k] for k in optim_keys],
+            )
+            self.state = TrainerState(
+                num_epoch=self.config.num_epoch,
+                num_steps=self.config.num_steps,
+                batch_size=train_loader.batch_size,  # type: ignore
+                loader_length=len(distributed_train_loader),
+                **(self.config.state_config or {}),
+            )
+            if loaded_state is not None:
+                self.state.step = loaded_state["step"]
+                self.state.epoch = loaded_state["epoch"]
+            self.model = model.from_accelerator(*prepared[:-n_optim])
+            self.inference.model = self.model
+            self.optimizers = {
+                k: prepared[-n_optim + i] for i, k in enumerate(optim_keys)
+            }
+            self.schedulers = schedulers
+            # Preserve the historical post-prepare compatibility hook. Some scheduler
+            # subclasses rebuild derived state in `load_state_dict`.
+            for sch in schedulers.values():
+                if sch is not None:
+                    sch.load_state_dict(sch.state_dict())
+            # summary
+            for callback in self.callbacks:
+                callback.before_summary(self)
+            if do_summary:
+                input_sample = train_loader.get_input_sample(self.device)
+                with self.accelerator.autocast():
+                    summary_msg = summary(
+                        self.model.m,
+                        input_sample,
+                        return_only=not show_summary
+                        or not self.is_local_rank_0
+                        or only_touch,
+                        summary_forward=lambda batch: self.model.summary_forward(
+                            batch, **(summary_kwargs or {})
+                        ),
+                    )
+                if self.is_local_rank_0:
+                    summary_path = os.path.join(self.workspace, self.summary_log_file)
+                    with open(summary_path, "w") as f:
+                        f.write(summary_msg)
+        except:
+            self._run_cleanup(lambda c: c.finalize(self))
+            raise
         # train
         has_ckpt = terminate = False
-        self.accelerator.wait_for_everyone()
-        if self.is_local_rank_0:
-            console.debug("entered training loop")
-        for callback in self.callbacks:
-            callback.before_loop(self)
-        for callback in self.callbacks:
-            callback.before_loop_with_loaders(
-                self, distributed_train_loader, distributed_valid_loader
-            )
-        while self.state.should_train and not only_touch:
-            try:
-                for callback in self.callbacks:
-                    callback.at_epoch_start(self, distributed_train_loader)
-                self.state.epoch += 1
-                for i, batch in enumerate(distributed_train_loader):
-                    if i == 0:
-                        self.accelerator.wait_for_everyone()
+        loop_entered = after_loop_called = callbacks_finalized = False
+        state_before_terminate: Optional[Tuple[int, int, Optional[int]]] = None
+        finalization_completed = False
+        try:
+            self.accelerator.wait_for_everyone()
+            if self.is_local_rank_0:
+                console.debug("entered training loop")
+            for callback in self.callbacks:
+                callback.before_loop(self)
+            for callback in self.callbacks:
+                callback.before_loop_with_loaders(
+                    self, distributed_train_loader, distributed_valid_loader
+                )
+            loop_entered = True
+            while self.state.should_train and not only_touch:
+                try:
                     for callback in self.callbacks:
-                        callback.at_step_start(batch, self)
-                    self.state.step += 1
-                    step_outputs = self.train_step(i, batch)
-                    if self.is_local_rank_0:
+                        callback.at_epoch_start(self, distributed_train_loader)
+                    self.state.epoch += 1
+                    for i, batch in enumerate(distributed_train_loader):
+                        if i == 0:
+                            self.accelerator.wait_for_everyone()
                         for callback in self.callbacks:
-                            callback.log_train_step(step_outputs, self.state)
-                    for callback in self.callbacks:
-                        callback.after_train_step(batch, step_outputs, self)
-                    monitored = self.monitor(
-                        distributed_train_loader,
-                        distributed_valid_loader,
-                        step_outputs,
-                    )
-                    if self.state.should_monitor:
-                        for callback in self.callbacks:
-                            callback.after_monitor(monitored, self)
-                    if monitored.save_checkpoint:
-                        metric_outputs = monitored.metric_outputs
-                        assert metric_outputs is not None
-                        self.save_checkpoint(metric_outputs.final_score)
+                            callback.at_step_start(batch, self)
+                        self.state.step += 1
+                        step_outputs = self.train_step(i, batch)
                         if self.is_local_rank_0:
                             for callback in self.callbacks:
-                                callback.after_save_checkpoint(self)
-                    for callback in self.callbacks:
-                        callback.at_step_end(self)
-                    terminate = monitored.terminate or self.state.should_terminate
-                    if terminate:
+                                callback.log_train_step(step_outputs, self.state)
                         for callback in self.callbacks:
-                            callback.at_terminate(self)
-                        break
-                    if p is not None and self.is_local_rank_0:
-                        p.step()
-                for callback in self.callbacks:
-                    callback.at_epoch_end(self)
-            except KeyboardInterrupt:
-                if is_dist_initialized():
-                    raise
-                console.error("keyboard interrupted")
-                terminate = True
-            if terminate:
-                break
-        for callback in self.callbacks:
-            callback.after_loop(self)
-        # restore
-        self.accelerator.wait_for_everyone()
-        if self.has_checkpoint_folder and not only_touch:
-            if self.is_local_rank_0:
-                console.debug("rolling back to the best checkpoint")
-            has_ckpt = self.restore_checkpoint()
-        # finalize
-        self.state.set_terminate()
-        if only_touch or skip_final_evaluation:
-            self.final_results = self.intermediate
-        else:
-            loader = distributed_valid_loader or distributed_train_loader
-            self.final_results = self.get_metrics(loader, self.config.valid_portion)
-        if self.final_results is not None:
-            self.log_with(self.final_results)
-        if not has_ckpt:
-            if self.final_results is None:
-                final_score = 0.0
+                            callback.after_train_step(batch, step_outputs, self)
+                        monitored = self.monitor(
+                            distributed_train_loader,
+                            distributed_valid_loader,
+                            step_outputs,
+                        )
+                        if self.state.should_monitor:
+                            for callback in self.callbacks:
+                                callback.after_monitor(monitored, self)
+                        if monitored.save_checkpoint:
+                            metric_outputs = monitored.metric_outputs
+                            assert metric_outputs is not None
+                            self.save_checkpoint(metric_outputs.final_score)
+                            if self.is_local_rank_0:
+                                for callback in self.callbacks:
+                                    callback.after_save_checkpoint(self)
+                        for callback in self.callbacks:
+                            callback.at_step_end(self)
+                        terminate = monitored.terminate or self.state.should_terminate
+                        if terminate:
+                            for callback in self.callbacks:
+                                callback.at_terminate(self)
+                            break
+                        if p is not None and self.is_local_rank_0:
+                            p.step()
+                    for callback in self.callbacks:
+                        callback.at_epoch_end(self)
+                except KeyboardInterrupt:
+                    if is_dist_initialized():
+                        raise
+                    console.error("keyboard interrupted")
+                    terminate = True
+                if terminate:
+                    break
+            after_loop_called = True
+            cleanup_error = self._run_cleanup(lambda c: c.after_loop(self))
+            if cleanup_error is not None:
+                raise cleanup_error
+            # restore
+            self.accelerator.wait_for_everyone()
+            if self.has_checkpoint_folder and not only_touch:
+                if self.is_local_rank_0:
+                    console.debug("rolling back to the best checkpoint")
+                has_ckpt = self.restore_checkpoint()
+            # finalize
+            state_before_terminate = (
+                self.state.step,
+                self.state.epoch,
+                self.state._last_step,
+            )
+            self.state.set_terminate()
+            if only_touch or skip_final_evaluation:
+                self.final_results = self.intermediate
             else:
-                final_score = self.final_results.final_score
-            self.save_checkpoint(final_score)
-        if self.is_local_rank_0:
-            console.debug("finalizing training")
+                loader = distributed_valid_loader or distributed_train_loader
+                self.final_results = self.get_metrics(loader, self.config.valid_portion)
+            if self.final_results is not None:
+                self.log_with(self.final_results)
+            if not has_ckpt:
+                if self.final_results is None:
+                    final_score = 0.0
+                else:
+                    final_score = self.final_results.final_score
+                self.save_checkpoint(final_score)
+            if self.is_local_rank_0:
+                console.debug("finalizing training")
+            callbacks_finalized = True
+            cleanup_error = self._run_cleanup(lambda c: c.finalize(self))
+            if cleanup_error is not None:
+                finalization_completed = True
+                raise cleanup_error
+            if self.is_local_rank_0:
+                console.debug("finished training")
+            self.accelerator.wait_for_everyone()
+            finalization_completed = True
+            return self
+        except:
+            if state_before_terminate is not None and not finalization_completed:
+                (
+                    self.state.step,
+                    self.state.epoch,
+                    self.state._last_step,
+                ) = state_before_terminate
+            if loop_entered and not after_loop_called:
+                after_loop_called = True
+                self._run_cleanup(lambda c: c.after_loop(self))
+            if not callbacks_finalized:
+                callbacks_finalized = True
+                self._run_cleanup(lambda c: c.finalize(self))
+            raise
+
+    def _run_cleanup(
+        self,
+        cleanup: Callable[[TrainerCallback], None],
+    ) -> Optional[Exception]:
+        first_error = None
         for callback in self.callbacks:
-            callback.finalize(self)
-        if self.is_local_rank_0:
-            console.debug("finished training")
-        self.accelerator.wait_for_everyone()
-        return self
+            try:
+                cleanup(callback)
+            except Exception as err:
+                if first_error is None:
+                    first_error = err
+        return first_error
 
     ## checkpointing
 
