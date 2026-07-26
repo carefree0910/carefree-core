@@ -680,17 +680,70 @@ async def retry(
 
 
 async def offload(future: Coroutine[Any, Any, TFutureResponse]) -> TFutureResponse:
-    import asyncio
-    from concurrent.futures import ThreadPoolExecutor
+    """
+    Run a coroutine on a fresh event loop in a dedicated thread.
 
-    loop = asyncio.get_event_loop()
-    with ThreadPoolExecutor() as executor:
-        return await loop.run_in_executor(
-            executor,
-            lambda new_loop, f: new_loop.run_until_complete(f),
-            asyncio.new_event_loop(),
-            future,
-        )
+    Cancelling the caller requests cancellation on the worker loop without waiting for
+    blocking work to yield. Such work cannot be preempted and will finish in the worker
+    before its event loop and thread are released.
+    """
+
+    import asyncio
+
+    from threading import Event
+    from threading import Thread
+    from concurrent.futures import Future
+
+    caller_loop = asyncio.get_running_loop()
+    cancel_requested = Event()
+    state_lock = Lock()
+    worker_loop: Optional[asyncio.AbstractEventLoop] = None
+    worker_task: Optional["asyncio.Task[Any]"] = None
+    response: "Future[TFutureResponse]" = Future()
+    response.set_running_or_notify_cancel()
+
+    def run() -> None:
+        async def execute() -> TFutureResponse:
+            nonlocal worker_loop, worker_task
+
+            loop = asyncio.get_running_loop()
+            task = asyncio.current_task()
+            assert task is not None
+            with state_lock:
+                worker_loop = loop
+                worker_task = task
+                should_cancel = cancel_requested.is_set()
+            if should_cancel:
+                loop.call_soon(task.cancel)
+            try:
+                return await future
+            finally:
+                with state_lock:
+                    worker_loop = None
+                    worker_task = None
+
+        try:
+            result = asyncio.run(execute())
+        except BaseException as error:
+            response.set_exception(error)
+        else:
+            response.set_result(result)
+
+    worker = Thread(target=run, name="cfcore-offload")
+    worker.start()
+    wrapped = asyncio.wrap_future(response, loop=caller_loop)
+    try:
+        return await asyncio.shield(wrapped)
+    except asyncio.CancelledError:
+        wrapped.cancel()
+        cancel_requested.set()
+        with state_lock:
+            if worker_loop is not None and worker_task is not None:
+                worker_loop.call_soon_threadsafe(worker_task.cancel)
+        raise
+    finally:
+        if response.done():
+            worker.join()
 
 
 def compress(absolute_folder: TPath, remove_original: bool = True) -> None:

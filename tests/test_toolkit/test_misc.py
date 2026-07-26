@@ -1,6 +1,7 @@
 import json
 import anyio
 import pytest
+import asyncio
 import tempfile
 import unittest
 import threading
@@ -10,6 +11,7 @@ import numpy as np
 from core.toolkit.misc import *
 from typing import Any
 from typing import Dict
+from typing import Tuple
 from pathlib import Path
 from unittest import mock
 from dataclasses import field
@@ -849,34 +851,252 @@ class TestMisc(unittest.TestCase):
 
 @pytest.mark.anyio
 @pytest.mark.usefixtures("no_async_resource_leaks")
-async def test_offload() -> None:
-    caller_thread = threading.get_ident()
+async def test_offload_uses_fresh_worker() -> None:
+    caller_loop = asyncio.get_running_loop()
+    caller_thread = threading.current_thread()
 
-    async def get_worker_thread() -> int:
-        return threading.get_ident()
+    async def get_context() -> Tuple[
+        asyncio.AbstractEventLoop,
+        threading.Thread,
+    ]:
+        return asyncio.get_running_loop(), threading.current_thread()
 
-    worker_thread = await offload(get_worker_thread())
-    assert worker_thread != caller_thread
+    first_loop, first_thread = await offload(future=get_context())
+    second_loop, second_thread = await offload(get_context())
+
+    assert first_loop is not caller_loop
+    assert second_loop is not caller_loop
+    assert first_loop is not second_loop
+    assert first_thread is not caller_thread
+    assert second_thread is not caller_thread
+    assert first_thread is not second_thread
+    assert first_loop.is_closed()
+    assert second_loop.is_closed()
+    assert not first_thread.is_alive()
+    assert not second_thread.is_alive()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="P0-01: offload waits for its worker when the caller is cancelled",
-)
 @pytest.mark.anyio
 @pytest.mark.usefixtures("no_async_resource_leaks")
-async def test_offload_cancellation_is_prompt() -> None:
-    unit = 0.2
-    started_at = time.monotonic()
+async def test_offload_keeps_caller_loop_responsive() -> None:
+    started = threading.Event()
+    release = threading.Event()
 
-    async def sleep() -> None:
-        time.sleep(unit)
+    async def block_cpu() -> Tuple[bool, threading.Thread]:
+        worker_thread = threading.current_thread()
+        started.set()
+        deadline = time.monotonic() + 10.0
+        while not release.is_set() and time.monotonic() < deadline:
+            pass
+        return release.is_set(), worker_thread
 
-    with anyio.move_on_after(0.01) as cancel_scope:
-        await offload(sleep())
+    caller_thread = threading.current_thread()
+    task = asyncio.create_task(offload(block_cpu()))
+    try:
+        with anyio.fail_after(5.0):
+            while not started.is_set():
+                await asyncio.sleep(0)
+        release.set()
+        finished_before_deadline, blocking_thread = await task
+    finally:
+        release.set()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
 
-    assert cancel_scope.cancel_called
-    assert time.monotonic() - started_at < unit * 0.75
+    assert finished_before_deadline
+    assert blocking_thread is not caller_thread
+    assert not blocking_thread.is_alive()
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("no_async_resource_leaks")
+async def test_offload_propagates_exception_and_closes_worker() -> None:
+    error = RuntimeError("worker error")
+    contexts = []
+
+    async def fail() -> None:
+        contexts.append(
+            (asyncio.get_running_loop(), threading.current_thread()),
+        )
+        raise error
+
+    with pytest.raises(RuntimeError, match="worker error") as error_info:
+        await offload(fail())
+
+    assert error_info.value is error
+    worker_loop, worker_thread = contexts[0]
+    assert worker_loop.is_closed()
+    assert not worker_thread.is_alive()
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("no_async_resource_leaks")
+async def test_offload_cancels_cooperative_worker() -> None:
+    started = threading.Event()
+    release = threading.Event()
+    cancelled = threading.Event()
+    contexts = []
+
+    async def wait_until_cancelled() -> None:
+        contexts.append(
+            (asyncio.get_running_loop(), threading.current_thread()),
+        )
+        started.set()
+        try:
+            deadline = time.monotonic() + 15.0
+            while not release.is_set() and time.monotonic() < deadline:
+                await asyncio.sleep(0)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    task = asyncio.create_task(offload(wait_until_cancelled()))
+    with anyio.fail_after(5.0):
+        while not started.is_set():
+            await anyio.sleep(0)
+    worker_loop, worker_thread = contexts[0]
+    try:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        with anyio.fail_after(5.0):
+            while not cancelled.is_set():
+                await anyio.sleep(0)
+    finally:
+        release.set()
+        with anyio.fail_after(5.0):
+            while worker_thread.is_alive():
+                await anyio.sleep(0)
+    assert worker_loop.is_closed()
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("no_async_resource_leaks")
+async def test_offload_cancellation_does_not_wait_for_blocking_worker() -> None:
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+    contexts = []
+
+    async def wait_for_release() -> None:
+        contexts.append(
+            (asyncio.get_running_loop(), threading.current_thread()),
+        )
+        started.set()
+        try:
+            assert release.wait(5.0)
+        finally:
+            finished.set()
+
+    task = asyncio.create_task(offload(wait_for_release()))
+    with anyio.fail_after(5.0):
+        while not started.is_set():
+            await anyio.sleep(0)
+    try:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not finished.is_set()
+    finally:
+        release.set()
+
+    worker_loop, worker_thread = contexts[0]
+    with anyio.fail_after(5.0):
+        while not finished.is_set() or worker_thread.is_alive():
+            await anyio.sleep(0)
+    assert worker_loop.is_closed()
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("no_async_resource_leaks")
+async def test_offload_cleans_up_child_tasks() -> None:
+    child_cancelled = threading.Event()
+    child_tasks = []
+
+    async def child() -> None:
+        try:
+            await asyncio.get_running_loop().create_future()
+        finally:
+            child_cancelled.set()
+
+    async def parent() -> Tuple[
+        asyncio.AbstractEventLoop,
+        threading.Thread,
+    ]:
+        child_tasks.append(asyncio.create_task(child()))
+        await asyncio.sleep(0)
+        return asyncio.get_running_loop(), threading.current_thread()
+
+    worker_loop, worker_thread = await offload(parent())
+    assert child_cancelled.is_set()
+    assert child_tasks[0].cancelled()
+    assert worker_loop.is_closed()
+    assert not worker_thread.is_alive()
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("no_async_resource_leaks")
+async def test_offload_cancellation_before_worker_loop_starts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_thread = threading.Thread
+    thread_started = threading.Event()
+    release_worker = threading.Event()
+    release_coroutine = threading.Event()
+    coroutine_started = threading.Event()
+    coroutine_cancelled = threading.Event()
+    worker_threads = []
+
+    class DelayedThread:
+        def __init__(self, target: Any, name: str) -> None:
+            def delayed_target() -> None:
+                assert release_worker.wait(5.0)
+                target()
+
+            self._thread = original_thread(target=delayed_target, name=name)
+            worker_threads.append(self._thread)
+
+        def start(self) -> None:
+            self._thread.start()
+            thread_started.set()
+
+        def join(self) -> None:
+            self._thread.join()
+
+    async def wait_until_cancelled() -> None:
+        coroutine_started.set()
+        try:
+            while not release_coroutine.is_set():
+                await asyncio.sleep(0)
+        except asyncio.CancelledError:
+            coroutine_cancelled.set()
+            raise
+
+    monkeypatch.setattr(threading, "Thread", DelayedThread)
+    coroutine = wait_until_cancelled()
+    task = asyncio.create_task(offload(coroutine))
+    with anyio.fail_after(5.0):
+        while not thread_started.is_set():
+            await anyio.sleep(0)
+    try:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    finally:
+        release_worker.set()
+
+    try:
+        with anyio.fail_after(5.0):
+            while worker_threads[0].is_alive():
+                await anyio.sleep(0)
+    finally:
+        release_coroutine.set()
+        with anyio.fail_after(5.0):
+            while worker_threads[0].is_alive():
+                await anyio.sleep(0)
+    assert coroutine.cr_frame is None
+    assert not coroutine_started.is_set() or coroutine_cancelled.is_set()
 
 
 @pytest.mark.anyio
