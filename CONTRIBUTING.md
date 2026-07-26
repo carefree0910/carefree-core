@@ -77,9 +77,23 @@ python -m pip install --upgrade "pip==24.2"
 python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -c requirements/constraints-ci.txt torch torchvision
 python -m pip install -c requirements/constraints-ci.txt -e ".[dev]"
 python -m pip check
+mkdir -p .artifacts/benchmarks
 python -m black . --check --diff
-python -m mypy core
-python -m pytest -v tests --ignore=tests/test_flow --ignore=tests/test_toolkit/test_web.py --deselect=tests/test_learn/test_callbacks.py::TestCallbacks::test_wandb_callback --cov=core --durations=0
+python -m mypy core scripts/check_coverage.py tests/typing/pass
+python scripts/check_type_debt.py --baseline tests/typing/type_debt.json
+python tests/typing/check_negative.py
+python -m pytest -v tests \
+  --ignore=tests/test_flow \
+  --ignore=tests/test_toolkit/test_web.py \
+  --deselect=tests/test_learn/test_callbacks.py::TestCallbacks::test_wandb_callback \
+  --cov=core --cov-branch \
+  --cov-report=term-missing \
+  --cov-report=json:.artifacts/coverage.json \
+  --durations=0
+python scripts/check_coverage.py .artifacts/coverage.json
+python -m coverage report
+python -m benchmarks.run --profile smoke \
+  --output .artifacts/benchmarks/smoke-local.json --validate
 ```
 
 Flow and tests that make external network calls are intentionally outside the
@@ -89,6 +103,17 @@ Python 3.8. The Python 3.14 compatibility lane uses current Python 3.14
 PyTorch/Torchvision wheels and Accelerate 1.14.0; its exact environment is still
 visible in the GitHub Actions installation log. Tests, static checks, package
 builds, and benchmark smoke checks all run on both Python 3.8 and Python 3.14.
+
+Coverage is collected in branch mode. Two repeat measurements covered all
+statements and produced the following branch-aware totals:
+
+- Python 3.8: 10,958 of 11,129 statement and branch opportunities (98.46%).
+- Python 3.14: 10,267 of 10,436 statement and branch opportunities (98.38%).
+
+The combined threshold is therefore 98%, rounded down from the lower endpoint,
+and may only increase. `scripts/check_coverage.py` separately keeps line
+coverage at 100%, so enabling branch coverage does not loosen the existing line
+coverage gate.
 
 To verify all supported packaging entry points on the supported Linux runtime:
 

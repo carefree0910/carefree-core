@@ -6,9 +6,18 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   checks:
+    name: checks (${{ matrix.os }}, py${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -16,25 +25,68 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements/constraints-ci.txt
+      - name: Prepare check reports
+        shell: bash
+        run: mkdir -p .artifacts/checks
       - name: Install constrained tools
         if: matrix.python-version == '3.8'
+        shell: bash
         run: |
-          python -m pip install --upgrade "pip==24.2"
-          python -m pip install -c requirements/constraints-ci.txt black mypy types-requests
+          set -euo pipefail
+          {
+            python -m pip install --upgrade "pip==24.2"
+            python -m pip install -c requirements/constraints-ci.txt black mypy types-requests
+          } 2>&1 | tee .artifacts/checks/install.log
       - name: Install Python 3.14 tools
         if: matrix.python-version == '3.14'
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install black "mypy==1.11.2" types-requests
-      - name: black
-        run: python -m black . --check --diff
+          set -euo pipefail
+          {
+            python -m pip install --upgrade pip
+            python -m pip install black "mypy==1.11.2" types-requests
+          } 2>&1 | tee .artifacts/checks/install.log
+      - name: Black
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m black . --check --diff 2>&1 | tee .artifacts/checks/black.log
       - name: mypy
-        run: python -m mypy core tests/typing/pass
-      - name: type debt
-        run: python scripts/check_type_debt.py --baseline tests/typing/type_debt.json
-      - name: negative typing fixtures
-        run: python tests/typing/check_negative.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m mypy core scripts/check_coverage.py tests/typing/pass \
+            2>&1 | tee .artifacts/checks/mypy.log
+      - name: Type debt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/check_type_debt.py \
+            --baseline tests/typing/type_debt.json \
+            2>&1 | tee .artifacts/checks/type-debt.log
+      - name: Negative typing fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tests/typing/check_negative.py \
+            2>&1 | tee .artifacts/checks/negative-typing.log
+      - name: Upload check reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: carefree-core-checks-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: .artifacts/checks/**
+          if-no-files-found: warn
+          include-hidden-files: true

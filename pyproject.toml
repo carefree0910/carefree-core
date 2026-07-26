@@ -140,16 +140,18 @@ warn_unused_ignores = true
 testpaths = ["tests"]
 
 [tool.coverage.run]
+branch = true
 omit = [
-    "core/flow/*",
+    "core/flow/**",
     "core/toolkit/web.py",
 ]
 
 [tool.coverage.report]
-fail_under = 100
+fail_under = 98
+precision = 2
 show_missing = true
 omit = [
-    "core/flow/*",
+    "core/flow/**",
     "core/toolkit/web.py",
 ]
 exclude_also = [
