@@ -499,6 +499,178 @@ class TestBlocks(unittest.TestCase):
         p = FooPipeline.init(config).fit(data)
         p.prepare_distributed_with(Accelerator())
 
+    def test_set_trainer_callback_defaults(self):
+        training_loop_id = cflearn.TrainingLoopCallback.__identifier__
+        progress_id = cflearn.ProgressCallback.__identifier__
+        log_metrics_msg_id = cflearn.LogMetricsMsgCallback.__identifier__
+        update_artifacts_id = cflearn.UpdateArtifactsCallback.__identifier__
+        default_ids = [
+            progress_id,
+            log_metrics_msg_id,
+            update_artifacts_id,
+        ]
+        cases = [
+            (
+                "auto disabled without callbacks",
+                False,
+                None,
+                [training_loop_id],
+                [training_loop_id],
+            ),
+            (
+                "auto disabled with empty callbacks",
+                False,
+                [],
+                [training_loop_id],
+                [training_loop_id],
+            ),
+            (
+                "auto disabled with custom callback",
+                False,
+                ["custom"],
+                [training_loop_id, "custom"],
+                [training_loop_id],
+            ),
+            (
+                "auto disabled with training loop",
+                False,
+                [training_loop_id, "custom"],
+                [training_loop_id, "custom"],
+                [],
+            ),
+            (
+                "auto enabled without callbacks",
+                True,
+                None,
+                [
+                    training_loop_id,
+                    update_artifacts_id,
+                    log_metrics_msg_id,
+                    progress_id,
+                ],
+                [training_loop_id, *default_ids],
+            ),
+            (
+                "auto enabled with all defaults",
+                True,
+                default_ids,
+                [training_loop_id, *default_ids],
+                [training_loop_id],
+            ),
+            (
+                "duplicate training loops",
+                True,
+                [
+                    "custom",
+                    training_loop_id,
+                    training_loop_id,
+                    *default_ids,
+                ],
+                [training_loop_id, "custom", *default_ids],
+                [],
+            ),
+        ]
+        for (
+            name,
+            auto_callback,
+            callback_names,
+            expected_names,
+            expected_additional,
+        ) in cases:
+            with self.subTest(name):
+                block = cflearn.SetTrainerDefaultsBlock()
+                config = cflearn.Config(
+                    auto_callback=auto_callback,
+                    callback_names=callback_names,
+                )
+                block.build(config)
+
+                self.assertListEqual(config.callback_names, expected_names)
+                self.assertEqual(config.callback_names.count(training_loop_id), 1)
+                self.assertEqual(config.callback_names[0], training_loop_id)
+                self.assertListEqual(
+                    block._defaults.get("additional_callbacks", []),
+                    expected_additional,
+                )
+                if not auto_callback:
+                    self.assertTrue(
+                        all(
+                            callback_id not in config.callback_names
+                            for callback_id in default_ids
+                        )
+                    )
+
+    def test_set_trainer_progress_config(self):
+        progress_id = cflearn.ProgressCallback.__identifier__
+        log_metrics_msg_id = cflearn.LogMetricsMsgCallback.__identifier__
+        update_artifacts_id = cflearn.UpdateArtifactsCallback.__identifier__
+        callback_names = [
+            progress_id,
+            log_metrics_msg_id,
+            update_artifacts_id,
+        ]
+
+        tqdm_settings = cflearn.TqdmSettings(
+            use_step_tqdm=True,
+            desc="from config",
+        )
+        config = cflearn.Config(
+            auto_callback=True,
+            callback_names=callback_names,
+            tqdm_settings=tqdm_settings,
+            callback_configs={
+                progress_id: {
+                    "settings": {"desc": "ignored"},
+                    "tqdm_settings": {"desc": "ignored"},
+                },
+                "custom": {"preserved": "custom"},
+            },
+        )
+        cflearn.SetTrainerDefaultsBlock().build(config)
+        progress_config = config.callback_configs[progress_id]
+        self.assertDictEqual(
+            progress_config,
+            {"settings": tqdm_settings.asdict()},
+        )
+        self.assertFalse(config.callback_configs[log_metrics_msg_id]["verbose"])
+        self.assertDictEqual(
+            config.callback_configs["custom"],
+            {"preserved": "custom"},
+        )
+        callbacks_block = cflearn.BuildCallbacksBlock()
+        callbacks_block.build(config)
+        self.assertEqual(
+            [callback.__identifier__ for callback in callbacks_block.callbacks],
+            config.callback_names,
+        )
+        progress = next(
+            callback
+            for callback in callbacks_block.callbacks
+            if isinstance(callback, cflearn.ProgressCallback)
+        )
+        self.assertDictEqual(progress.settings.asdict(), tqdm_settings.asdict())
+
+        disabled_config = cflearn.Config(
+            auto_callback=False,
+            callback_names=[progress_id],
+            tqdm_settings={"use_tqdm": True, "desc": "disabled auto callback"},
+            callback_configs={progress_id: []},
+        )
+        cflearn.SetTrainerDefaultsBlock().build(disabled_config)
+        self.assertDictEqual(
+            disabled_config.callback_configs[progress_id],
+            {"settings": disabled_config.tqdm_settings},
+        )
+        callbacks_block = cflearn.BuildCallbacksBlock()
+        callbacks_block.build(disabled_config)
+        progress = next(
+            callback
+            for callback in callbacks_block.callbacks
+            if isinstance(callback, cflearn.ProgressCallback)
+        )
+        self.assertTrue(progress.settings.use_tqdm)
+        self.assertEqual(progress.settings.desc, "disabled auto callback")
+
     def test_build_metrics(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()
         config = cflearn.Config(

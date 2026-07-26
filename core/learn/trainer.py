@@ -255,6 +255,8 @@ class Trainer(ITrainer):
         self.inference.model = self.model
         self.optimizers = {k: prepared[-n_optim + i] for i, k in enumerate(optim_keys)}
         self.schedulers = schedulers
+        # Preserve the historical post-prepare compatibility hook. Some scheduler
+        # subclasses rebuild derived state in `load_state_dict`.
         for sch in schedulers.values():
             if sch is not None:
                 sch.load_state_dict(sch.state_dict())
@@ -557,13 +559,19 @@ class Trainer(ITrainer):
             # check terminate
             if self.state.should_start_snapshot:
                 score = self.intermediate.final_score
-                if any(monitor.should_snapshot(score) for monitor in self.monitors):
+                snapshot_decisions = [
+                    monitor.should_snapshot(score) for monitor in self.monitors
+                ]
+                if any(snapshot_decisions):
                     if self.state.can_snapshot:
                         self.state.update_snapshot_epoch()
                         save_checkpoint = True
                 # should not terminate if DDP is enabled, otherwise the processes may hang
                 if not is_ddp():
-                    if any(m.should_terminate(score) for m in self.monitors):
+                    terminate_decisions = [
+                        monitor.should_terminate(score) for monitor in self.monitors
+                    ]
+                    if any(terminate_decisions):
                         terminate = True
         return MonitorResults(terminate, save_checkpoint, self.intermediate)
 

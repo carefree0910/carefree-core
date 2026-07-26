@@ -1,3 +1,4 @@
+import torch
 import pytest
 import unittest
 
@@ -75,6 +76,30 @@ class TestTrainer(unittest.TestCase):
         self.assertFalse(trainer.use_tqdm_in_validation)
         trainer.log_with(None)
 
+    def test_scheduler_post_prepare_refresh(self) -> None:
+        refresh_calls = []
+
+        @cflearn.register_scheduler("post_prepare_refresh")
+        class PostPrepareRefreshScheduler(torch.optim.lr_scheduler.LRScheduler):
+            def get_lr(self):
+                return self.base_lrs
+
+            def load_state_dict(self, state_dict):
+                refresh_calls.append(state_dict.copy())
+                super().load_state_dict(state_dict)
+
+        config = self.config.copy()
+        config.num_steps = 1
+        config.scheduler_name = "post_prepare_refresh"
+        config.scheduler_config = {}
+        pipeline = cflearn.TrainingPipeline.init(config).fit(self.data)
+        scheduler = pipeline.training.build_optimizers.schedulers["all"]
+
+        self.assertIsInstance(scheduler, PostPrepareRefreshScheduler)
+        self.assertEqual(len(refresh_calls), 1)
+        self.assertIn("last_epoch", refresh_calls[0])
+        self.assertNotIn("optimizer", refresh_calls[0])
+
     def test_tqdm(self):
         config = self.config.copy()
         config.num_steps = 10
@@ -149,6 +174,111 @@ class TestTrainer(unittest.TestCase):
 
         config.monitor_names = "foo"
         cflearn.TrainingPipeline.init(config).fit(data)
+
+    def test_monitor_evaluates_every_decision(self) -> None:
+        events = []
+
+        class RecordingMonitor(cflearn.TrainerMonitor):
+            def __init__(
+                self,
+                name: str,
+                snapshot: bool,
+                terminate: bool,
+            ) -> None:
+                self.name = name
+                self.snapshot = snapshot
+                self.terminate = terminate
+
+            def should_snapshot(self, new_score: float) -> bool:
+                events.append((self.name, "snapshot", new_score))
+                return self.snapshot
+
+            def should_terminate(self, new_score: float) -> bool:
+                events.append((self.name, "terminate", new_score))
+                return self.terminate
+
+        metrics = cflearn.MetricsOutputs(1.0, {}, {})
+        trainer = cflearn.Trainer(self.config)
+        trainer.state = Mock(
+            should_extend_epoch=False,
+            should_monitor=True,
+            should_start_snapshot=True,
+            can_snapshot=True,
+        )
+        trainer.monitors = [
+            RecordingMonitor("first", True, True),
+            RecordingMonitor("second", False, False),
+        ]
+        trainer.callbacks = []
+        trainer.get_metrics = Mock(return_value=metrics)
+        trainer.log_with = Mock()
+        step_outputs = cflearn.StepOutputs({}, {})
+
+        with patch("core.learn.trainer.is_ddp", return_value=False):
+            monitored = trainer.monitor(Mock(), Mock(), step_outputs)
+
+        self.assertEqual(
+            events,
+            [
+                ("first", "snapshot", 1.0),
+                ("second", "snapshot", 1.0),
+                ("first", "terminate", 1.0),
+                ("second", "terminate", 1.0),
+            ],
+        )
+        self.assertTrue(monitored.save_checkpoint)
+        self.assertTrue(monitored.terminate)
+        self.assertIs(monitored.metric_outputs, metrics)
+        trainer.state.update_snapshot_epoch.assert_called_once_with()
+
+        events.clear()
+        trainer.state.update_snapshot_epoch.reset_mock()
+        with patch("core.learn.trainer.is_ddp", return_value=True):
+            monitored = trainer.monitor(Mock(), Mock(), step_outputs)
+
+        self.assertEqual(
+            events,
+            [
+                ("first", "snapshot", 1.0),
+                ("second", "snapshot", 1.0),
+            ],
+        )
+        self.assertTrue(monitored.save_checkpoint)
+        self.assertFalse(monitored.terminate)
+        trainer.state.update_snapshot_epoch.assert_called_once_with()
+
+    def test_monitor_updates_state_regardless_of_order(self) -> None:
+        metrics = cflearn.MetricsOutputs(1.0, {}, {})
+        trainer = cflearn.Trainer(self.config)
+        trainer.state = Mock(
+            should_extend_epoch=False,
+            should_monitor=True,
+            should_start_snapshot=True,
+            can_snapshot=True,
+        )
+        trainer.callbacks = []
+        trainer.get_metrics = Mock(return_value=metrics)
+        trainer.log_with = Mock()
+        step_outputs = cflearn.StepOutputs({}, {})
+
+        for stateful_first in [False, True]:
+            with self.subTest(stateful_first=stateful_first):
+                mean_std = cflearn.MeanStdMonitor()
+                plateau = cflearn.PlateauMonitor()
+                conservative = cflearn.ConservativeMonitor()
+                if stateful_first:
+                    trainer.monitors = [mean_std, plateau, conservative]
+                else:
+                    trainer.monitors = [conservative, mean_std, plateau]
+
+                with patch("core.learn.trainer.is_ddp", return_value=False):
+                    monitored = trainer.monitor(Mock(), Mock(), step_outputs)
+
+                self.assertListEqual(mean_std.history, [1.0])
+                self.assertEqual(mean_std._incrementer.num_record, 1)
+                self.assertListEqual(plateau.history, [1.0])
+                self.assertEqual(plateau._incrementer.num_record, 1)
+                self.assertTrue(monitored.save_checkpoint)
 
 
 if __name__ == "__main__":

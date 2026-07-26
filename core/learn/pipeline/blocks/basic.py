@@ -72,8 +72,6 @@ from ....toolkit.misc import Serializer
 from ....toolkit.misc import DataClassBase
 from ....toolkit.types import TPath
 
-# static blocks
-
 
 @Block.register("set_defaults")
 class SetDefaultsBlock(InjectDefaultsMixin, Block):
@@ -288,27 +286,25 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
         auto_callback = config.auto_callback
         progress_id = ProgressCallback.__identifier__
         log_metrics_msg_id = LogMetricsMsgCallback.__identifier__
+        update_artifacts_id = UpdateArtifactsCallback.__identifier__
         default_callbacks = [
             progress_id,
             log_metrics_msg_id,
-            UpdateArtifactsCallback.__identifier__,
+            update_artifacts_id,
         ]
-        if any(c not in callback_names for c in default_callbacks) and auto_callback:
-            additional_callbacks = []
+        progress_settings = shallow_copy_dict(tqdm_settings or {})
+        callback_configs[progress_id] = {"settings": progress_settings}
+        additional_callbacks = []
+        if auto_callback:
             for c in default_callbacks:
                 if c not in callback_names:
                     additional_callbacks.append(c)
                     callback_names.insert(0, c)
-            self._defaults["additional_callbacks"] = additional_callbacks
-            verbose = False
-            if tqdm_settings is None or (
-                not tqdm_settings.get("use_tqdm", False)
-                and not tqdm_settings.get("use_step_tqdm", False)
-            ):
-                verbose = True
-            progress_cfg = callback_configs.setdefault(progress_id, {})
-            progress_settings = progress_cfg.setdefault("tqdm_settings", tqdm_settings)
-            callback_configs[progress_id] = dict(settings=progress_settings)
+
+            verbose = not (
+                progress_settings.get("use_tqdm", False)
+                or progress_settings.get("use_step_tqdm", False)
+            )
             log_metrics_msg_cfg = callback_configs.setdefault(log_metrics_msg_id, {})
             if "verbose" not in log_metrics_msg_cfg:
                 log_metrics_msg_cfg["verbose"] = verbose
@@ -326,9 +322,17 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
                 wandb_config["config"] = config_for_wandb
                 self._defaults["callback_configs.wandb.config"] = config_for_wandb_str
         training_loop_callback = TrainingLoopCallback.__identifier__
-        if training_loop_callback not in callback_names:
-            callback_names.insert(0, training_loop_callback)
-            self._defaults["additional_callbacks"].insert(0, training_loop_callback)
+        has_training_loop = training_loop_callback in callback_names
+        callback_names[:] = [
+            callback_name
+            for callback_name in callback_names
+            if callback_name != training_loop_callback
+        ]
+        callback_names.insert(0, training_loop_callback)
+        if not has_training_loop:
+            additional_callbacks.insert(0, training_loop_callback)
+        if additional_callbacks:
+            self._defaults["additional_callbacks"] = additional_callbacks
         config.tqdm_settings = tqdm_settings
         config.callback_names = callback_names
         config.callback_configs = callback_configs
@@ -513,8 +517,8 @@ class BuildOptimizersBlock(InjectDefaultsMixin, Block):
         exp_default_cfg = {"gamma": exp_gamma}
         # cyclic
         cyclic_default_cfg = {
-            "base_lr": opt_lr,
-            "max_lr": 1.0e-8,
+            "base_lr": 1.0e-8,
+            "max_lr": opt_lr,
             "step_size_up": 10 * state_info.num_batches,
             "gamma": exp_gamma,
         }
