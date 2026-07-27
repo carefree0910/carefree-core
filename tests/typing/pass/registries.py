@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from core.toolkit.misc import JsonPack
     from core.toolkit.misc import WithRegister
     from core.toolkit.misc import ISerializable
+    from core.toolkit.registry import Registry
 
     class Plugin(WithRegister["Plugin"]):
         d: Dict[str, Type["Plugin"]] = {}
@@ -88,3 +89,33 @@ if TYPE_CHECKING:
     assert_type(Payload.from_json('{"type": "typing.payload", "info": {}}'), Payload)
     assert_type(payload.to_pack(), JsonPack)
     assert_type(payload.copy(), RegisteredPayload)
+
+    registry = Registry[Plugin](base_type=Plugin)
+    assert_type(registry, Registry[Plugin])
+    assert_type(
+        registry.register("typing.registry", RegisteredPlugin),
+        Type[Plugin],
+    )
+    assert_type(
+        registry.register_alias("typing.alias", "typing.registry"),
+        str,
+    )
+    assert_type(registry.has("typing.registry"), bool)
+    assert_type(registry.resolve_name("typing.alias"), str)
+    assert_type(registry.get("typing.alias"), Type[Plugin])
+    assert_type(registry.make("typing.registry", {"value": 1}), Plugin)
+    assert_type(
+        registry.make_many("typing.registry", {"value": 1}),
+        List[Plugin],
+    )
+    assert_type(
+        registry.make_many(
+            ["typing.registry"],
+            [{"value": 1}],
+        ),
+        List[Plugin],
+    )
+    assert_type(
+        registry.make_many(("typing.registry",)),
+        List[Plugin],
+    )
