@@ -38,7 +38,10 @@ if TYPE_CHECKING:
         pass
 
     assert_type(RegisteredPlugin, Type[RegisteredPlugin])
+    assert_type(Plugin.d, Dict[str, Type[Plugin]])
     assert_type(Plugin.get("typing.plugin"), Type[Plugin])
+    assert_type(Plugin.has("typing.plugin"), bool)
+    assert_type(Plugin.check_subclass("typing.plugin"), bool)
     assert_type(Plugin.make("typing.plugin", {"value": 1}), Plugin)
     assert_type(
         RegisteredPlugin.get("typing.plugin"),
@@ -50,7 +53,22 @@ if TYPE_CHECKING:
     )
     assert_type(Plugin.make_multiple("typing.plugin"), Plugin)
     assert_type(
+        Plugin.make_multiple(
+            "typing.plugin",
+            {"value": 1},
+            ensure_safe=True,
+        ),
+        Plugin,
+    )
+    assert_type(
         Plugin.make_multiple(["typing.plugin"], [{"value": 1}]),
+        List[Plugin],
+    )
+    assert_type(
+        Plugin.make_multiple(
+            ["typing.plugin"],
+            {"typing.plugin": {"value": 1}},
+        ),
         List[Plugin],
     )
     assert_type(

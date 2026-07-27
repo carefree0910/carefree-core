@@ -79,6 +79,19 @@ if TYPE_CHECKING:
     model_config = Config()
     model_config.module_name = "typing.model"
     assert_type(model_config.callback_names, Optional[List[str]])
+    legacy_config = Config.construct({"callback_names": "typing.callback"})
+    assert_type(legacy_config, Config)
+    assert_type(legacy_config.from_info({"num_epoch": 1}), Config)
+    assert_type(legacy_config.to_info(), Dict[str, Any])
+    assert_type(
+        Config.from_pack(
+            {
+                "type": "$base",
+                "info": {"callback_names": "typing.callback"},
+            }
+        ),
+        Config,
+    )
     assert_type(ExternalDataBlock, Type[ExternalDataBlock])
     assert_type(ExternalDataBlock.make("typing.data_block", {}), IBlock[Any])
     assert_type(data_block.copy(), ExternalDataBlock)

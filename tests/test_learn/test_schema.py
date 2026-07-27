@@ -1,4 +1,5 @@
 import os
+import copy
 import torch
 import tempfile
 import unittest
@@ -496,6 +497,69 @@ class TestSchema(unittest.TestCase):
         self.assertListEqual(legacy_config.to_info()["callback_names"], ["foo"])
         config = cflearn.Config(mixed_precision=cflearn.PrecisionType.FP16)
         self.assertEqual(config.mixed_precision, "fp16")
+
+    def test_legacy_config_payload(self):
+        legacy_payload = {
+            "workspace": "_legacy",
+            "create_sub_workspace": False,
+            "num_epoch": 3,
+            "num_steps": 7,
+            "log_steps": 2,
+            "valid_portion": 0.5,
+            "grad_accumulate": 2,
+            "metric_names": ["mae"],
+            "monitor_names": "basic",
+            "callback_names": "legacy.callback",
+            "lr": 1.0e-3,
+            "optimizer_name": "adam",
+            "optimizer_config": {"weight_decay": 1.0e-2},
+            "sort_ckpt_by": "latest",
+            "resume_training_from": "legacy.ckpt",
+            "tqdm_settings": {"use_tqdm": True},
+            "split_batches": True,
+            "mixed_precision": "fp16",
+            "even_batches": False,
+            "find_unused_parameters": True,
+            "timeout": 120,
+            "model": "direct",
+            "model_config": {"state": "legacy"},
+            "module_name": "linear",
+            "module_config": {"input_dim": 2, "output_dim": 1},
+            "num_repeat": 2,
+            "loss_name": "mse",
+            "loss_config": {"reduction": "mean"},
+            "in_loading": True,
+            "cudnn_benchmark": True,
+            "extra": {"legacy": True},
+        }
+        original_payload = copy.deepcopy(legacy_payload)
+        loaders = [
+            lambda payload: cflearn.Config(**payload),
+            cflearn.Config.construct,
+            lambda payload: cflearn.Config().from_info(payload),
+            lambda payload: cflearn.Config.from_pack(
+                {"type": "$base", "info": payload}
+            ),
+        ]
+
+        self.assertIs(cflearn.Config.get("$base"), cflearn.Config)
+        for load in loaders:
+            with self.subTest(load=load):
+                config = load(legacy_payload)
+                self.assertDictEqual(legacy_payload, original_payload)
+                for key, expected in legacy_payload.items():
+                    actual = getattr(config, key)
+                    if key == "callback_names":
+                        self.assertListEqual(actual, ["legacy.callback"])
+                    else:
+                        self.assertEqual(actual, expected)
+                self.assertEqual(config.sort_ckpt_by, cflearn.SortMethod.LATEST)
+
+                info = config.to_info()
+                expected_info = copy.deepcopy(legacy_payload)
+                expected_info["callback_names"] = ["legacy.callback"]
+                for key, expected in expected_info.items():
+                    self.assertEqual(info[key], expected)
 
     def test_trainer_state(self):
         state = TrainerState(

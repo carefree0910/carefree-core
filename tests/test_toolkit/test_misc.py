@@ -18,8 +18,6 @@ from dataclasses import field
 from unittest.mock import patch
 from unittest.mock import Mock
 
-test_dict = {}
-
 
 class TestMisc(unittest.TestCase):
     @pytest.fixture(autouse=True)
@@ -503,19 +501,23 @@ class TestMisc(unittest.TestCase):
         self.assertEqual(is_numeric("nan"), True)
 
     def test_register_core(self):
-        global test_dict
+        registry = {}
+        events = []
 
         def before_register(cls):
+            events.append(("before", cls))
             cls.before = "test_before"
 
         def after_register(cls):
+            events.append(("after", cls))
             self.assertEqual(cls.before, "test_before")
             cls.after = "test_after"
 
-        def register(name):
+        def register(name, *, allow_duplicate=False):
             return register_core(
                 name,
-                test_dict,
+                registry,
+                allow_duplicate=allow_duplicate,
                 before_register=before_register,
                 after_register=after_register,
             )
@@ -524,17 +526,37 @@ class TestMisc(unittest.TestCase):
         class Foo:
             pass
 
-        self.assertIs(Foo, test_dict["foo"])
+        self.assertIs(Foo, registry["foo"])
         self.assertEqual(Foo.after, "test_after")
+        self.assertEqual(events, [("before", Foo), ("after", Foo)])
+        self.assertListEqual(list(registry), ["foo"])
 
-        @register("foo")
-        class Foo2:
+        class KeptDuplicate:
             pass
 
-        self.assertIs(Foo, test_dict["foo"])
-        self.assertEqual(Foo2.before, "test_before")
+        events.clear()
+        with patch("core.toolkit.misc.console.warn") as warn:
+            registered = register("foo")(KeptDuplicate)
+        self.assertIs(registered, KeptDuplicate)
+        self.assertIs(Foo, registry["foo"])
+        self.assertEqual(events, [("before", KeptDuplicate)])
+        self.assertEqual(KeptDuplicate.before, "test_before")
+        warn.assert_called_once()
         with self.assertRaises(AttributeError):
-            _ = Foo2.after
+            _ = KeptDuplicate.after
+
+        class ReplacedDuplicate:
+            pass
+
+        events.clear()
+        registered = register("foo", allow_duplicate=True)(ReplacedDuplicate)
+        self.assertIs(registered, ReplacedDuplicate)
+        self.assertIs(ReplacedDuplicate, registry["foo"])
+        self.assertEqual(
+            events,
+            [("before", ReplacedDuplicate), ("after", ReplacedDuplicate)],
+        )
+        self.assertListEqual(list(registry), ["foo"])
 
     def test_get_err_msg(self):
         try:
@@ -757,8 +779,13 @@ class TestMisc(unittest.TestCase):
         self.assertEqual(FooPydantic.construct({"a": 1}), FooPydantic(a=1))
 
     def test_with_register(self):
+        registry = {}
+
         class Foo(WithRegister):
-            d = {}
+            d = registry
+
+            def __init__(self, value=0):
+                self.value = value
 
         @Foo.register("a")
         class A(Foo):
@@ -768,15 +795,55 @@ class TestMisc(unittest.TestCase):
         class B(Foo):
             pass
 
+        self.assertIs(Foo.d, registry)
+        self.assertIs(A.d, registry)
+        self.assertEqual(A.__identifier__, "a")
+        self.assertEqual(B.__identifier__, "b")
+        self.assertListEqual(list(registry), ["a", "b"])
         self.assertIs(Foo.get("a"), A)
         self.assertTrue(Foo.has("a"))
         self.assertFalse(Foo.has("c"))
-        self.assertIsInstance(Foo.make("a", {}), A)
-        self.assertIsInstance(Foo.make("a", {}, ensure_safe=True), A)
-        self.assertIsInstance(Foo.make_multiple("a"), A)
+        self.assertEqual(Foo.make("a", {"value": 1}).value, 1)
+        self.assertEqual(
+            Foo.make(
+                "a",
+                {"value": 2, "unknown": "ignored"},
+                ensure_safe=True,
+            ).value,
+            2,
+        )
+        with self.assertRaises(KeyError):
+            Foo.get("missing")
+        with self.assertRaises(KeyError):
+            Foo.make("missing", {})
+
+        made_one = Foo.make_multiple("a", {"value": 3})
+        self.assertIsInstance(made_one, A)
+        self.assertEqual(made_one.value, 3)
         made = Foo.make_multiple(["a", "b"])
         self.assertIsInstance(made[0], A)
         self.assertIsInstance(made[1], B)
+        configs_by_name = {
+            "a": {"value": 4},
+            "b": {"value": 5},
+        }
+        made = Foo.make_multiple(["a", "b"], configs_by_name)
+        self.assertListEqual([item.value for item in made], [4, 5])
+        self.assertDictEqual(
+            configs_by_name,
+            {
+                "a": {"value": 4},
+                "b": {"value": 5},
+            },
+        )
+        configs_by_position = [{"value": 6}, {"value": 7}]
+        made = Foo.make_multiple(["a", "b"], configs_by_position)
+        self.assertListEqual([item.value for item in made], [6, 7])
+        self.assertListEqual(
+            configs_by_position,
+            [{"value": 6}, {"value": 7}],
+        )
+        self.assertListEqual(Foo.make_multiple([]), [])
 
         @Foo.register("c")
         class C:
@@ -785,6 +852,25 @@ class TestMisc(unittest.TestCase):
         self.assertTrue(Foo.check_subclass("a"))
         self.assertTrue(Foo.check_subclass("b"))
         self.assertFalse(Foo.check_subclass("c"))
+
+        class KeptDuplicate(Foo):
+            pass
+
+        with patch("core.toolkit.misc.console.warn") as warn:
+            registered = Foo.register("a")(KeptDuplicate)
+        self.assertIs(registered, KeptDuplicate)
+        self.assertEqual(KeptDuplicate.__identifier__, "a")
+        self.assertIs(Foo.get("a"), A)
+        warn.assert_called_once()
+
+        class ReplacedDuplicate(Foo):
+            pass
+
+        registered = Foo.register("a", allow_duplicate=True)(ReplacedDuplicate)
+        self.assertIs(registered, ReplacedDuplicate)
+        self.assertEqual(ReplacedDuplicate.__identifier__, "a")
+        self.assertIs(Foo.get("a"), ReplacedDuplicate)
+        self.assertListEqual(list(registry), ["a", "b", "c"])
 
     def test_incrementer(self):
         with self.assertRaises(ValueError):
