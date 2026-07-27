@@ -1727,11 +1727,15 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
     # optional callbacks
 
     def from_accelerator(self, *args: nn.Module) -> "IModel":
-        cloned = IModel.make(self.config.model, {})
-        cloned.config = self.config.copy()
-        for i, k in enumerate(self.all_module_names):
-            setattr(cloned, k, args[i])
-        return cloned
+        """Replace this model's modules with their prepared versions in place."""
+        module_names = self.all_module_names
+        if len(args) != len(module_names):
+            raise ValueError(
+                f"expected {len(module_names)} prepared modules, got {len(args)}"
+            )
+        for name, module in zip(module_names, args):
+            setattr(self, name, module)
+        return self
 
     def param_groups(self) -> List[Dict[str, Any]]:
         param_group: Dict[str, Any] = {"names": [], "params": []}

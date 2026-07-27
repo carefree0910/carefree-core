@@ -10,7 +10,6 @@ import core.learn as cflearn
 import torch.nn.functional as F
 
 from pathlib import Path
-from accelerate import Accelerator
 from unittest.mock import patch
 from unittest.mock import Mock
 from core.learn.schema import losses_type
@@ -264,6 +263,81 @@ class TestPipeline(unittest.TestCase):
                     return_probabilities=True,
                 )
         get_outputs.assert_called_once()
+
+    def test_prepare_distributed_with(self):
+        @cflearn.IModel.register("$test_prepared_model")
+        class PreparedModel(cflearn.IModel):
+            @property
+            def train_steps(self):
+                return []
+
+            @property
+            def all_modules(self):
+                return [self.m]
+
+            def build(self, config):
+                self.m = cflearn.build_module(
+                    config.module_name,
+                    config=config.module_config,
+                )
+                self.runtime_state = object()
+
+        class PreparedModule(nn.Module):
+            def __init__(self, module):
+                super().__init__()
+                self.module = module
+                self.num_forwards = 0
+
+            def forward(self, inputs):
+                self.num_forwards += 1
+                return inputs.new_full((len(inputs), 1), 7.0)
+
+        data, in_dim, out_dim = cflearn.testing.arange_data(
+            n=4,
+            dim=2,
+            out_dim=1,
+            batch_size=4,
+        )
+        config = cflearn.Config(
+            model=PreparedModel.__identifier__,
+            module_name="linear",
+            module_config={"input_dim": in_dim, "output_dim": out_dim},
+        )
+        pipeline = cflearn.InferencePipeline.build_with(config)
+        build_model = pipeline.build_model
+        inference = pipeline.build_inference.inference
+        original_model = build_model.model
+        original_module = original_model.m
+        runtime_state = original_model.runtime_state
+        prepared_module = PreparedModule(original_module)
+        accelerator = Mock()
+        accelerator.prepare.return_value = prepared_module
+
+        with patch.object(
+            original_model,
+            "from_accelerator",
+            side_effect=RuntimeError("failed to construct prepared model"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "failed to construct"):
+                pipeline.prepare_distributed_with(accelerator)
+        self.assertIs(build_model.model, original_model)
+        self.assertIs(inference.model, original_model)
+
+        returned = pipeline.prepare_distributed_with(accelerator)
+        prepared_model = build_model.model
+        self.assertIsNone(returned)
+        self.assertEqual(accelerator.prepare.call_count, 2)
+        accelerator.prepare.assert_called_with(original_module)
+        self.assertIs(prepared_model, original_model)
+        self.assertIs(prepared_model.m, prepared_module)
+        self.assertIs(prepared_model.runtime_state, runtime_state)
+        self.assertIs(inference.model, prepared_model)
+        loader = data.build_loader(data.bundle.x_train, batch_size=4)
+        predictions = pipeline.predict(loader, recover_predictions=False)[
+            cflearn.PREDICTIONS_KEY
+        ]
+        self.assertEqual(prepared_module.num_forwards, 1)
+        torch.testing.assert_close(predictions, torch.full((4, 1), 7.0))
 
     def test_load_training(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()
@@ -646,26 +720,6 @@ class TestBlocks(unittest.TestCase):
         p = cflearn.TrainingPipeline.init(config).fit(data)
         self.assertEqual(Path(p.config.workspace).parent.name, "_foo")
         cflearn.unset_environ_workspace()
-
-        @cflearn.IModel.register("$test_foo_model")
-        class FooModel(cflearn.CommonModel):
-            @property
-            def all_modules(self):
-                return [self.m]
-
-        class FooPipeline(cflearn.TrainingPipeline):
-            @property
-            def building_blocks(self):
-                return super().building_blocks[:-1]
-
-        config = cflearn.Config(
-            workspace=self._workspace("foo_model"),
-            model=FooModel.__identifier__,
-            module_name="linear",
-            module_config=dict(input_dim=in_dim, output_dim=out_dim),
-        )
-        p = FooPipeline.init(config).fit(data)
-        p.prepare_distributed_with(Accelerator())
 
     def test_set_trainer_callback_defaults(self):
         training_loop_id = cflearn.TrainingLoopCallback.__identifier__

@@ -46,6 +46,22 @@ class TestModel(unittest.TestCase):
         ensemble.ensemble_fn = lambda tensors: torch.ones_like(tensors[0])
         ensemble_out = ensemble.run(0, batch)[cflearn.PREDICTIONS_KEY]
         torch.testing.assert_close(torch.ones_like(ensemble_out), ensemble_out)
+        runtime_state = object()
+        ensemble.runtime_state = runtime_state
+        original_modules = ensemble.all_modules
+        with self.assertRaisesRegex(ValueError, "expected 2 prepared modules, got 1"):
+            ensemble.from_accelerator(original_modules[0])
+        self.assertTrue(
+            all(
+                actual is expected
+                for actual, expected in zip(ensemble.all_modules, original_modules)
+            )
+        )
+        prepared = ensemble.from_accelerator(*original_modules)
+        self.assertIs(prepared, ensemble)
+        self.assertIs(ensemble.model, models[0])
+        self.assertIs(ensemble.t_model, models[0].__class__)
+        self.assertIs(ensemble.runtime_state, runtime_state)
         with self.assertRaises(ValueError):
             models[0].postprocess(0, batch, "foo")
         with patch("core.learn.schema.is_fsdp") as mock:

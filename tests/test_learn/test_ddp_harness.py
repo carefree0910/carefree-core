@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 import pytest
 
-from typing import Iterator
 from pathlib import Path
+from typing import Iterator
 from ddp_harness import DDPProcessError
 from ddp_harness import DDPTimeoutError
 from ddp_harness import CPUDistributedHarness
@@ -46,6 +46,15 @@ def test_cpu_ddp_only_global_main_writes_shared_target(
     assert shared_target.read_text(encoding="utf-8") == "rank=0\n"
     assert "rank 0: observed the global-main artifact" in result.rank_logs[0]
     assert "rank 1: observed the global-main artifact" in result.rank_logs[1]
+
+
+def test_cpu_ddp_pipeline_uses_prepared_model(
+    cpu_ddp: CPUDistributedHarness,
+) -> None:
+    result = cpu_ddp.run("prepared_pipeline")
+
+    assert "rank 0: prepared pipeline prediction success" in result.rank_logs[0]
+    assert "rank 1: prepared pipeline prediction success" in result.rank_logs[1]
 
 
 def test_cpu_ddp_timeout_collects_logs_and_reaps_process_group(
