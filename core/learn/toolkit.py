@@ -25,6 +25,8 @@ from typing import NamedTuple
 from typing import ContextManager
 from typing import no_type_check
 from pathlib import Path
+from contextlib import suppress
+from contextlib import ExitStack
 from contextlib import nullcontext
 from collections import defaultdict
 from collections import OrderedDict
@@ -1426,30 +1428,61 @@ class mode_context:
         use_grad: Optional[bool],
         use_inference: Optional[bool] = None,
     ):
+        self._module = module
         self._to_train = to_train
-        self._module, self._training = module, module.training
-        self._grad_context: ContextManager
-        self._inference_context: ContextManager
-        if use_grad is None:
-            self._grad_context = nullcontext()
-        else:
-            self._grad_context = torch.enable_grad() if use_grad else torch.no_grad()
-        if use_inference is None or not use_inference:
-            self._inference_context = nullcontext()
-        else:
-            self._inference_context = torch.inference_mode()
+        self._use_grad = use_grad
+        self._use_inference = use_inference
+        self._training: Optional[bool] = None
+        self._stack: Optional[ExitStack] = None
 
     def __enter__(self) -> None:
-        if self._to_train is not None:
-            self._module.train(mode=self._to_train)
-        self._grad_context.__enter__()
-        self._inference_context.__enter__()
+        stack = ExitStack()
+        try:
+            if self._to_train is not None:
+                self._training = self._module.training
+                self._module.train(mode=self._to_train)
+            if self._use_grad is None:
+                grad_context: ContextManager = nullcontext()
+            else:
+                grad_context = (
+                    torch.enable_grad() if self._use_grad else torch.no_grad()
+                )
+            inference_context: Any = (
+                torch.inference_mode() if self._use_inference else nullcontext()
+            )
+            stack.enter_context(grad_context)
+            stack.enter_context(inference_context)
+            self._stack = stack
+        except Exception as err:
+            if self._to_train is not None:
+                assert self._training is not None
+                with suppress(Exception):
+                    self._module.train(mode=self._training)
+            with suppress(Exception):
+                stack.__exit__(type(err), err, err.__traceback__)
+            raise
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        if self._to_train is not None:
-            self._module.train(mode=self._training)
-        self._inference_context.__exit__(exc_type, exc_val, exc_tb)
-        self._grad_context.__exit__(exc_type, exc_val, exc_tb)
+        mode_error = context_error = None
+        try:
+            if self._to_train is not None:
+                assert self._training is not None
+                self._module.train(mode=self._training)
+        except Exception as err:
+            mode_error = err
+        finally:
+            stack = self._stack
+            assert stack is not None
+            self._stack = None
+            try:
+                stack.__exit__(exc_type, exc_val, exc_tb)
+            except Exception as err:
+                context_error = err
+        if exc_type is None:
+            if mode_error is not None:
+                raise mode_error
+            if context_error is not None:
+                raise context_error
 
 
 class train_context(mode_context):

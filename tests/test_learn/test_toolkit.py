@@ -390,10 +390,289 @@ class TestToolkit(unittest.TestCase):
         with toggle_optimizer(None, None, enabled=False):
             pass
 
-    def test_train_context(self) -> None:
-        linear = nn.Linear(3, 1).eval()
-        with train_context(linear):
+    def test_mode_context(self) -> None:
+        def get_modes(module):
+            return [m.training for m in module.modules()]
+
+        module = nn.Sequential(
+            nn.Sequential(nn.Linear(2, 2), nn.ReLU()),
+            nn.Sequential(nn.Dropout(), nn.Linear(2, 2)),
+        )
+        context = eval_context(module)
+        module.train()
+        with context as entered:
+            self.assertIsNone(entered)
+            self.assertTrue(all(not mode for mode in get_modes(module)))
+            self.assertFalse(torch.is_grad_enabled())
+            self.assertTrue(torch.is_inference_mode_enabled())
+        self.assertTrue(all(get_modes(module)))
+        self.assertTrue(torch.is_grad_enabled())
+        self.assertFalse(torch.is_inference_mode_enabled())
+
+        module.eval()
+        body_error = RuntimeError("body failed")
+        with self.assertRaises(RuntimeError) as context_error:
+            with context:
+                self.assertTrue(all(not mode for mode in get_modes(module)))
+                raise body_error
+        self.assertIs(context_error.exception, body_error)
+        self.assertTrue(all(not mode for mode in get_modes(module)))
+        self.assertTrue(torch.is_grad_enabled())
+        self.assertFalse(torch.is_inference_mode_enabled())
+
+        with train_context(module) as entered:
+            self.assertIsNone(entered)
+            self.assertTrue(all(get_modes(module)))
+            self.assertTrue(torch.is_grad_enabled())
+            with eval_context(module, use_inference=False):
+                self.assertTrue(all(not mode for mode in get_modes(module)))
+                self.assertFalse(torch.is_grad_enabled())
+                self.assertFalse(torch.is_inference_mode_enabled())
+            self.assertTrue(all(get_modes(module)))
+            self.assertTrue(torch.is_grad_enabled())
+        self.assertTrue(all(not mode for mode in get_modes(module)))
+
+    def test_mode_context_thread_states(self) -> None:
+        linear = nn.Linear(3, 1)
+        with eval_context(linear):
+            self.assertFalse(torch.is_grad_enabled())
+            self.assertTrue(torch.is_inference_mode_enabled())
+        with eval_context(linear, use_inference=False):
+            self.assertFalse(torch.is_grad_enabled())
+            self.assertFalse(torch.is_inference_mode_enabled())
+        with torch.no_grad():
+            with train_context(linear):
+                self.assertTrue(torch.is_grad_enabled())
+                self.assertFalse(torch.is_inference_mode_enabled())
+            self.assertFalse(torch.is_grad_enabled())
+            self.assertFalse(torch.is_inference_mode_enabled())
+        with eval_context(linear, use_grad=True, use_inference=True):
+            self.assertFalse(torch.is_grad_enabled())
+            self.assertTrue(torch.is_inference_mode_enabled())
+        with mode_context(
+            linear,
+            to_train=None,
+            use_grad=None,
+            use_inference=False,
+        ):
+            linear.eval()
+            self.assertTrue(torch.is_grad_enabled())
+            self.assertFalse(torch.is_inference_mode_enabled())
+        self.assertFalse(linear.training)
+        with torch.inference_mode():
+            with mode_context(
+                linear,
+                to_train=None,
+                use_grad=True,
+                use_inference=False,
+            ):
+                linear.train()
+                self.assertTrue(torch.is_grad_enabled())
+                self.assertTrue(torch.is_inference_mode_enabled())
             self.assertTrue(linear.training)
+            self.assertFalse(torch.is_grad_enabled())
+            self.assertTrue(torch.is_inference_mode_enabled())
+        self.assertTrue(torch.is_grad_enabled())
+        self.assertFalse(torch.is_inference_mode_enabled())
+
+    def test_mode_context_activates_both_contexts(self) -> None:
+        events = []
+
+        class TrackingContext:
+            def __init__(self, name, error=None) -> None:
+                self.name = name
+                self.error = error
+
+            def __enter__(self) -> None:
+                events.append(f"{self.name}.enter")
+
+            def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+                events.append(f"{self.name}.exit")
+                if self.error is not None:
+                    raise self.error
+
+        grad_factory = Mock(side_effect=lambda: TrackingContext("grad"))
+        inference_factory = Mock(side_effect=lambda: TrackingContext("inference"))
+        context = eval_context(nn.Linear(2, 2))
+        with patch("core.learn.toolkit.torch.no_grad", grad_factory):
+            with patch(
+                "core.learn.toolkit.torch.inference_mode",
+                inference_factory,
+            ):
+                with context:
+                    events.append("body")
+                with context:
+                    events.append("body")
+
+        expected = [
+            "grad.enter",
+            "inference.enter",
+            "body",
+            "inference.exit",
+            "grad.exit",
+        ]
+        self.assertListEqual(events, 2 * expected)
+        self.assertEqual(grad_factory.call_count, 2)
+        self.assertEqual(inference_factory.call_count, 2)
+
+        events.clear()
+        inference_error = RuntimeError("inference context exit failed")
+        grad_factory = Mock(side_effect=lambda: TrackingContext("grad"))
+        inference_factory = Mock(
+            side_effect=lambda: TrackingContext("inference", inference_error)
+        )
+        module = nn.Linear(2, 2)
+        with patch("core.learn.toolkit.torch.no_grad", grad_factory):
+            with patch(
+                "core.learn.toolkit.torch.inference_mode",
+                inference_factory,
+            ):
+                with self.assertRaises(RuntimeError) as context_error:
+                    with eval_context(module):
+                        events.append("body")
+        self.assertIs(context_error.exception, inference_error)
+        self.assertListEqual(events, expected)
+
+    def test_mode_context_enter_failure(self) -> None:
+        entry_error = RuntimeError("mode enter failed")
+        restore_error = RuntimeError("mode restore failed")
+
+        class FailingModule(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.child = nn.Linear(2, 2)
+                self.errors = {}
+
+            def train(self, mode=True):
+                super().train(mode)
+                error = self.errors.pop(mode, None)
+                if error is not None:
+                    raise error
+                return self
+
+        module = FailingModule()
+        module.errors = {False: entry_error, True: restore_error}
+        with self.assertRaises(RuntimeError) as context_error:
+            with eval_context(module):
+                pass
+        self.assertIs(context_error.exception, entry_error)
+        self.assertTrue(module.training)
+        self.assertTrue(module.child.training)
+        self.assertTrue(torch.is_grad_enabled())
+        self.assertFalse(torch.is_inference_mode_enabled())
+
+        class EnterFailure:
+            def __init__(self, error) -> None:
+                self.error = error
+                self.events = []
+
+            def __enter__(self) -> None:
+                self.events.append("enter")
+                raise self.error
+
+            def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+                self.events.append("exit")
+
+        for path, use_inference in [
+            ("core.learn.toolkit.torch.no_grad", False),
+            ("core.learn.toolkit.torch.inference_mode", True),
+        ]:
+            with self.subTest(path=path):
+                native_error = RuntimeError(f"{path} failed")
+                native_context = EnterFailure(native_error)
+                module.train()
+                with patch(path, return_value=native_context):
+                    with self.assertRaises(RuntimeError) as context_error:
+                        with eval_context(
+                            module,
+                            use_inference=use_inference,
+                        ):
+                            pass
+                self.assertIs(context_error.exception, native_error)
+                self.assertListEqual(native_context.events, ["enter"])
+                self.assertTrue(module.training)
+                self.assertTrue(module.child.training)
+                self.assertTrue(torch.is_grad_enabled())
+                self.assertFalse(torch.is_inference_mode_enabled())
+
+    def test_mode_context_cleanup_failure(self) -> None:
+        class FailingRestore(nn.Module):
+            def __init__(self, error) -> None:
+                super().__init__()
+                self.error = error
+                self.fail = False
+                self.observations = []
+
+            def train(self, mode=True):
+                super().train(mode)
+                if mode:
+                    self.observations.append(
+                        (
+                            torch.is_grad_enabled(),
+                            torch.is_inference_mode_enabled(),
+                        )
+                    )
+                    if self.fail:
+                        self.fail = False
+                        raise self.error
+                return self
+
+        restore_error = RuntimeError("mode restore failed")
+        module = FailingRestore(restore_error)
+        module.fail = True
+        with self.assertRaises(RuntimeError) as context_error:
+            with eval_context(module):
+                self.assertTrue(all(not m.training for m in module.modules()))
+        self.assertIs(context_error.exception, restore_error)
+        self.assertTrue(all(m.training for m in module.modules()))
+        self.assertEqual(module.observations[-1], (False, True))
+        self.assertTrue(torch.is_grad_enabled())
+        self.assertFalse(torch.is_inference_mode_enabled())
+
+        module.error = RuntimeError("another mode restore failed")
+        module.fail = True
+        body_error = RuntimeError("body failed")
+        with self.assertRaises(RuntimeError) as context_error:
+            with eval_context(module):
+                raise body_error
+        self.assertIs(context_error.exception, body_error)
+        self.assertTrue(all(m.training for m in module.modules()))
+        self.assertTrue(torch.is_grad_enabled())
+        self.assertFalse(torch.is_inference_mode_enabled())
+
+        class ExitFailure:
+            def __init__(self, error) -> None:
+                self.error = error
+
+            def __enter__(self) -> None:
+                pass
+
+            def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+                raise self.error
+
+        context_exit_error = RuntimeError("context exit failed")
+        with patch(
+            "core.learn.toolkit.torch.no_grad",
+            return_value=ExitFailure(context_exit_error),
+        ):
+            with self.assertRaises(RuntimeError) as context_error:
+                with eval_context(module, use_inference=False):
+                    pass
+        self.assertIs(context_error.exception, context_exit_error)
+        self.assertTrue(all(m.training for m in module.modules()))
+
+        body_error = RuntimeError("body wins")
+        with patch(
+            "core.learn.toolkit.torch.no_grad",
+            return_value=ExitFailure(context_exit_error),
+        ):
+            with self.assertRaises(RuntimeError) as context_error:
+                with eval_context(module, use_inference=False):
+                    raise body_error
+        self.assertIs(context_error.exception, body_error)
+        self.assertTrue(all(m.training for m in module.modules()))
+        self.assertTrue(torch.is_grad_enabled())
+        self.assertFalse(torch.is_inference_mode_enabled())
 
     def test_eval_context(self) -> None:
         x = torch.tensor([[1.0, 2.0, 3.0]], requires_grad=True)
