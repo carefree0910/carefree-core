@@ -97,6 +97,174 @@ class TestPipeline(unittest.TestCase):
         (Path(random_workspace) / sorted(block.ckpt_scores)[0]).unlink()
         block.save_extra(get_random_workspace())
 
+    def test_prediction_postprocessing(self):
+        config = cflearn.Config(
+            module_name="linear",
+            module_config={"input_dim": 2, "output_dim": 1},
+            loss_name="mse",
+        )
+        pipeline = cflearn.InferencePipeline.build_with(config)
+        loader = Mock()
+        preserved = torch.ones(1)
+
+        def predict(predictions, **kwargs):
+            outputs = Mock()
+            outputs.forward_results = {
+                cflearn.PREDICTIONS_KEY: predictions,
+                "preserved": preserved,
+            }
+            with patch.object(
+                pipeline.build_inference.inference,
+                "get_outputs",
+                return_value=outputs,
+            ):
+                results = pipeline.predict(loader, **kwargs)
+            self.assertIs(results["preserved"], preserved)
+            return results[cflearn.PREDICTIONS_KEY]
+
+        # No postprocessing means no mode / axis validation and no list scan.
+        raw_predictions = []
+        raw = predict(
+            raw_predictions,
+            prediction_mode="unknown",
+            class_dim=100,
+            binary_threshold=float("nan"),
+        )
+        self.assertIs(raw, raw_predictions)
+
+        # Rank-1 and one-logit binary predictions both expand to two probabilities.
+        rank_1 = torch.tensor([0.0, np.log(3.0)], dtype=torch.float32)
+        rank_1_probabilities = predict(rank_1, return_probabilities=True)
+        torch.testing.assert_close(
+            rank_1_probabilities,
+            torch.tensor([[0.5, 0.5], [0.25, 0.75]]),
+        )
+        self.assertEqual(rank_1_probabilities.dtype, rank_1.dtype)
+        self.assertEqual(rank_1_probabilities.device, rank_1.device)
+
+        one_logit = np.zeros((2, 1), dtype=np.float32)
+        one_logit_probabilities = predict(one_logit, return_probabilities=True)
+        np.testing.assert_array_equal(
+            one_logit_probabilities,
+            np.full((2, 2), 0.5, dtype=np.float32),
+        )
+        self.assertEqual(one_logit_probabilities.dtype, one_logit.dtype)
+
+        two_logits = torch.tensor(
+            [[0.0, 0.0], [0.0, np.log(3.0)]],
+            dtype=torch.float32,
+        )
+        two_logit_probabilities = predict(two_logits, return_probabilities=True)
+        torch.testing.assert_close(
+            two_logit_probabilities,
+            torch.tensor([[0.5, 0.5], [0.25, 0.75]]),
+        )
+
+        # Pipeline keeps its inclusive threshold behavior.
+        binary_classes = predict(
+            torch.zeros(2, 1),
+            return_classes=True,
+            binary_threshold=0.5,
+        )
+        torch.testing.assert_close(binary_classes, torch.ones(2, 1, dtype=torch.long))
+
+        multiclass_logits = torch.tensor([[0.0, 1.0, 2.0]])
+        multiclass_probabilities = predict(
+            multiclass_logits,
+            return_probabilities=True,
+        )
+        torch.testing.assert_close(
+            multiclass_probabilities,
+            torch.softmax(multiclass_logits, dim=1),
+        )
+        self.assertEqual(multiclass_probabilities.shape, multiclass_logits.shape)
+
+        # Explicit modes disambiguate two-class and multilabel predictions.
+        ambiguous_logits = torch.tensor([[-1.0, 0.0]])
+        auto_classes = predict(
+            ambiguous_logits,
+            return_classes=True,
+            binary_threshold=0.8,
+        )
+        multiclass_classes = predict(
+            ambiguous_logits,
+            return_classes=True,
+            binary_threshold=float("nan"),
+            prediction_mode="multiclass",
+        )
+        torch.testing.assert_close(auto_classes, torch.zeros(1, 1, dtype=torch.long))
+        torch.testing.assert_close(
+            multiclass_classes,
+            torch.ones(1, 1, dtype=torch.long),
+        )
+
+        multilabel_logits = torch.tensor([[-1.0, 0.0, 1.0]])
+        multilabel_probabilities = predict(
+            multilabel_logits,
+            return_probabilities=True,
+            prediction_mode="multilabel",
+            binary_threshold=float("nan"),
+        )
+        torch.testing.assert_close(
+            multilabel_probabilities,
+            torch.sigmoid(multilabel_logits),
+        )
+        multilabel_classes = predict(
+            multilabel_logits,
+            return_classes=True,
+            prediction_mode="multilabel",
+        )
+        torch.testing.assert_close(
+            multilabel_classes,
+            torch.tensor([[0, 1, 1]]),
+        )
+
+        # Class axes work for both channel-first and channel-last spatial logits.
+        nchw_logits = torch.tensor([0.0, 1.0, 2.0]).reshape(1, 3, 1, 1)
+        nchw_classes = predict(nchw_logits, return_classes=True)
+        torch.testing.assert_close(
+            nchw_classes,
+            torch.tensor([[[[2]]]]),
+        )
+        self.assertEqual(nchw_classes.shape, (1, 1, 1, 1))
+
+        nhwc_logits = np.arange(6.0, dtype=np.float32).reshape(1, 1, 2, 3)
+        nhwc_probabilities = predict(
+            nhwc_logits,
+            return_probabilities=True,
+            class_dim=-1,
+        )
+        np.testing.assert_allclose(nhwc_probabilities.sum(axis=-1), 1.0)
+        self.assertEqual(nhwc_probabilities.shape, nhwc_logits.shape)
+
+        # Postprocessing happens before the callback, and no other result is replaced.
+        callback_predictions = []
+
+        def callback(results):
+            callback_predictions.append(results[cflearn.PREDICTIONS_KEY])
+            results["callback"] = True
+            return results
+
+        with patch.object(pipeline, "predict_callback", side_effect=callback):
+            callback_classes = predict(torch.zeros(1, 1), return_classes=True)
+        self.assertIs(callback_predictions[0], callback_classes)
+
+        # Flag conflicts are still reported only after inference has run.
+        outputs = Mock()
+        outputs.forward_results = {cflearn.PREDICTIONS_KEY: torch.zeros(1, 1)}
+        with patch.object(
+            pipeline.build_inference.inference,
+            "get_outputs",
+            return_value=outputs,
+        ) as get_outputs:
+            with self.assertRaises(ValueError):
+                pipeline.predict(
+                    loader,
+                    return_classes=True,
+                    return_probabilities=True,
+                )
+        get_outputs.assert_called_once()
+
     def test_load_training(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()
         config = cflearn.Config(

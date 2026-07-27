@@ -5,6 +5,7 @@ import shutil
 import numpy as np
 
 from enum import Enum
+from typing import cast
 from typing import Any
 from typing import Dict
 from typing import List
@@ -66,10 +67,11 @@ from ...toolkit.misc import is_local_rank_0
 from ...toolkit.misc import shallow_copy_dict
 from ...toolkit.misc import prepare_workspace_from
 from ...toolkit.misc import Serializer
-from ...toolkit.array import sigmoid
-from ...toolkit.array import softmax
 from ...toolkit.array import is_float
+from ...toolkit.array import _postprocess_logits
 from ...toolkit.types import TPath
+from ...toolkit.types import arr_type
+from ...toolkit.types import PredictionMode
 from ...toolkit.types import tensor_dict_type
 from ...toolkit.pipeline import get_folder
 
@@ -154,6 +156,8 @@ class _InferenceMixin:
         return_classes: bool = False,
         binary_threshold: float = 0.5,
         return_probabilities: bool = False,
+        prediction_mode: PredictionMode = "auto",
+        class_dim: int = 1,
         target_outputs: Union[str, List[str]] = PREDICTIONS_KEY,
         target_inputs: Optional[List[str]] = None,
         recover_labels: bool = True,
@@ -190,20 +194,16 @@ class _InferenceMixin:
             for k, v in results.items():
                 if isinstance(v, list):
                     raise RuntimeError(f"internal error: '{k}' should be concatenated")
-            predictions = results[PREDICTIONS_KEY]
-            if predictions.shape[1] > 2 and return_classes:  # type: ignore
-                results[PREDICTIONS_KEY] = predictions.argmax(1, keepdims=True)  # type: ignore
-            else:
-                if predictions.shape[1] == 2:  # type: ignore
-                    probabilities = softmax(predictions)
-                else:
-                    pos = sigmoid(predictions)
-                    probabilities = torch.hstack([1.0 - pos, pos])
-                if return_probabilities:
-                    results[PREDICTIONS_KEY] = probabilities
-                else:
-                    classes = (probabilities[..., [1]] >= binary_threshold).to(int)
-                    results[PREDICTIONS_KEY] = classes
+            processed_results = cast(tensor_dict_type, results)
+            predictions = cast(arr_type, processed_results[PREDICTIONS_KEY])
+            processed_results[PREDICTIONS_KEY] = _postprocess_logits(
+                predictions,
+                prediction_mode=prediction_mode,
+                class_dim=class_dim,
+                threshold=binary_threshold,
+                return_probabilities=return_probabilities,
+                inclusive=True,
+            )
         # optional callback
         results = self.predict_callback(results)  # type: ignore
         # return

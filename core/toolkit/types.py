@@ -2,6 +2,7 @@ from typing import Any
 from typing import Dict
 from typing import Tuple
 from typing import Union
+from typing import Literal
 from typing import TypeVar
 from typing import Optional
 from typing import TYPE_CHECKING
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
 
 arr_type = Union["np.ndarray", "torch.Tensor"]
 TArray = TypeVar("TArray", bound=arr_type)
+PredictionMode = Literal["auto", "binary", "multiclass", "multilabel"]
 
 ArrayDict = Dict[
     str,

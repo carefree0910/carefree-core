@@ -5,6 +5,7 @@ import unittest
 import numpy as np
 
 from core.toolkit.array import *
+from core.toolkit.array import _postprocess_logits
 from pathlib import Path
 
 
@@ -415,8 +416,247 @@ class TestArray(unittest.TestCase):
         logits = np.random.randn(17, 7)
         np.testing.assert_allclose(to_labels(logits), logits.argmax(1)[..., None])
 
+    def test_postprocess_logits_binary(self):
+        array = np.array([-1.0, 0.0, 1.0], np.float32)
+        probabilities = _postprocess_logits(array, return_probabilities=True)
+        self.assertEqual(probabilities.shape, (3, 2))
+        self.assertEqual(probabilities.dtype, array.dtype)
+        np.testing.assert_allclose(probabilities.sum(1), np.ones(3))
+        np.testing.assert_array_equal(to_labels(array), np.array([0, 0, 1]))
+        np.testing.assert_array_equal(
+            _postprocess_logits(array, inclusive=True),
+            np.array([0, 1, 1]),
+        )
+        np.testing.assert_array_equal(
+            to_labels(array, class_dim=-1),
+            np.array([0, 0, 1]),
+        )
+
+        column = array[:, None]
+        probabilities = _postprocess_logits(column, return_probabilities=True)
+        self.assertEqual(probabilities.shape, (3, 2))
+        np.testing.assert_array_equal(to_labels(column).ravel(), np.array([0, 0, 1]))
+
+        logits = np.array([[1.0, 2.0], [2.0, 1.0]], np.float64)
+        probabilities = _postprocess_logits(logits, return_probabilities=True)
+        self.assertEqual(probabilities.dtype, logits.dtype)
+        np.testing.assert_allclose(probabilities.sum(1), np.ones(2))
+        np.testing.assert_array_equal(to_labels(logits).ravel(), np.array([1, 0]))
+
+        tensor = torch.tensor([-1.0, 0.0, 1.0], dtype=torch.float64)
+        probabilities = _postprocess_logits(tensor, return_probabilities=True)
+        self.assertEqual(probabilities.shape, (3, 2))
+        self.assertEqual(probabilities.dtype, tensor.dtype)
+        self.assertEqual(probabilities.device, tensor.device)
+        torch.testing.assert_close(
+            probabilities.sum(1), torch.ones(3, dtype=tensor.dtype)
+        )
+        labels = to_labels(tensor)
+        self.assertEqual(labels.dtype, torch.int64)
+        self.assertEqual(labels.device, tensor.device)
+        torch.testing.assert_close(labels, torch.tensor([0, 0, 1]))
+
+        tensor_column = tensor[:, None]
+        probabilities = _postprocess_logits(
+            tensor_column,
+            return_probabilities=True,
+        )
+        self.assertEqual(probabilities.shape, (3, 2))
+        torch.testing.assert_close(to_labels(tensor_column).ravel(), labels)
+
+        tensor_logits = torch.tensor([[1.0, 2.0], [2.0, 1.0]])
+        probabilities = _postprocess_logits(
+            tensor_logits,
+            return_probabilities=True,
+        )
+        torch.testing.assert_close(probabilities.sum(1), torch.ones(2))
+        torch.testing.assert_close(
+            to_labels(tensor_logits).ravel(),
+            torch.tensor([1, 0]),
+        )
+
+    def test_to_labels_numerical_bc(self):
+        one_logit = np.array([[1.0e-8]], np.float32)
+        two_logits = np.array([[0.0, 1.0e-8]], np.float32)
+        np.testing.assert_array_equal(to_labels(one_logit), np.ones((1, 1)))
+        np.testing.assert_array_equal(to_labels(two_logits), np.ones((1, 1)))
+
+        one_logit = np.array([[2.2]], np.float16)
+        two_logits = np.array([[0.0, 2.2]], np.float16)
+        np.testing.assert_array_equal(to_labels(one_logit, 0.9), np.ones((1, 1)))
+        np.testing.assert_array_equal(to_labels(two_logits, 0.9), np.ones((1, 1)))
+
+        finite_min = -np.finfo(np.float16).max
+        finite_max = np.finfo(np.float16).max
+        one_logit = np.array([[finite_min], [finite_max]], np.float16)
+        two_logits = np.array([[0.0, finite_min], [0.0, finite_max]], np.float16)
+        np.testing.assert_array_equal(to_labels(one_logit, 0.0), np.ones((2, 1)))
+        np.testing.assert_array_equal(to_labels(two_logits, 0.0), np.ones((2, 1)))
+        np.testing.assert_array_equal(to_labels(one_logit, 1.0), np.zeros((2, 1)))
+        np.testing.assert_array_equal(to_labels(two_logits, 1.0), np.zeros((2, 1)))
+
+    def test_postprocess_logits_modes_and_axes(self):
+        nchw = np.arange(2 * 3 * 2 * 2, dtype=np.float32).reshape(2, 3, 2, 2)
+        probabilities = _postprocess_logits(nchw, return_probabilities=True)
+        self.assertEqual(probabilities.shape, nchw.shape)
+        np.testing.assert_allclose(probabilities.sum(1), np.ones((2, 2, 2)))
+        labels = to_labels(nchw)
+        self.assertEqual(labels.shape, (2, 1, 2, 2))
+        np.testing.assert_array_equal(labels, nchw.argmax(1, keepdims=True))
+
+        nhwc = np.moveaxis(nchw, 1, -1)
+        probabilities = _postprocess_logits(
+            nhwc,
+            class_dim=-1,
+            return_probabilities=True,
+        )
+        self.assertEqual(probabilities.shape, nhwc.shape)
+        np.testing.assert_allclose(probabilities.sum(-1), np.ones((2, 2, 2)))
+        labels = to_labels(nhwc, class_dim=-1)
+        self.assertEqual(labels.shape, (2, 2, 2, 1))
+        np.testing.assert_array_equal(labels, nhwc.argmax(-1, keepdims=True))
+
+        single_nchw = nchw[:, :1]
+        single_nhwc = np.moveaxis(single_nchw, 1, -1)
+        for class_dim, single_logits in [(1, single_nchw), (-1, single_nhwc)]:
+            with self.subTest(num_classes=1, class_dim=class_dim):
+                positive = sigmoid(single_logits)
+                expected_probabilities = np.concatenate(
+                    [1.0 - positive, positive],
+                    axis=class_dim,
+                )
+                probabilities = _postprocess_logits(
+                    single_logits,
+                    class_dim=class_dim,
+                    return_probabilities=True,
+                )
+                np.testing.assert_allclose(probabilities, expected_probabilities)
+                expected_labels = (single_logits > 0.0).astype(int)
+                np.testing.assert_array_equal(
+                    to_labels(single_logits, class_dim=class_dim),
+                    expected_labels,
+                )
+                tensor_logits = torch.from_numpy(single_logits)
+                tensor_probabilities = _postprocess_logits(
+                    tensor_logits,
+                    class_dim=class_dim,
+                    return_probabilities=True,
+                )
+                torch.testing.assert_close(
+                    tensor_probabilities,
+                    torch.from_numpy(expected_probabilities),
+                )
+                torch.testing.assert_close(
+                    to_labels(tensor_logits, class_dim=class_dim),
+                    torch.from_numpy(expected_labels).long(),
+                )
+
+        two_classes = nchw[:, :2]
+        two_classes_nhwc = np.moveaxis(two_classes, 1, -1)
+        for class_dim, binary_logits in [(1, two_classes), (-1, two_classes_nhwc)]:
+            with self.subTest(num_classes=2, class_dim=class_dim):
+                positive = np.take(binary_logits, [1], axis=class_dim)
+                negative = np.take(binary_logits, [0], axis=class_dim)
+                expected_labels = (positive - negative > 0.0).astype(int)
+                np.testing.assert_array_equal(
+                    to_labels(binary_logits, class_dim=class_dim),
+                    expected_labels,
+                )
+                torch.testing.assert_close(
+                    to_labels(
+                        torch.from_numpy(binary_logits),
+                        class_dim=class_dim,
+                    ),
+                    torch.from_numpy(expected_labels).long(),
+                )
+        labels = to_labels(two_classes, prediction_mode="multiclass")
+        np.testing.assert_array_equal(labels, two_classes.argmax(1, keepdims=True))
+
+        multilabel = np.array([[-1.0, 0.0, 1.0]], np.float32)
+        probabilities = _postprocess_logits(
+            multilabel,
+            prediction_mode="multilabel",
+            return_probabilities=True,
+        )
+        self.assertEqual(probabilities.shape, multilabel.shape)
+        np.testing.assert_array_equal(
+            to_labels(multilabel, prediction_mode="multilabel"),
+            np.array([[0, 0, 1]]),
+        )
+        rank_one = _postprocess_logits(
+            multilabel.ravel(),
+            prediction_mode="multilabel",
+            return_probabilities=True,
+        )
+        self.assertEqual(rank_one.shape, (3,))
+
+        tensor = torch.from_numpy(nchw)
+        probabilities = _postprocess_logits(tensor, return_probabilities=True)
+        torch.testing.assert_close(
+            probabilities.sum(1),
+            torch.ones((2, 2, 2)),
+        )
+        labels = to_labels(tensor)
+        torch.testing.assert_close(labels, tensor.argmax(1, keepdim=True))
+        tensor_multilabel = torch.from_numpy(multilabel)
+        probabilities = _postprocess_logits(
+            tensor_multilabel,
+            prediction_mode="multilabel",
+            return_probabilities=True,
+        )
+        torch.testing.assert_close(probabilities, torch.sigmoid(tensor_multilabel))
+        torch.testing.assert_close(
+            to_labels(tensor_multilabel, prediction_mode="multilabel"),
+            torch.tensor([[0, 0, 1]]),
+        )
+
+    def test_postprocess_logits_validation(self):
+        logits = np.zeros((2, 1), np.float32)
+        with self.assertRaisesRegex(ValueError, "prediction mode"):
+            _postprocess_logits(logits, prediction_mode="invalid")
+        with self.assertRaisesRegex(ValueError, "at least one dimension"):
+            _postprocess_logits(np.array(0.0))
+        with self.assertRaisesRegex(ValueError, "rank-1"):
+            _postprocess_logits(np.zeros(2), class_dim=2)
+        with self.assertRaisesRegex(ValueError, "out of range"):
+            _postprocess_logits(logits, class_dim=2)
+        with self.assertRaisesRegex(ValueError, "batch dimension"):
+            _postprocess_logits(logits, class_dim=0)
+        with self.assertRaisesRegex(ValueError, "cannot be empty"):
+            _postprocess_logits(np.empty((2, 0)))
+        with self.assertRaisesRegex(ValueError, "one or two classes"):
+            _postprocess_logits(np.zeros((2, 3)), prediction_mode="binary")
+        with self.assertRaisesRegex(ValueError, "at least 2 classes"):
+            _postprocess_logits(np.zeros(2), prediction_mode="multiclass")
+        with self.assertRaisesRegex(ValueError, "at least 2 classes"):
+            _postprocess_logits(logits, prediction_mode="multiclass")
+
+        for threshold in [
+            float("nan"),
+            float("inf"),
+            -float("inf"),
+            -0.1,
+            1.1,
+        ]:
+            with self.subTest(threshold=threshold):
+                with self.assertRaisesRegex(ValueError, r"\[0, 1\]"):
+                    to_labels(logits, threshold)
+        np.testing.assert_array_equal(to_labels(logits, 0.0), np.ones((2, 1)))
+        np.testing.assert_array_equal(to_labels(logits, 1.0), np.zeros((2, 1)))
+        _postprocess_logits(
+            logits,
+            threshold=float("nan"),
+            return_probabilities=True,
+        )
+        to_labels(
+            np.zeros((2, 3)),
+            float("nan"),
+            prediction_mode="multiclass",
+        )
+
     def test_get_full_logits(self):
         logits = np.random.randn(3, 5, 7)
+        self.assertIs(get_full_logits(logits), logits)
         np.testing.assert_allclose(get_full_logits(logits), logits)
         logits = np.random.randn(3, 5, 1)
         full_logits = get_full_logits(logits)

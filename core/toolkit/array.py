@@ -22,6 +22,7 @@ from .misc import timeit
 from .types import TPath
 from .types import TArray
 from .types import arr_type
+from .types import PredictionMode
 from .types import tensor_dict_type
 
 if TYPE_CHECKING:
@@ -74,15 +75,15 @@ def sigmoid(arr: TArray) -> TArray:
 
 
 @no_type_check
-def softmax(arr: TArray) -> TArray:
+def softmax(arr: TArray, *, axis: int = 1) -> TArray:
     import numpy as np
     import torch.nn.functional as F
 
     if isinstance(arr, np.ndarray):
-        logits = arr - np.max(arr, axis=1, keepdims=True)
+        logits = arr - np.max(arr, axis=axis, keepdims=True)
         exp = np.exp(logits)
-        return exp / exp.sum(1, keepdims=True)
-    return F.softmax(arr, dim=1)
+        return exp / exp.sum(axis, keepdims=True)
+    return F.softmax(arr, dim=axis)
 
 
 @no_type_check
@@ -705,16 +706,146 @@ class SharedArray:
         return cls(random_hash()[:16], data.dtype, data.shape, data=data)
 
 
-def to_labels(logits: "np.ndarray", threshold: Optional[float] = None) -> "np.ndarray":
-    # binary classification
-    if logits.shape[-1] == 2:
-        logits = logits[..., [1]] - logits[..., [0]]
-    if logits.shape[-1] == 1:
-        if threshold is None:
-            threshold = 0.5
-        logit_threshold = math.log(threshold / (1.0 - threshold))
-        return (logits > logit_threshold).astype(int)
-    return logits.argmax(1)[..., None]
+def _postprocess_logits(
+    logits: TArray,
+    *,
+    prediction_mode: PredictionMode = "auto",
+    class_dim: int = 1,
+    return_probabilities: bool = False,
+    threshold: Optional[float] = None,
+    inclusive: bool = False,
+) -> TArray:
+    import torch
+    import numpy as np
+
+    valid_modes = {"auto", "binary", "multiclass", "multilabel"}
+    if prediction_mode not in valid_modes:
+        raise ValueError(f"unsupported prediction mode: {prediction_mode}")
+    num_dims = logits.ndim
+    if num_dims == 0:
+        raise ValueError("logits should have at least one dimension")
+    if num_dims == 1:
+        if class_dim not in {-1, 1}:
+            raise ValueError("class_dim should be 1 or -1 for rank-1 logits")
+        normalized_class_dim = 1
+        num_classes = 1
+    else:
+        if not -num_dims <= class_dim < num_dims:
+            raise ValueError(f"class_dim {class_dim} is out of range")
+        normalized_class_dim = class_dim % num_dims
+        if normalized_class_dim == 0:
+            raise ValueError("class_dim cannot be the batch dimension")
+        num_classes = logits.shape[normalized_class_dim]
+        if num_classes == 0:
+            raise ValueError("the class dimension cannot be empty")
+
+    mode = prediction_mode
+    if mode == "auto":
+        mode = "binary" if num_classes <= 2 else "multiclass"
+    if mode == "binary" and num_classes not in {1, 2}:
+        raise ValueError("binary mode requires one or two classes")
+    if mode == "multiclass" and (num_dims == 1 or num_classes < 2):
+        raise ValueError(
+            "multiclass mode requires a class dimension with at least 2 classes"
+        )
+
+    is_numpy = isinstance(logits, np.ndarray)
+    if mode == "binary":
+        if num_classes == 1:
+            if return_probabilities or inclusive:
+                positive = sigmoid(logits)
+            if return_probabilities:
+                negative = 1.0 - positive
+                if num_dims == 1:
+                    if is_numpy:
+                        return cast(TArray, np.stack([negative, positive], 1))
+                    return cast(TArray, torch.stack([negative, positive], 1))
+                if is_numpy:
+                    return cast(
+                        TArray,
+                        np.concatenate(
+                            [negative, positive],
+                            normalized_class_dim,
+                        ),
+                    )
+                return cast(
+                    TArray,
+                    torch.cat([negative, positive], normalized_class_dim),
+                )
+            scores = positive if inclusive else logits
+        else:
+            index = [slice(None)] * num_dims
+            index[normalized_class_dim] = slice(1, 2)
+            if return_probabilities or inclusive:
+                probabilities = cast(
+                    TArray,
+                    softmax(logits, axis=normalized_class_dim),
+                )
+            if return_probabilities:
+                return probabilities
+            if inclusive:
+                scores = probabilities[tuple(index)]
+            else:
+                positive = logits[tuple(index)]
+                index[normalized_class_dim] = slice(0, 1)
+                negative = logits[tuple(index)]
+                scores = positive - negative
+    elif mode == "multiclass":
+        if return_probabilities:
+            return cast(
+                TArray,
+                softmax(logits, axis=normalized_class_dim),
+            )
+        if is_numpy:
+            array = cast("np.ndarray", logits)
+            return cast(
+                TArray,
+                array.argmax(axis=normalized_class_dim, keepdims=True),
+            )
+        tensor = cast("Tensor", logits)
+        return cast(
+            TArray,
+            tensor.argmax(dim=normalized_class_dim, keepdim=True),
+        )
+    else:
+        if return_probabilities or inclusive:
+            positive = cast(TArray, sigmoid(logits))
+        if return_probabilities:
+            return cast(TArray, positive)
+        scores = positive if inclusive else logits
+
+    if threshold is None:
+        threshold = 0.5
+    if not math.isfinite(threshold) or not 0.0 <= threshold <= 1.0:
+        raise ValueError("threshold should be finite and within [0, 1]")
+    if inclusive:
+        labels = scores >= threshold
+    else:
+        if threshold == 0.0:
+            logit_threshold = -math.inf
+        elif threshold == 1.0:
+            logit_threshold = math.inf
+        else:
+            logit_threshold = math.log(threshold / (1.0 - threshold))
+        labels = scores > logit_threshold
+    if is_numpy:
+        return cast(TArray, labels.astype(int))
+    return cast(TArray, labels.long())
+
+
+def to_labels(
+    logits: TArray,
+    threshold: Optional[float] = None,
+    *,
+    prediction_mode: PredictionMode = "auto",
+    class_dim: int = 1,
+) -> TArray:
+    return _postprocess_logits(
+        logits,
+        prediction_mode=prediction_mode,
+        class_dim=class_dim,
+        threshold=threshold,
+    )
 
 
 def get_full_logits(logits: "np.ndarray") -> "np.ndarray":
