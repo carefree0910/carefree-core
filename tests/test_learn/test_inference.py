@@ -1,9 +1,12 @@
 import torch
+import inspect
 import unittest
 
 import numpy as np
 import torch.nn as nn
 import core.learn as cflearn
+import core.learn.schema as learn_schema
+import core.learn.inference as learn_inference
 
 from torch import Tensor
 from typing import Optional
@@ -18,6 +21,104 @@ from core.toolkit.types import np_dict_type
 
 
 class TestInference(unittest.TestCase):
+    def test_public_contract(self) -> None:
+        self.assertIs(cflearn.Inference, learn_inference.Inference)
+        self.assertIs(cflearn.InferenceOutputs, learn_schema.InferenceOutputs)
+        self.assertEqual(
+            inspect.signature(cflearn.Inference.get_outputs),
+            inspect.signature(learn_schema.IInference.get_outputs),
+        )
+
+        forward_results = {cflearn.PREDICTIONS_KEY: torch.ones(2, 1)}
+        labels = {cflearn.LABEL_KEY: torch.zeros(2, 1)}
+        metric_outputs = cflearn.MetricsOutputs(
+            1.0,
+            {"score": 1.0},
+            {"score": True},
+        )
+        loss_items = {"loss": 0.5}
+        outputs = cflearn.InferenceOutputs(
+            forward_results,
+            labels,
+            metric_outputs,
+            loss_items,
+        )
+
+        self.assertListEqual(
+            list(vars(outputs)),
+            [
+                "forward_results",
+                "labels",
+                "metric_outputs",
+                "loss_items",
+            ],
+        )
+        self.assertIs(outputs.forward_results, forward_results)
+        self.assertIs(outputs.labels, labels)
+        self.assertIs(outputs.metric_outputs, metric_outputs)
+        self.assertIs(outputs.loss_items, loss_items)
+
+    def test_successful_native_inference_is_single_pass(self) -> None:
+        input_dim = 3
+        output_dim = 1
+        batch_size = 2
+        batches = [
+            {cflearn.INPUT_KEY: torch.randn(batch_size, input_dim)},
+            {cflearn.INPUT_KEY: torch.randn(batch_size, input_dim)},
+        ]
+        config = cflearn.Config(
+            module_name="linear",
+            module_config={"input_dim": input_dim, "output_dim": output_dim},
+            loss_name="mse",
+        )
+        model = cflearn.IModel.from_config(config)
+        inference = cflearn.Inference(model=model)
+
+        for should_stop_progress in [True, False]:
+            with self.subTest(should_stop_progress=should_stop_progress):
+                yielded_batches = []
+
+                def iterate():
+                    for i, batch in enumerate(batches):
+                        yielded_batches.append(i)
+                        yield batch
+
+                loader = MagicMock()
+                loader.__len__.return_value = len(batches)
+                loader.__iter__.side_effect = iterate
+                progress = MagicMock()
+                progress_task = 7
+                progress.add_task.return_value = progress_task
+                inject_outputs = Mock()
+
+                with patch.object(model, "step", wraps=model.step) as model_step:
+                    outputs = inference.get_outputs(
+                        loader,
+                        recover_labels=False,
+                        recover_predictions=False,
+                        inject_outputs_fn=inject_outputs,
+                        progress=progress,
+                        should_stop_progress=should_stop_progress,
+                    )
+
+                self.assertListEqual(yielded_batches, list(range(len(batches))))
+                self.assertEqual(loader.__iter__.call_count, 1)
+                self.assertEqual(model_step.call_count, len(batches))
+                self.assertEqual(inject_outputs.call_count, len(batches))
+                self.assertEqual(progress.advance.call_count, len(batches))
+                for advance_call in progress.advance.call_args_list:
+                    self.assertTupleEqual(advance_call.args, (progress_task,))
+                progress.add_task.assert_called_once()
+                progress.remove_task.assert_called_once_with(progress_task)
+                if should_stop_progress:
+                    progress.stop.assert_called_once_with()
+                else:
+                    progress.stop.assert_not_called()
+                self.assertTupleEqual(
+                    outputs.forward_results[cflearn.PREDICTIONS_KEY].shape,
+                    (len(batches) * batch_size, output_dim),
+                )
+
     def test_inference(self) -> None:
         with self.assertRaises(ValueError):
             cflearn.Inference()

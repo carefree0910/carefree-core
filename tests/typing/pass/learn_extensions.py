@@ -9,8 +9,10 @@ if TYPE_CHECKING:
     from typing import Dict
     from typing import List
     from typing import Type
+    from typing import Union
     from typing import Optional
     from typing_extensions import assert_type
+    from core.learn import Inference
     from core.learn.schema import Config
     from core.learn.schema import IModel
     from core.learn.schema import IMetric
@@ -20,10 +22,13 @@ if TYPE_CHECKING:
     from core.learn.schema import DataLoader
     from core.learn.schema import DLSettings
     from core.learn.schema import IDataBlock
+    from core.learn.schema import MetricValues
+    from core.learn.schema import IStreamMetric
     from core.learn.schema import MetricsOutputs
     from core.learn.schema import LoggingSettings
     from core.learn.schema import RuntimeSettings
     from core.learn.schema import TrainerCallback
+    from core.learn.schema import InferenceOutputs
     from core.learn.schema import EvaluationSettings
     from core.learn.schema import DistributedSettings
     from core.learn.schema import PersistenceSettings
@@ -60,6 +65,43 @@ if TYPE_CHECKING:
         ) -> float:
             return 1.0
 
+    @IMetric.register("typing.metric_values")
+    class ExternalMetricValues(IMetric):
+        @property
+        def is_positive(self) -> bool:
+            return True
+
+        def forward(
+            self,
+            tensor_batch: tensor_dict_type,
+            tensor_outputs: tensor_dict_type,
+            loader: Optional[DataLoader] = None,
+        ) -> MetricValues:
+            return MetricValues(
+                {"score": 1.0},
+                {"score": True},
+            )
+
+    @IMetric.register("typing.stream_metric")
+    class ExternalStreamMetric(IStreamMetric):
+        @property
+        def is_positive(self) -> bool:
+            return False
+
+        def reset(self) -> None:
+            return None
+
+        def update(
+            self,
+            tensor_batch: tensor_dict_type,
+            tensor_outputs: tensor_dict_type,
+            loader: Optional[DataLoader] = None,
+        ) -> None:
+            return None
+
+        def finalize(self) -> float:
+            return 0.0
+
     @IModel.register("typing.model")
     class ExternalModel(IModel):
         def __init__(self) -> None:
@@ -83,6 +125,8 @@ if TYPE_CHECKING:
 
     data_block = ExternalDataBlock()
     metric = ExternalMetric()
+    metric_values_metric = ExternalMetricValues()
+    stream_metric = ExternalStreamMetric()
     model_config = Config()
     model_config.module_name = "typing.model"
     assert_type(data_block.configs, Dict[str, Any])
@@ -115,6 +159,9 @@ if TYPE_CHECKING:
     assert_type(IMetric.make("typing.metric", {}), IMetric)
     assert_type(ExternalMetric.make("typing.metric", {}), IMetric)
     assert_type(metric.evaluate({}, {}), Optional[MetricsOutputs])
+    assert_type(metric_values_metric.evaluate({}, {}), Optional[MetricsOutputs])
+    assert_type(stream_metric.evaluate({}, {}), Optional[MetricsOutputs])
+    assert_type(stream_metric.report(stream_metric.finalize()), MetricsOutputs)
     assert_type(ExternalModel, Type[ExternalModel])
     assert_type(IModel.make("typing.model", {}), IModel)
     assert_type(ExternalModel.make("typing.model", {}), IModel)
@@ -125,3 +172,43 @@ if TYPE_CHECKING:
         ExternalCallback.make("typing.callback", {}),
         TrainerCallback,
     )
+
+    metric_values = MetricValues(
+        {"score": 1.0},
+        {"score": True},
+    )
+    metric_outputs = MetricsOutputs(
+        1.0,
+        {"typing.metric_values": 1.0},
+        {"typing.metric_values": True},
+    )
+    inference_outputs = InferenceOutputs(
+        {},
+        {},
+        metric_outputs,
+        None,
+    )
+    assert_type(metric_values, MetricValues)
+    assert_type(metric_values[0], Dict[str, float])
+    assert_type(metric_values[1], Dict[str, bool])
+    assert_type(metric_outputs, MetricsOutputs)
+    assert_type(metric_outputs[0], float)
+    assert_type(metric_outputs[1], Dict[str, float])
+    assert_type(metric_outputs[2], Dict[str, bool])
+    assert_type(inference_outputs, InferenceOutputs)
+    assert_type(
+        inference_outputs.forward_results,
+        Union[tensor_dict_type, Dict[str, List[torch.Tensor]]],
+    )
+    assert_type(
+        inference_outputs.labels,
+        Union[tensor_dict_type, Dict[str, List[torch.Tensor]]],
+    )
+    assert_type(inference_outputs.metric_outputs, Optional[MetricsOutputs])
+    assert_type(inference_outputs.loss_items, Optional[Dict[str, float]])
+
+    def check_inference_outputs(
+        inference: Inference,
+        loader: DataLoader,
+    ) -> None:
+        assert_type(inference.get_outputs(loader), InferenceOutputs)
