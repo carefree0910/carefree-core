@@ -23,8 +23,10 @@ from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 from .toolkit import scheduler_requires_metric
 from ..toolkit.misc import check_requires
+from ..toolkit.registry import Registry
 
 TTScheduler = TypeVar("TTScheduler", bound=Type[LRScheduler])
+TSchedulerOp = TypeVar("TSchedulerOp", bound=Type[Any])
 
 
 class ISchedulerOp:
@@ -33,14 +35,13 @@ class ISchedulerOp:
         """returns the new learning rate at the given step"""
 
 
-scheduler_ops: Dict[str, Type[ISchedulerOp]] = {}
-scheduler_dict: Dict[str, Type[LRScheduler]] = {}
+scheduler_registry = Registry[LRScheduler](duplicate="replace")
+scheduler_op_registry = Registry[Any](duplicate="replace")
 
 
 def register_scheduler(name: str) -> Callable[[TTScheduler], TTScheduler]:
     def _register(cls_: TTScheduler) -> TTScheduler:
-        global scheduler_dict
-        scheduler_dict[name] = cls_
+        scheduler_registry.register(name, cls_)
         return cls_
 
     return _register
@@ -182,10 +183,9 @@ class WarmupScheduler(LRScheduler):
             self.scheduler_afterwards.step(metrics)  # type: ignore
 
 
-def register_op(name: str) -> Callable:
-    def _register(cls_: Type) -> Type:
-        global scheduler_ops
-        scheduler_ops[name] = cls_
+def register_op(name: str) -> Callable[[TSchedulerOp], TSchedulerOp]:
+    def _register(cls_: TSchedulerOp) -> TSchedulerOp:
+        scheduler_op_registry.register(name, cls_)
         return cls_
 
     return _register
@@ -194,9 +194,9 @@ def register_op(name: str) -> Callable:
 @register_scheduler("op")
 class OpScheduler(LambdaLR):
     def __init__(self, optimizer: Optimizer, op_type: str, op_config: Dict[str, Any]):
-        op_base = scheduler_ops.get(op_type)
-        if op_base is None:
+        if not scheduler_op_registry.has(op_type):
             raise ValueError(f"unrecognized scheduler op '{op_type}' occurred")
+        op_base = scheduler_op_registry.get(op_type)
         op = op_base(**op_config)
         super().__init__(optimizer, lr_lambda=op.schedule)
 
@@ -256,7 +256,8 @@ class LinearWarmupOp(CosineWarmupOp):
 
 
 __all__ = [
-    "scheduler_dict",
+    "scheduler_registry",
+    "scheduler_op_registry",
     "register_op",
     "register_scheduler",
     "LinearInverseScheduler",

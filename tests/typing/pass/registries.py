@@ -6,6 +6,18 @@ if TYPE_CHECKING:
     from typing import List
     from typing import Type
     from typing_extensions import assert_type
+    from core.learn import module_registry
+    from core.learn import optimizer_registry
+    from core.learn import scheduler_registry
+    from core.learn import scheduler_op_registry
+    from core.learn.optimizers import register_optimizer
+    from core.learn.schedulers import register_op
+    from core.learn.schedulers import register_scheduler
+    from torch.nn import Module
+    from torch.optim import SGD
+    from torch.optim import Optimizer
+    from torch.optim.lr_scheduler import StepLR
+    from torch.optim.lr_scheduler import LRScheduler
     from core.toolkit.misc import JsonPack
     from core.toolkit.misc import WithRegister
     from core.toolkit.misc import ISerializable
@@ -19,6 +31,18 @@ if TYPE_CHECKING:
 
     @Plugin.register("typing.plugin")
     class RegisteredPlugin(Plugin):
+        pass
+
+    @register_optimizer("typing.optimizer")
+    class RegisteredOptimizer(SGD):
+        pass
+
+    @register_scheduler("typing.scheduler")
+    class RegisteredScheduler(StepLR):
+        pass
+
+    @register_op("typing.scheduler_op")
+    class RegisteredSchedulerOp:
         pass
 
     class Payload(ISerializable["Payload"]):
@@ -39,6 +63,13 @@ if TYPE_CHECKING:
         pass
 
     assert_type(RegisteredPlugin, Type[RegisteredPlugin])
+    assert_type(RegisteredOptimizer, Type[RegisteredOptimizer])
+    assert_type(RegisteredScheduler, Type[RegisteredScheduler])
+    assert_type(RegisteredSchedulerOp, Type[RegisteredSchedulerOp])
+    assert_type(module_registry, Registry[Module])
+    assert_type(optimizer_registry, Registry[Optimizer])
+    assert_type(scheduler_registry, Registry[LRScheduler])
+    assert_type(scheduler_op_registry, Registry[Any])
     assert_type(Plugin.d, Dict[str, Type[Plugin]])
     assert_type(Plugin.get("typing.plugin"), Type[Plugin])
     assert_type(Plugin.has("typing.plugin"), bool)

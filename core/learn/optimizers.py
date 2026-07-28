@@ -5,21 +5,24 @@ import torch.nn.functional as F
 
 from torch import Tensor
 from typing import Any
-from typing import Dict
 from typing import Type
 from typing import Tuple
+from typing import TypeVar
 from typing import Callable
 from typing import Iterable
 from typing import Optional
 from torch.optim.optimizer import Optimizer
 
-optimizer_dict: Dict[str, Type[Optimizer]] = {}
+from ..toolkit.registry import Registry
+
+TOptimizer = TypeVar("TOptimizer", bound=Type[Optimizer])
+
+optimizer_registry = Registry[Optimizer](duplicate="replace")
 
 
-def register_optimizer(name: str) -> Callable:
-    def _register(cls_: Type) -> Type:
-        global optimizer_dict
-        optimizer_dict[name] = cls_
+def register_optimizer(name: str) -> Callable[[TOptimizer], TOptimizer]:
+    def _register(cls_: TOptimizer) -> TOptimizer:
+        optimizer_registry.register(name, cls_)
         return cls_
 
     return _register
@@ -155,7 +158,7 @@ class AdamP(Optimizer):
 
 
 __all__ = [
-    "optimizer_dict",
+    "optimizer_registry",
     "register_optimizer",
     "AdamP",
 ]

@@ -54,8 +54,8 @@ from ...constants import PT_PREFIX
 from ...constants import SCORES_FILE
 from ...constants import CHECKPOINTS_FOLDER
 from ...inference import Inference
-from ...optimizers import optimizer_dict
-from ...schedulers import scheduler_dict
+from ...optimizers import optimizer_registry
+from ...schedulers import scheduler_registry
 from ...schedulers import WarmupScheduler
 from ....toolkit import console
 from ....toolkit.misc import to_path
@@ -592,7 +592,7 @@ class BuildOptimizersBlock(InjectDefaultsMixin, Block):
                 pg = pg.copy()
                 pg.update(self._get_param_group(pg["scope"]))
                 param_groups.append(pg)
-        optimizer_base = optimizer_dict[pack.optimizer_name]
+        optimizer_base = optimizer_registry.get(pack.optimizer_name)
         opt_config = pack.optimizer_config or {}
         opt = optimizer_base(param_groups, **opt_config)
         self.optimizers[pack.scope] = opt
@@ -616,10 +616,10 @@ class BuildOptimizersBlock(InjectDefaultsMixin, Block):
                 sac = scheduler_config.get("scheduler_afterwards_config", {})
                 default_lr_config = default_lr_configs.get(sab)
                 sac = update_dict(sac, default_lr_config or {})
-                sab = scheduler_dict[sab]
+                sab = scheduler_registry.get(sab)
                 scheduler_config["scheduler_afterwards_base"] = sab
                 scheduler_config["scheduler_afterwards_config"] = sac
-            scheduler_base = scheduler_dict[scheduler]
+            scheduler_base = scheduler_registry.get(scheduler)
             scheduler_config = filter_kw(scheduler_base, scheduler_config)
             self.schedulers[pack.scope] = scheduler_base(optimizer, **scheduler_config)
 

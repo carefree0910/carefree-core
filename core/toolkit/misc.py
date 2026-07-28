@@ -56,6 +56,7 @@ from .types import TConfig
 from .types import arr_type
 from .types import np_dict_type
 from .constants import TIME_FORMAT
+from .registry import Registry
 
 if TYPE_CHECKING:
     from rich.progress import TaskID
@@ -1089,15 +1090,19 @@ class WithRegister(Generic[TRegister]):
     __identifier__: str
 
     @classmethod
+    def _registry(cls: Type["WithRegister[TRegister]"]) -> Registry[TRegister]:
+        return Registry(cls.d, duplicate="keep")
+
+    @classmethod
     def get(
         cls: Type["WithRegister[TRegister]"],
         name: str,
     ) -> Type[TRegister]:
-        return cls.d[name]
+        return cls._registry().get(name)
 
     @classmethod
     def has(cls, name: str) -> bool:
-        return name in cls.d
+        return cls._registry().has(name)
 
     @classmethod
     def make(
@@ -1107,9 +1112,9 @@ class WithRegister(Generic[TRegister]):
         *,
         ensure_safe: bool = False,
     ) -> TRegister:
-        base = cls.get(name)
         if not ensure_safe:
-            return base(**config)
+            return cls._registry().make(name, config)
+        base = cls.get(name)
         return safe_instantiate(base, config)
 
     @classmethod
@@ -1143,9 +1148,12 @@ class WithRegister(Generic[TRegister]):
         if configs is None:
             configs = {}
         if isinstance(names, str):
-            assert isinstance(configs, dict)
+            if not isinstance(configs, dict):
+                raise TypeError("configs must be a dictionary for a single name")
             return cls.make(names, configs, ensure_safe=ensure_safe)
         if not isinstance(configs, list):
+            if not isinstance(configs, dict):
+                raise TypeError("configs must be a list or a dictionary")
             configs = [configs.get(name, {}) for name in names]
         return [
             cls.make(name, shallow_copy_dict(config), ensure_safe=ensure_safe)
@@ -1159,19 +1167,23 @@ class WithRegister(Generic[TRegister]):
         *,
         allow_duplicate: bool = False,
     ) -> Callable[[TTRegister], TTRegister]:
-        def before(cls_: TTRegister) -> None:
+        def _register(cls_: TTRegister) -> TTRegister:
             cls_.__identifier__ = name
+            if cls.d.get(name) is not None and not allow_duplicate:
+                console.warn(
+                    f"'{name}' has already registered in the given global dict "
+                    f"({cls.d})"
+                )
+                return cls_
+            duplicate = "replace" if allow_duplicate else "keep"
+            cls._registry().register(name, cls_, duplicate=duplicate)  # type: ignore
+            return cls_
 
-        return register_core(  # type: ignore
-            name,
-            cls.d,
-            allow_duplicate=allow_duplicate,
-            before_register=before,
-        )
+        return _register
 
     @classmethod
     def check_subclass(cls, name: str) -> bool:
-        return issubclass(cls.d[name], cls)
+        return issubclass(cls._registry().get(name), cls)
 
 
 @dataclass

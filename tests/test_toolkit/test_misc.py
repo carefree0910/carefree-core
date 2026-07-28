@@ -843,7 +843,15 @@ class TestMisc(unittest.TestCase):
             configs_by_position,
             [{"value": 6}, {"value": 7}],
         )
+        made = Foo.make_multiple(["a", "b"], [{"value": 8}])
+        self.assertListEqual([item.value for item in made], [8])
+        made = Foo.make_multiple(["a"], [{"value": 9}, {"value": 10}])
+        self.assertListEqual([item.value for item in made], [9])
         self.assertListEqual(Foo.make_multiple([]), [])
+        with self.assertRaises(TypeError):
+            Foo.make_multiple("a", [{"value": 11}])
+        with self.assertRaises(TypeError):
+            Foo.make_multiple(["a"], "invalid")
 
         @Foo.register("c")
         class C:

@@ -15,14 +15,15 @@ from typing import Iterable
 from typing import Optional
 from torch.nn import Module
 
+from ...toolkit import console
 from ...toolkit.misc import update_dict
 from ...toolkit.misc import parse_config
-from ...toolkit.misc import register_core
 from ...toolkit.misc import safe_instantiate
 from ...toolkit.misc import shallow_copy_dict
 from ...toolkit.array import is_int
 from ...toolkit.types import TConfig
 from ...toolkit.types import tensor_dict_type
+from ...toolkit.registry import Registry
 
 # managements
 
@@ -30,11 +31,34 @@ from ...toolkit.types import tensor_dict_type
 TModule = TypeVar("TModule", bound=Type[Module])
 TParams = Iterable[Tuple[str, Union[Tensor, nn.Parameter]]]
 
-module_dict: Dict[str, Type["Module"]] = {}
+module_registry = Registry[Module](duplicate="replace")
 
 
-def register_module(name: str, **kwargs: Any) -> Callable[[TModule], TModule]:
-    return register_core(name, module_dict, **kwargs)  # type: ignore
+def register_module(
+    name: str,
+    *,
+    allow_duplicate: bool = False,
+    before_register: Optional[Callable[[Any], Any]] = None,
+    after_register: Optional[Callable[[Any], Any]] = None,
+) -> Callable[[TModule], TModule]:
+    def _register(cls: TModule) -> TModule:
+        if before_register is not None:
+            before_register(cls)
+        if module_registry.has(name) and not allow_duplicate:
+            console.warn(
+                f"'{name}' has already registered in the given registry "
+                f"({module_registry.storage})"
+            )
+            return cls
+        if allow_duplicate:
+            module_registry.register(name, cls, duplicate="replace")
+        else:
+            module_registry.register(name, cls, duplicate="keep")
+        if after_register is not None:
+            after_register(cls)
+        return cls
+
+    return _register
 
 
 def merge_config(config: TConfig = None, **kwargs: Any) -> Dict[str, Any]:
@@ -44,7 +68,7 @@ def merge_config(config: TConfig = None, **kwargs: Any) -> Dict[str, Any]:
 
 def build_module(name: str, *, config: TConfig = None, **kwargs: Any) -> Module:
     kwargs = merge_config(config, **kwargs)
-    return safe_instantiate(module_dict[name], kwargs)
+    return safe_instantiate(module_registry.get(name), kwargs)
 
 
 class PrefixModules:
@@ -53,13 +77,16 @@ class PrefixModules:
 
     @property
     def all(self) -> List[str]:
-        return sorted([k for k in module_dict if k.startswith(self._prefix)])
+        return sorted([k for k in module_registry if k.startswith(self._prefix)])
 
     def has(self, name: str) -> bool:
-        return self.prefix(name) in module_dict
+        return module_registry.has(self.prefix(name))
 
     def get(self, name: str) -> Optional[Type[Module]]:
-        return module_dict.get(self.prefix(name))
+        prefixed = self.prefix(name)
+        if not module_registry.has(prefixed):
+            return None
+        return module_registry.get(prefixed)
 
     def register(self, name: str, **kwargs: Any) -> Callable[[TModule], TModule]:
         return register_module(self.prefix(name), **kwargs)
@@ -213,7 +240,7 @@ class BN(nn.BatchNorm1d):
 
 
 __all__ = [
-    "module_dict",
+    "module_registry",
     "register_module",
     "build_module",
     "PrefixModules",

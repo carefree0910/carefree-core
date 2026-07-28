@@ -14,38 +14,52 @@ import core.learn.pipeline.blocks.basic as pipeline_blocks
 from typing import Any
 from typing import Dict
 from typing import List
+from typing import Type
 from typing import Tuple
 from pathlib import Path
+from core.toolkit.registry import Registry
 
-RegistryState = Tuple[Any, str, Dict[str, Any], Dict[str, Any]]
+MappingState = Tuple[Any, str, Dict[str, Any], Dict[str, Any]]
+RegistryState = Tuple[Any, str, Registry[Any], Dict[str, Type[Any]], Dict[str, str]]
 OwnerState = Tuple[Any, str, Dict[str, Any]]
 
 
+def _mapping_state(module: Any, name: str) -> MappingState:
+    mapping = getattr(module, name)
+    return module, name, mapping, dict(mapping)
+
+
 def _registry_state(module: Any, name: str) -> RegistryState:
-    registry = getattr(module, name)
-    return module, name, registry, dict(registry)
+    registry: Registry[Any] = getattr(module, name)
+    return module, name, registry, dict(registry.storage), registry.aliases
 
 
 # Importing `core.learn` above finishes all built-in registrations before this
 # baseline is captured. Test modules are collected only after this conftest.
+_LEARN_MAPPINGS: List[MappingState] = [
+    _mapping_state(learn_schema, "data_dict"),
+    _mapping_state(learn_schema, "data_configs"),
+    _mapping_state(learn_schema, "monitors"),
+    _mapping_state(learn_schema, "metrics"),
+    _mapping_state(learn_schema, "models"),
+    _mapping_state(learn_schema, "trainer_callbacks"),
+    _mapping_state(learn_schema, "configs"),
+    _mapping_state(toolkit_pipeline, "pipelines"),
+    _mapping_state(toolkit_pipeline, "pipeline_blocks"),
+]
 _LEARN_REGISTRIES: List[RegistryState] = [
-    _registry_state(learn_schema, "data_dict"),
-    _registry_state(learn_schema, "data_configs"),
-    _registry_state(learn_schema, "monitors"),
-    _registry_state(learn_schema, "metrics"),
-    _registry_state(learn_schema, "models"),
-    _registry_state(learn_schema, "trainer_callbacks"),
-    _registry_state(learn_schema, "configs"),
-    _registry_state(learn_modules, "module_dict"),
-    _registry_state(learn_optimizers, "optimizer_dict"),
-    _registry_state(learn_schedulers, "scheduler_ops"),
-    _registry_state(learn_schedulers, "scheduler_dict"),
-    _registry_state(toolkit_pipeline, "pipelines"),
-    _registry_state(toolkit_pipeline, "pipeline_blocks"),
+    _registry_state(learn_modules, "module_registry"),
+    _registry_state(learn_optimizers, "optimizer_registry"),
+    _registry_state(learn_schedulers, "scheduler_registry"),
+    _registry_state(learn_schedulers, "scheduler_op_registry"),
 ]
 _LEARN_EXPORTS = [
     (name, original)
-    for _, name, original, _ in _LEARN_REGISTRIES
+    for _, name, original, _ in _LEARN_MAPPINGS
+    if getattr(cflearn, name, None) is original
+] + [
+    (name, original)
+    for _, name, original, _, _ in _LEARN_REGISTRIES
     if getattr(cflearn, name, None) is original
 ]
 _LEARN_OWNERS: List[OwnerState] = [
@@ -95,10 +109,16 @@ def _clear_async_iterators() -> None:
 
 
 def _restore_learn_state() -> None:
-    for module, name, original, baseline in _LEARN_REGISTRIES:
+    for module, name, original, baseline in _LEARN_MAPPINGS:
         setattr(module, name, original)
         original.clear()
         original.update(baseline)
+    for module, name, original, storage, aliases in _LEARN_REGISTRIES:
+        setattr(module, name, original)
+        original.reset()
+        original.storage.update(storage)
+        for alias, target in aliases.items():
+            original.register_alias(alias, target)
     for name, original in _LEARN_EXPORTS:
         setattr(cflearn, name, original)
     for owner, name, original in _LEARN_OWNERS:
