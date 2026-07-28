@@ -14,6 +14,7 @@ from pydantic import field_validator
 from abc import ABC
 from abc import ABCMeta
 from enum import Enum
+from pydantic import Field
 from torch import device
 from torch import Tensor
 from typing import Any
@@ -2645,17 +2646,123 @@ class TqdmSettings(DataClassBase):
     desc: str = "running epoch"
 
 
+def _validate_scheduler_arrays(
+    scheduler_name: Optional[str],
+    scheduler_config: Optional[Dict[str, Any]],
+) -> None:
+    if scheduler_name != "op" or scheduler_config is None:
+        return
+    op_type = scheduler_config.get("op_type")
+    if op_type not in {"cosine_warmup", "linear_warmup"}:
+        return
+    op_config = scheduler_config.get("op_config")
+    if not isinstance(op_config, dict):
+        raise ValueError("scheduler op config should be a dictionary")
+    keys = ["warmup_steps", "cycle_lengths", "f_start", "f_min", "f_max"]
+    lengths = []
+    for key in keys:
+        array = op_config.get(key)
+        if not isinstance(array, (list, tuple)) or not array:
+            raise ValueError("scheduler arrays should be non-empty sequences")
+        lengths.append(len(array))
+    if len(set(lengths)) != 1:
+        raise ValueError("scheduler arrays should have the same length")
+
+
+def _validate_mixed_precision(value: Union[str, PrecisionType]) -> None:
+    if str(value) not in {precision.value for precision in PrecisionType}:
+        raise ValueError("unrecognized mixed precision")
+
+
+def _validate_optimizer_scheduler_arrays(
+    optimizer_settings: Optional[Dict[str, Optional[Dict[str, Any]]]],
+) -> None:
+    for settings in (optimizer_settings or {}).values():
+        if settings is None:
+            continue
+        scheduler = settings.get("scheduler")
+        scheduler_config = settings.get("scheduler_config")
+        if isinstance(scheduler, str) and isinstance(scheduler_config, dict):
+            _validate_scheduler_arrays(scheduler, scheduler_config)
+
+
+class RuntimeSettings(Protocol):
+    num_epoch: int
+    num_steps: Optional[int]
+    extra: Optional[Dict[str, Any]]
+
+
+class DistributedSettings(Protocol):
+    split_batches: bool
+    mixed_precision: Union[str, PrecisionType]
+    dispatch_batches: Optional[bool]
+    even_batches: bool
+    non_blocking: bool
+    find_unused_parameters: bool
+    timeout: int
+
+
+class OptimizationSettings(Protocol):
+    clip_norm: float
+    grad_accumulate: int
+    lr: Optional[float]
+    optimizer_name: Optional[str]
+    scheduler_name: Optional[str]
+    optimizer_config: Optional[Dict[str, Any]]
+    scheduler_config: Optional[Dict[str, Any]]
+    use_closure_pack: bool
+    update_scheduler_per_epoch: bool
+    optimizer_settings: Optional[Dict[str, Optional[Dict[str, Any]]]]
+    use_zero: bool
+
+
+class EvaluationSettings(Protocol):
+    valid_portion: float
+    metric_names: Optional[Union[str, List[str]]]
+    metric_configs: configs_type
+    metric_weights: Optional[Dict[str, float]]
+    metric_forward_kwargs: Optional[Dict[str, Any]]
+    use_losses_as_metrics: Optional[bool]
+    use_incrementer_for_train_losses_in_eval: bool
+    recompute_train_losses_in_eval: bool
+    loss_metrics_weights: Optional[Dict[str, float]]
+    monitor_names: Optional[Union[str, List[str]]]
+    monitor_configs: Optional[Dict[str, Any]]
+
+
+class LoggingSettings(Protocol):
+    log_steps: Optional[int]
+    auto_callback: bool
+    callback_names: Optional[List[str]]
+    callback_configs: Optional[Dict[str, Any]]
+    tqdm_settings: Optional[Union[Dict[str, Any], TqdmSettings]]
+    profile: bool
+    profile_config: Optional[Dict[str, Any]]
+    profile_schedule_config: Optional[Dict[str, Any]]
+
+
+class PersistenceSettings(Protocol):
+    workspace: TPath
+    create_sub_workspace: bool
+    state_config: Optional[Dict[str, Any]]
+    sort_ckpt_by: SortMethod
+    finetune_config: Optional[Dict[str, Any]]
+    resume_training_from: Optional[str]
+    save_pipeline_in_realtime: bool
+    save_realtime_pipeline_individually: bool
+
+
 @pydantic_dataclass
 class TrainerConfig:
     workspace: TPath = "_logs"
     create_sub_workspace: bool = True
     state_config: Optional[Dict[str, Any]] = None
-    num_epoch: int = 40
-    num_steps: Optional[int] = None
-    log_steps: Optional[int] = None
-    valid_portion: float = 1.0
-    clip_norm: float = 0.0
-    grad_accumulate: int = 1
+    num_epoch: int = Field(default=40, gt=0)
+    num_steps: Optional[int] = Field(default=None, ge=0)
+    log_steps: Optional[int] = Field(default=None, gt=0)
+    valid_portion: float = Field(default=1.0, gt=0.0, le=1.0, allow_inf_nan=False)
+    clip_norm: float = Field(default=0.0, ge=0.0, allow_inf_nan=False)
+    grad_accumulate: int = Field(default=1, gt=0)
     metric_names: Optional[Union[str, List[str]]] = None
     metric_configs: configs_type = None
     metric_weights: Optional[Dict[str, float]] = None
@@ -2669,7 +2776,7 @@ class TrainerConfig:
     auto_callback: bool = True
     callback_names: Optional[List[str]] = None
     callback_configs: Optional[Dict[str, Any]] = None
-    lr: Optional[float] = None
+    lr: Optional[float] = Field(default=None, ge=0.0, allow_inf_nan=False)
     optimizer_name: Optional[str] = None
     scheduler_name: Optional[str] = None
     optimizer_config: Optional[Dict[str, Any]] = None
@@ -2691,11 +2798,11 @@ class TrainerConfig:
     # `accelerator` attributes
     split_batches: bool = False
     mixed_precision: Union[str, PrecisionType] = "no"
-    dispatch_batches: Optional[str] = None
+    dispatch_batches: Optional[bool] = None
     even_batches: bool = True
     non_blocking: bool = False
     find_unused_parameters: bool = False
-    timeout: int = 2400
+    timeout: int = Field(default=2400, gt=0)
     # this is a universal patch for special cases
     extra: Optional[Dict[str, Any]] = None
 
@@ -2709,6 +2816,43 @@ class TrainerConfig:
             return [callback_names]
         return callback_names
 
+    @field_validator("mixed_precision")
+    @classmethod
+    def validate_mixed_precision(
+        cls,
+        value: Union[str, PrecisionType],
+    ) -> Union[str, PrecisionType]:
+        _validate_mixed_precision(value)
+        return value
+
+    def __post_init__(self) -> None:
+        _validate_scheduler_arrays(self.scheduler_name, self.scheduler_config)
+        _validate_optimizer_scheduler_arrays(self.optimizer_settings)
+
+    @property
+    def runtime(self) -> RuntimeSettings:
+        return self
+
+    @property
+    def distributed(self) -> DistributedSettings:
+        return self
+
+    @property
+    def optimization(self) -> OptimizationSettings:
+        return self
+
+    @property
+    def evaluation(self) -> EvaluationSettings:
+        return self
+
+    @property
+    def logging(self) -> LoggingSettings:
+        return self
+
+    @property
+    def persistence(self) -> PersistenceSettings:
+        return self
+
     def init_process_group(self, *, cpu: bool) -> None:
         timeout = timedelta(seconds=self.timeout)
         init_process_group(cpu=cpu, handler=InitProcessGroupKwargs(timeout=timeout))
@@ -2720,7 +2864,7 @@ class DLSettings:
     model_config: Optional[Dict[str, Any]] = None
     module_name: str = ""
     module_config: Optional[Dict[str, Any]] = None
-    num_repeat: Optional[int] = None
+    num_repeat: Optional[int] = Field(default=None, gt=0)
     loss_name: Optional[str] = None
     loss_config: Optional[Dict[str, Any]] = None
     in_loading: bool = False
@@ -2734,6 +2878,11 @@ class Config(TrainerConfig, DLSettings, ISerializableDataClass["Config"]):  # ty
             self.tqdm_settings = self.tqdm_settings.asdict()
         if isinstance(self.mixed_precision, PrecisionType):
             self.mixed_precision = str(self.mixed_precision)
+        TrainerConfig.__post_init__(self)
+
+    @property
+    def build(self) -> DLSettings:
+        return self
 
     def to_debug(self) -> "Config":
         self.num_steps = 1

@@ -18,9 +18,16 @@ if TYPE_CHECKING:
     from core.learn.schema import TrainStep
     from core.learn.schema import DataBundle
     from core.learn.schema import DataLoader
+    from core.learn.schema import DLSettings
     from core.learn.schema import IDataBlock
     from core.learn.schema import MetricsOutputs
+    from core.learn.schema import LoggingSettings
+    from core.learn.schema import RuntimeSettings
     from core.learn.schema import TrainerCallback
+    from core.learn.schema import EvaluationSettings
+    from core.learn.schema import DistributedSettings
+    from core.learn.schema import PersistenceSettings
+    from core.learn.schema import OptimizationSettings
     from core.toolkit.pipeline import IBlock
     from core.toolkit.types import tensor_dict_type
 
@@ -79,6 +86,14 @@ if TYPE_CHECKING:
     model_config = Config()
     model_config.module_name = "typing.model"
     assert_type(model_config.callback_names, Optional[List[str]])
+    assert_type(model_config.dispatch_batches, Optional[bool])
+    assert_type(model_config.runtime, RuntimeSettings)
+    assert_type(model_config.distributed, DistributedSettings)
+    assert_type(model_config.build, DLSettings)
+    assert_type(model_config.optimization, OptimizationSettings)
+    assert_type(model_config.evaluation, EvaluationSettings)
+    assert_type(model_config.logging, LoggingSettings)
+    assert_type(model_config.persistence, PersistenceSettings)
     legacy_config = Config.construct({"callback_names": "typing.callback"})
     assert_type(legacy_config, Config)
     assert_type(legacy_config.from_info({"num_epoch": 1}), Config)

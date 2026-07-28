@@ -5,3 +5,4 @@ if TYPE_CHECKING:
 
     config = Config()
     config.callback_names = "typing.callback"  # expected-mypy: assignment
+    config.dispatch_batches = "true"  # expected-mypy: assignment

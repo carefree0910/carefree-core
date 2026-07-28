@@ -498,6 +498,196 @@ class TestSchema(unittest.TestCase):
         config = cflearn.Config(mixed_precision=cflearn.PrecisionType.FP16)
         self.assertEqual(config.mixed_precision, "fp16")
 
+    def test_partitioned_config(self):
+        config = cflearn.Config(module_name="linear", num_epoch=2)
+        sections = [
+            config.runtime,
+            config.distributed,
+            config.build,
+            config.optimization,
+            config.evaluation,
+            config.logging,
+            config.persistence,
+        ]
+        for section in sections:
+            self.assertIs(section, config)
+
+        config.runtime.num_epoch = 3
+        config.build.module_name = "fcnn"
+        config.optimization.lr = 1.0e-3
+        config.evaluation.valid_portion = 0.5
+        self.assertEqual(config.num_epoch, 3)
+        self.assertEqual(config.module_name, "fcnn")
+        self.assertEqual(config.lr, 1.0e-3)
+        self.assertEqual(config.valid_portion, 0.5)
+
+        expected_keys = [
+            "model",
+            "model_config",
+            "module_name",
+            "module_config",
+            "num_repeat",
+            "loss_name",
+            "loss_config",
+            "in_loading",
+            "cudnn_benchmark",
+            "workspace",
+            "create_sub_workspace",
+            "state_config",
+            "num_epoch",
+            "num_steps",
+            "log_steps",
+            "valid_portion",
+            "clip_norm",
+            "grad_accumulate",
+            "metric_names",
+            "metric_configs",
+            "metric_weights",
+            "metric_forward_kwargs",
+            "use_losses_as_metrics",
+            "use_incrementer_for_train_losses_in_eval",
+            "recompute_train_losses_in_eval",
+            "loss_metrics_weights",
+            "monitor_names",
+            "monitor_configs",
+            "auto_callback",
+            "callback_names",
+            "callback_configs",
+            "lr",
+            "optimizer_name",
+            "scheduler_name",
+            "optimizer_config",
+            "scheduler_config",
+            "use_closure_pack",
+            "update_scheduler_per_epoch",
+            "optimizer_settings",
+            "use_zero",
+            "sort_ckpt_by",
+            "finetune_config",
+            "resume_training_from",
+            "tqdm_settings",
+            "save_pipeline_in_realtime",
+            "save_realtime_pipeline_individually",
+            "profile",
+            "profile_config",
+            "profile_schedule_config",
+            "split_batches",
+            "mixed_precision",
+            "dispatch_batches",
+            "even_batches",
+            "non_blocking",
+            "find_unused_parameters",
+            "timeout",
+            "extra",
+        ]
+        self.assertListEqual(config.field_names, expected_keys)
+        self.assertListEqual(list(config.to_info()), expected_keys)
+        for name in [
+            "runtime",
+            "distributed",
+            "build",
+            "optimization",
+            "evaluation",
+            "logging",
+            "persistence",
+        ]:
+            self.assertNotIn(name, config.to_info())
+
+    def test_config_validation(self):
+        invalid_configs = [
+            {"num_epoch": 0},
+            {"num_steps": -1},
+            {"log_steps": 0},
+            {"valid_portion": 0.0},
+            {"valid_portion": 1.1},
+            {"valid_portion": float("nan")},
+            {"clip_norm": -1.0},
+            {"clip_norm": float("inf")},
+            {"grad_accumulate": 0},
+            {"lr": -1.0},
+            {"lr": float("inf")},
+            {"sort_ckpt_by": "unknown"},
+            {"mixed_precision": "unknown"},
+            {"dispatch_batches": "unknown"},
+            {"timeout": 0},
+            {"num_repeat": 0},
+        ]
+        for kwargs in invalid_configs:
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                cflearn.Config(**kwargs)
+
+        config = cflearn.Config(num_steps=0, clip_norm=0.0, lr=0.0)
+        self.assertEqual(config.num_steps, 0)
+        self.assertEqual(config.clip_norm, 0.0)
+        self.assertEqual(config.lr, 0.0)
+
+        array_config = {
+            "warmup_steps": [1],
+            "cycle_lengths": [10],
+            "f_start": [0.0],
+            "f_min": [0.0],
+            "f_max": [1.0],
+        }
+        scheduler_config = {
+            "op_type": "cosine_warmup",
+            "op_config": array_config,
+        }
+        cflearn.Config(scheduler_name="op")
+        cflearn.Config(
+            scheduler_name="op",
+            scheduler_config={"op_type": "custom"},
+        )
+        cflearn.Config(
+            scheduler_name="op",
+            scheduler_config=scheduler_config,
+        )
+        cflearn.Config(
+            optimizer_settings={
+                "empty": None,
+                "ignored": {"scheduler": 1},
+                "valid": {
+                    "scheduler": "op",
+                    "scheduler_config": {"op_type": "custom"},
+                },
+            }
+        )
+        with self.assertRaisesRegex(ValueError, "dictionary"):
+            cflearn.Config(
+                scheduler_name="op",
+                scheduler_config={"op_type": "linear_warmup"},
+            )
+        with self.assertRaisesRegex(ValueError, "non-empty"):
+            cflearn.Config(
+                scheduler_name="op",
+                scheduler_config={
+                    "op_type": "linear_warmup",
+                    "op_config": {**array_config, "warmup_steps": []},
+                },
+            )
+        with self.assertRaisesRegex(ValueError, "same length"):
+            cflearn.Config(
+                scheduler_name="op",
+                scheduler_config={
+                    "op_type": "linear_warmup",
+                    "op_config": {**array_config, "warmup_steps": [1, 2]},
+                },
+            )
+        with self.assertRaisesRegex(ValueError, "same length"):
+            cflearn.Config(
+                optimizer_settings={
+                    "all": {
+                        "scheduler": "op",
+                        "scheduler_config": {
+                            "op_type": "cosine_warmup",
+                            "op_config": {
+                                **array_config,
+                                "cycle_lengths": [10, 20],
+                            },
+                        },
+                    }
+                }
+            )
+
     def test_legacy_config_payload(self):
         legacy_payload = {
             "workspace": "_legacy",
@@ -518,6 +708,7 @@ class TestSchema(unittest.TestCase):
             "tqdm_settings": {"use_tqdm": True},
             "split_batches": True,
             "mixed_precision": "fp16",
+            "dispatch_batches": "false",
             "even_batches": False,
             "find_unused_parameters": True,
             "timeout": 120,
@@ -551,6 +742,8 @@ class TestSchema(unittest.TestCase):
                     actual = getattr(config, key)
                     if key == "callback_names":
                         self.assertListEqual(actual, ["legacy.callback"])
+                    elif key == "dispatch_batches":
+                        self.assertFalse(actual)
                     else:
                         self.assertEqual(actual, expected)
                 self.assertEqual(config.sort_ckpt_by, cflearn.SortMethod.LATEST)
@@ -558,6 +751,7 @@ class TestSchema(unittest.TestCase):
                 info = config.to_info()
                 expected_info = copy.deepcopy(legacy_payload)
                 expected_info["callback_names"] = ["legacy.callback"]
+                expected_info["dispatch_batches"] = False
                 for key, expected in expected_info.items():
                     self.assertEqual(info[key], expected)
 
