@@ -423,7 +423,21 @@ class TestSchema(unittest.TestCase):
         foo_block = FooDataBlock()
         foo_block.build(config)
         self.assertTrue(foo_block.is_local_rank_0)
-        self.assertDictEqual(foo_block.configs, foo_config)
+        self.assertIs(foo_block.configs, foo_config)
+
+        config.block_configs = None
+        self.assertDictEqual(foo_block.configs, {})
+        self.assertIsNone(config.block_configs)
+
+        empty_configs: Dict[str, Dict[str, Any]] = {}
+        config.block_configs = empty_configs
+        self.assertDictEqual(foo_block.configs, {})
+        self.assertIs(config.block_configs, empty_configs)
+
+        other_configs = {"other": {"a": 1}}
+        config.block_configs = other_configs
+        self.assertDictEqual(foo_block.configs, {})
+        self.assertDictEqual(config.block_configs, {"other": {"a": 1}})
 
     def test_data_bundle(self):
         bundle = cflearn.DataBundle("foo")

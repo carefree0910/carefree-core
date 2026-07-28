@@ -743,7 +743,7 @@ class IDataBlock(  # type: ignore
         attribute of the `DataConfig` object.
         """
 
-        return (self.config.block_configs or {}).setdefault(self.__identifier__, {})
+        return (self.config.block_configs or {}).get(self.__identifier__, {})
 
     @property
     def is_local_rank_0(self) -> bool:

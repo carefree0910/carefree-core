@@ -85,6 +85,7 @@ if TYPE_CHECKING:
     metric = ExternalMetric()
     model_config = Config()
     model_config.module_name = "typing.model"
+    assert_type(data_block.configs, Dict[str, Any])
     assert_type(model_config.callback_names, Optional[List[str]])
     assert_type(model_config.dispatch_batches, Optional[bool])
     assert_type(model_config.runtime, RuntimeSettings)

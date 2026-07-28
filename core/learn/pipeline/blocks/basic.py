@@ -76,10 +76,13 @@ from ....toolkit.types import TPath
 @Block.register("set_defaults")
 class SetDefaultsBlock(InjectDefaultsMixin, Block):
     def build(self, config: Config) -> None:
-        loss_name = config.loss_name
-        module_name = config.module_name
-        state_config = config.state_config
-        callback_names = config.callback_names
+        build = config.build
+        logging = config.logging
+        persistence = config.persistence
+        loss_name = build.loss_name
+        module_name = build.module_name
+        state_config = persistence.state_config
+        callback_names = logging.callback_names
         if loss_name is None:
             if losses.has(module_name):
                 loss_name = module_name
@@ -95,21 +98,21 @@ class SetDefaultsBlock(InjectDefaultsMixin, Block):
                 self._defaults["callback_names"] = callback_names
         environ_workspace = get_environ_workspace()
         if environ_workspace:
-            config.workspace = environ_workspace
-        config.loss_name = loss_name
-        config.module_name = module_name
-        config.state_config = state_config
-        config.callback_names = callback_names
-        torch.backends.cudnn.benchmark = config.cudnn_benchmark
+            persistence.workspace = environ_workspace
+        build.loss_name = loss_name
+        build.module_name = module_name
+        persistence.state_config = state_config
+        logging.callback_names = callback_names
+        torch.backends.cudnn.benchmark = build.cudnn_benchmark
         # tqdm settings
         tqdm_settings: Optional[dict]
-        tqdm_settings = config.tqdm_settings  # type: ignore
+        tqdm_settings = logging.tqdm_settings  # type: ignore
         if tqdm_settings is None:
             tqdm_settings = {}
         use_tqdm = tqdm_settings.setdefault("use_tqdm", False)
         tqdm_settings.setdefault("use_step_tqdm", use_tqdm)
         tqdm_settings.setdefault("use_tqdm_in_validation", False)
-        config.tqdm_settings = tqdm_settings
+        logging.tqdm_settings = tqdm_settings
 
 
 @Block.register("prepare_workspace")
@@ -117,18 +120,19 @@ class PrepareWorkspaceBlock(InjectDefaultsMixin, Block):
     def build(self, config: Config) -> None:
         if self.training_workspace is None:
             return
-        if self.is_local_rank_0 and config.create_sub_workspace:
+        persistence = config.persistence
+        if self.is_local_rank_0 and persistence.create_sub_workspace:
             workspace = prepare_workspace_from(self.training_workspace)
-            config.workspace = workspace
+            persistence.workspace = workspace
             self._defaults["workspace"] = workspace
         # only gather workspaces when under DDP
         # otherwise, unexpected initialization of `accelerate` states will occur
         if is_dist_initialized():
             wait_for_everyone()
-            workspaces = gather_object([config.workspace])
+            workspaces = gather_object([persistence.workspace])
             if not self.is_local_rank_0:
                 # use the workspace from local rank 0
-                config.workspace = workspaces[0]
+                persistence.workspace = workspaces[0]
 
 
 @dataclass
@@ -166,8 +170,10 @@ class ExtractStateInfoBlock(TryLoadBlock):
             num_batches = (math.floor if loader.drop_last else math.ceil)(divided)
         num_samples = len(loader.dataset)
         # from config
-        log_steps = config.log_steps
-        state_config = config.state_config or {}
+        logging = config.logging
+        persistence = config.persistence
+        log_steps = logging.log_steps
+        state_config = persistence.state_config or {}
         # check log_steps
         if log_steps is not None:
             state_config.setdefault("snapshot_start_step", log_steps)
@@ -195,7 +201,7 @@ class ExtractStateInfoBlock(TryLoadBlock):
             snapshot_start_step=snapshot_start_step,
             num_step_per_snapshot=num_step_per_snapshot,
         )
-        config.state_config = state_config
+        persistence.state_config = state_config
 
     def dump_to(self, folder: TPath) -> None:
         if self.is_local_rank_0:
@@ -207,7 +213,7 @@ class BuildModelBlock(Block):
     model: IModel
 
     def build(self, config: Config) -> None:
-        num_repeat = config.num_repeat
+        num_repeat = config.build.num_repeat
         m = IModel.from_config(config)
         if num_repeat is None:
             self.model = m
@@ -220,10 +226,11 @@ class BuildMetricsBlock(Block):
     metrics: Optional[IMetric]
 
     def build(self, config: Config) -> None:
+        evaluation = config.evaluation
         # build metrics
-        metric_names = config.metric_names
-        metric_configs = config.metric_configs
-        metric_weights = config.metric_weights
+        metric_names = evaluation.metric_names
+        metric_configs = evaluation.metric_configs
+        metric_weights = evaluation.metric_weights
         if metric_names is None:
             self.metrics = None
         else:
@@ -233,8 +240,8 @@ class BuildMetricsBlock(Block):
                 metric_weights=metric_weights,
             )
         # check losses-as-metrics
-        loss_metrics_weights = config.loss_metrics_weights
-        use_losses_as_metrics = config.use_losses_as_metrics
+        loss_metrics_weights = evaluation.loss_metrics_weights
+        use_losses_as_metrics = evaluation.use_losses_as_metrics
         if self.metrics is None:
             if use_losses_as_metrics is None:
                 use_losses_as_metrics = True
@@ -249,7 +256,7 @@ class BuildMetricsBlock(Block):
                     "`use_losses_as_metrics` should not be False "
                     "when `loss_metrics_weights` is provided"
                 )
-        config.use_losses_as_metrics = use_losses_as_metrics
+        evaluation.use_losses_as_metrics = use_losses_as_metrics
 
 
 @Block.register("build_inference")
@@ -271,19 +278,22 @@ class BuildInferenceBlock(Block):
 @Block.register("set_trainer_defaults")
 class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
     def build(self, config: Config) -> None:
+        build = config.build
+        evaluation = config.evaluation
+        logging = config.logging
         # set some trainer defaults to deep learning tasks which work well in practice
-        if config.monitor_names is None:
-            config.monitor_names = "basic"
+        if evaluation.monitor_names is None:
+            evaluation.monitor_names = "basic"
             self._defaults["monitor_names"] = "basic"
         tqdm_settings: Optional[dict]
-        tqdm_settings = config.tqdm_settings  # type: ignore
-        callback_names = config.callback_names
-        callback_configs = config.callback_configs
+        tqdm_settings = logging.tqdm_settings  # type: ignore
+        callback_names = logging.callback_names
+        callback_configs = logging.callback_configs
         if callback_names is None:
             callback_names = []
         if callback_configs is None:
             callback_configs = {}
-        auto_callback = config.auto_callback
+        auto_callback = logging.auto_callback
         progress_id = ProgressCallback.__identifier__
         log_metrics_msg_id = LogMetricsMsgCallback.__identifier__
         update_artifacts_id = UpdateArtifactsCallback.__identifier__
@@ -310,7 +320,7 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
                 log_metrics_msg_cfg["verbose"] = verbose
                 self._defaults["log_metrics_msg_verbose"] = verbose
         if "wandb" in callback_names and auto_callback:
-            module_name = config.module_name
+            module_name = build.module_name
             wandb_config = callback_configs.setdefault("wandb", {})
             if "tags" not in wandb_config:
                 tags_str = json.dumps([module_name])
@@ -333,9 +343,9 @@ class SetTrainerDefaultsBlock(InjectDefaultsMixin, Block):
             additional_callbacks.insert(0, training_loop_callback)
         if additional_callbacks:
             self._defaults["additional_callbacks"] = additional_callbacks
-        config.tqdm_settings = tqdm_settings
-        config.callback_names = callback_names
-        config.callback_configs = callback_configs
+        logging.tqdm_settings = tqdm_settings
+        logging.callback_names = callback_names
+        logging.callback_configs = callback_configs
 
 
 @Block.register("build_monitors")
@@ -343,8 +353,9 @@ class BuildMonitorsBlock(Block):
     monitors: List[TrainerMonitor]
 
     def build(self, config: Config) -> None:
-        monitor_names = config.monitor_names
-        monitor_configs = config.monitor_configs
+        evaluation = config.evaluation
+        monitor_names = evaluation.monitor_names
+        monitor_configs = evaluation.monitor_configs
         if isinstance(monitor_names, str):
             monitor_names = [monitor_names]
         if monitor_names is None:
@@ -358,9 +369,10 @@ class BuildCallbacksBlock(Block):
     callbacks: List[TrainerCallback]
 
     def build(self, config: Config) -> None:
-        cb_names = config.callback_names
-        cb_configs = config.callback_configs
-        use_tqdm = (config.tqdm_settings or {}).get("use_tqdm", False)  # type: ignore
+        logging = config.logging
+        cb_names = logging.callback_names
+        cb_configs = logging.callback_configs
+        use_tqdm = (logging.tqdm_settings or {}).get("use_tqdm", False)  # type: ignore
         if cb_names is not None:
             self.callbacks = TrainerCallback.make_multiple(cb_names, cb_configs)
         else:
@@ -429,22 +441,23 @@ class BuildOptimizersBlock(InjectDefaultsMixin, Block):
     def build(self, config: Config) -> None:
         self.config = config
         state_info = self.extract_state_info.state_info
+        optimization = config.optimization
         # default settings
         settings: Dict[str, Any] = {}
-        if config.lr is not None:
-            settings["lr"] = config.lr
-        if config.optimizer_name is not None:
-            settings["optimizer_name"] = config.optimizer_name
-        if config.scheduler_name is not None:
-            settings["scheduler_name"] = config.scheduler_name
-        if config.optimizer_config is not None:
-            settings["optimizer_config"] = config.optimizer_config
-        if config.scheduler_config is not None:
-            settings["scheduler_config"] = config.scheduler_config
+        if optimization.lr is not None:
+            settings["lr"] = optimization.lr
+        if optimization.optimizer_name is not None:
+            settings["optimizer_name"] = optimization.optimizer_name
+        if optimization.scheduler_name is not None:
+            settings["scheduler_name"] = optimization.scheduler_name
+        if optimization.optimizer_config is not None:
+            settings["optimizer_config"] = optimization.optimizer_config
+        if optimization.scheduler_config is not None:
+            settings["scheduler_config"] = optimization.scheduler_config
         default_opt_settings = OptimizerSettings(**settings)
         ## inject defaults from each train step
         injected_defaults = set()
-        optimizer_settings = config.optimizer_settings or {}
+        optimizer_settings = optimization.optimizer_settings or {}
         model = self.build_model.model
         for step in model.train_steps:
             scope = step.scope
@@ -801,18 +814,19 @@ class TrainingBlock(Block):
             os.makedirs(trace_folder, exist_ok=True)
             p.export_chrome_trace(trace_path)
 
-        if not self.config.profile:
+        logging = self.config.logging
+        if not logging.profile:
             fit()
         else:
             os.environ["KINETO_LOG_LEVEL"] = "5"
-            schedule_config = self.config.profile_schedule_config or {}
+            schedule_config = logging.profile_schedule_config or {}
             schedule_config = shallow_copy_dict(schedule_config)
             schedule_config.setdefault("skip_first", 5)
             schedule_config.setdefault("wait", 3)
             schedule_config.setdefault("warmup", 3)
             schedule_config.setdefault("active", 5)
             schedule_config.setdefault("repeat", 5)
-            profile_config = self.config.profile_config or {}
+            profile_config = logging.profile_config or {}
             profile_config = shallow_copy_dict(profile_config)
             profile_config["schedule"] = schedule(**schedule_config)
             profile_config["on_trace_ready"] = trace_handler
@@ -866,8 +880,9 @@ class SerializeModelBlock(Block):
     target_ckpt_step: Optional[int] = None
 
     def build(self, config: Config) -> None:
-        self.sort_ckpt_by = config.sort_ckpt_by
-        resume = config.resume_training_from
+        persistence = config.persistence
+        self.sort_ckpt_by = persistence.sort_ckpt_by
+        resume = persistence.resume_training_from
         if resume is None:
             return None
         resume_dir = Path(resume) / self.__identifier__
@@ -976,7 +991,7 @@ class SerializeOptimizerBlock(Block):
     state_file = "state.json"
 
     def build(self, config: Config) -> None:
-        resume = config.resume_training_from
+        resume = config.persistence.resume_training_from
         if resume is None:
             return None
         resume_dir = Path(resume) / self.__identifier__

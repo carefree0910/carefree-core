@@ -12,6 +12,7 @@ import operator
 import unicodedata
 
 from abc import abstractmethod
+from contextlib import contextmanager
 from abc import ABCMeta
 from typing import overload
 from typing import Any
@@ -24,11 +25,13 @@ from typing import Union
 from typing import Generic
 from typing import TypeVar
 from typing import Callable
+from typing import ClassVar
 from typing import Iterable
 from typing import Optional
 from typing import Protocol
 from typing import Sequence
 from typing import Coroutine
+from typing import Generator
 from typing import NamedTuple
 from typing import TYPE_CHECKING
 from typing import ContextManager
@@ -41,6 +44,7 @@ from pydantic import BaseModel
 from pydantic import RootModel
 from functools import reduce
 from threading import Lock
+from contextvars import ContextVar
 from collections import OrderedDict
 from dataclasses import MISSING
 from dataclasses import asdict
@@ -1465,6 +1469,24 @@ class Incrementer:
 
 
 class OPTBase(BaseModel, metaclass=ABCMeta):
+    _opt_contexts: ClassVar[ContextVar[Dict[int, "OPTBase"]]] = ContextVar(
+        "cfcore_opt_contexts",
+        default={},
+    )
+
+    def __getattribute__(self, name: str) -> Any:
+        if name != "opt_context":
+            contextual = OPTBase._opt_contexts.get().get(id(self))
+            if contextual is not None:
+                return getattr(contextual, name)
+        return super().__getattribute__(name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        contextual = OPTBase._opt_contexts.get().get(id(self))
+        if contextual is None:
+            super().__setattr__(name, value)
+        else:
+            setattr(contextual, name, value)
 
     # abstract
 
@@ -1491,20 +1513,16 @@ class OPTBase(BaseModel, metaclass=ABCMeta):
         for k in d:
             setattr(self, k, getattr(new, k))
 
-    def opt_context(self, increment: Dict[str, Any]) -> ContextManager:
-        class _:
-            def __init__(self) -> None:
-                self._increment = increment
-                self._backup = shallow_copy_dict(instance.model_dump())
-
-            def __enter__(self) -> None:
-                instance.update_with(self._increment)
-
-            def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-                instance.update_with(self._backup)
-
-        instance = self
-        return _()
+    @contextmanager
+    def opt_context(self, increment: Dict[str, Any]) -> Generator[None, None, None]:
+        contextual = self.__class__(**self.model_dump())
+        contextual.update_with(increment)
+        contexts = OPTBase._opt_contexts.get()
+        token = OPTBase._opt_contexts.set({**contexts, id(self): contextual})
+        try:
+            yield
+        finally:
+            OPTBase._opt_contexts.reset(token)
 
     def opt_env_context(self, increment: Dict[str, Any]) -> ContextManager:
         class _:

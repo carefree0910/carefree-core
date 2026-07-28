@@ -312,11 +312,11 @@ class TrainingPipeline(Pipeline["TrainingPipeline"], _DeviceMixin, _EvaluationMi
     def after_load(self) -> None:
         self.is_built = True
         workspace = prepare_workspace_from("_logs")
-        self.config.workspace = workspace
+        self.config.persistence.workspace = workspace
 
     def prepare(self, data: IData, sample_weights: sample_weights_type = None) -> None:
         self.data = data.set_sample_weights(sample_weights)
-        self.training_workspace = self.config.workspace
+        self.training_workspace = self.config.persistence.workspace
         if not self.is_built:
             self.build(*self.building_blocks)
             self.is_built = True
@@ -336,8 +336,9 @@ class TrainingPipeline(Pipeline["TrainingPipeline"], _DeviceMixin, _EvaluationMi
     ) -> "TrainingPipeline":
         # build pipeline
         self.prepare(data, sample_weights)
+        persistence = self.config.persistence
         # check rank 0
-        workspace = self.config.workspace if is_local_rank_0() else None
+        workspace = persistence.workspace if is_local_rank_0() else None
         # save data info
         if workspace is not None:
             Serializer.save(
@@ -356,8 +357,8 @@ class TrainingPipeline(Pipeline["TrainingPipeline"], _DeviceMixin, _EvaluationMi
         # save / update pipeline serialization
         if workspace is not None:
             if (
-                self.config.save_pipeline_in_realtime
-                and not self.config.save_realtime_pipeline_individually
+                persistence.save_pipeline_in_realtime
+                and not persistence.save_realtime_pipeline_individually
             ):
                 PipelineSerializer.update(self, workspace)
             else:
@@ -748,7 +749,7 @@ class PipelineSerializer:
     ) -> Union[InferencePipeline, EvaluationPipeline]:
         info = Serializer.load_info(folder)
         config = Config.from_pack(info["config"])
-        config.num_repeat = num_repeat
+        config.build.num_repeat = num_repeat
         info["config"] = config.to_pack().asdict()
         Serializer.save_info(folder, info=info)
         fn = (

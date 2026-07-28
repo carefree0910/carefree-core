@@ -1425,6 +1425,57 @@ class TestOPTBase(unittest.TestCase):
         opt = self.opt_factory()
         with opt.opt_context({"foo": {"bar": "updated_bar"}}):
             self.assertEqual(opt.foo.bar, "updated_bar")
+            self.assertDictEqual(
+                opt.model_dump(),
+                {"foo": {"bar": "updated_bar"}},
+            )
+            opt.foo = opt.foo.__class__(bar="assigned_bar")
+            self.assertEqual(opt.foo.bar, "assigned_bar")
+        self.assertEqual(opt.foo.bar, "bar")
+        with self.assertRaises(AttributeError):
+            with opt.opt_context({"unknown": True}):
+                pass
+        self.assertEqual(opt.foo.bar, "bar")
+
+    def test_nested_opt_context(self):
+        opt = self.opt_factory()
+        with opt.opt_context({"foo": {"bar": "outer_bar"}}):
+            self.assertEqual(opt.foo.bar, "outer_bar")
+            with self.assertRaisesRegex(RuntimeError, "context failure"):
+                with opt.opt_context({"foo": {"bar": "inner_bar"}}):
+                    self.assertEqual(opt.foo.bar, "inner_bar")
+                    raise RuntimeError("context failure")
+            self.assertEqual(opt.foo.bar, "outer_bar")
+        self.assertEqual(opt.foo.bar, "bar")
+
+    def test_concurrent_opt_context(self):
+        opt = self.opt_factory()
+
+        async def run() -> List[Tuple[str, str]]:
+            entered = []
+            observed = []
+            all_entered = asyncio.Event()
+            all_observed = asyncio.Event()
+
+            async def worker(value: str) -> Tuple[str, str]:
+                with opt.opt_context({"foo": {"bar": value}}):
+                    entered.append(value)
+                    if len(entered) == 2:
+                        all_entered.set()
+                    await all_entered.wait()
+                    result = opt.foo.bar
+                    observed.append(result)
+                    if len(observed) == 2:
+                        all_observed.set()
+                    await all_observed.wait()
+                    return value, result
+
+            return await asyncio.gather(worker("first"), worker("second"))
+
+        self.assertListEqual(
+            asyncio.run(run()),
+            [("first", "first"), ("second", "second")],
+        )
         self.assertEqual(opt.foo.bar, "bar")
 
     def test_opt_env_context(self):

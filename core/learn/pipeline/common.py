@@ -149,8 +149,9 @@ class Pipeline(Generic[TPipeline], IPipeline[Block, Config, TPipeline]):
     def after_block_build(self, block: Block) -> None:
         block.process_defaults(self._defaults)
         if self.training_workspace is not None:
-            if self.training_workspace != self.config.workspace:
-                self.training_workspace = self.config.workspace
+            workspace = self.config.persistence.workspace
+            if self.training_workspace != workspace:
+                self.training_workspace = workspace
 
     # api
 
