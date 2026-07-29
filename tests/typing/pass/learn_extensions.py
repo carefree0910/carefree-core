@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from core.learn.schema import DataLoader
     from core.learn.schema import DLSettings
     from core.learn.schema import IDataBlock
+    from core.learn.schema import MetricResult
     from core.learn.schema import MetricValues
     from core.learn.schema import IStreamMetric
     from core.learn.schema import MetricsOutputs
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from core.learn.schema import RuntimeSettings
     from core.learn.schema import TrainerCallback
     from core.learn.schema import InferenceOutputs
+    from core.learn.schema import MetricAccumulator
     from core.learn.schema import EvaluationSettings
     from core.learn.schema import DistributedSettings
     from core.learn.schema import PersistenceSettings
@@ -182,6 +184,9 @@ if TYPE_CHECKING:
         {"typing.metric_values": 1.0},
         {"typing.metric_values": True},
     )
+    metric_result = MetricResult(metric_outputs, 2.0)
+    metric_accumulator = MetricAccumulator()
+    metric_accumulator.add(metric_result)
     inference_outputs = InferenceOutputs(
         {},
         {},
@@ -195,6 +200,10 @@ if TYPE_CHECKING:
     assert_type(metric_outputs[0], float)
     assert_type(metric_outputs[1], Dict[str, float])
     assert_type(metric_outputs[2], Dict[str, bool])
+    assert_type(metric_result, MetricResult)
+    assert_type(metric_result.value, MetricsOutputs)
+    assert_type(metric_result.sample_count, float)
+    assert_type(metric_accumulator.finalize(), Optional[MetricsOutputs])
     assert_type(inference_outputs, InferenceOutputs)
     assert_type(
         inference_outputs.forward_results,

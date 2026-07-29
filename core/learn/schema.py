@@ -1095,7 +1095,12 @@ class MetricsOutputs(NamedTuple):
     is_positive: Dict[str, bool]
 
     @classmethod
-    def reduce(cls, outputs: List["MetricsOutputs"]) -> "MetricsOutputs":
+    def reduce(
+        cls,
+        outputs: List["MetricsOutputs"],
+        *,
+        sample_counts: Optional[List[float]] = None,
+    ) -> "MetricsOutputs":
         """
         reduce a list of `MetricsOutputs` to a single `MetricsOutputs` object.
 
@@ -1104,26 +1109,46 @@ class MetricsOutputs(NamedTuple):
         for later use.
         """
 
-        scores = []
-        metric_values: Dict[str, List[float]] = {}
-        for o in outputs:
-            scores.append(o.final_score)
-            for k, v in o.metric_values.items():
-                metric_values.setdefault(k, []).append(v)
-        return MetricsOutputs(
-            sum(scores) / len(scores),
-            {k: sum(vl) / len(vl) for k, vl in metric_values.items()},
-            outputs[0].is_positive,
-        )
+        if sample_counts is None:
+            sample_counts = [1.0] * len(outputs)
+        elif len(sample_counts) != len(outputs):
+            raise ValueError("sample counts should match metric outputs")
+        accumulator = MetricAccumulator()
+        for output, sample_count in zip(outputs, sample_counts):
+            accumulator.add(MetricResult(output, sample_count))
+        reduced = accumulator.finalize()
+        if reduced is None:
+            raise ValueError("cannot reduce empty metric outputs")
+        return reduced
 
-    def union(self, other: "MetricsOutputs") -> "MetricsOutputs":
+    def union(
+        self,
+        other: "MetricsOutputs",
+        *,
+        weight: float = 1.0,
+        other_weight: float = 1.0,
+    ) -> "MetricsOutputs":
         """
         union two `MetricsOutputs` objects, which means we will combine the metric values
         and the `is_positive` values.
         """
 
+        _validate_metric_output(self)
+        _validate_metric_output(other)
+        duplicate_keys = sorted(self.metric_values.keys() & other.metric_values.keys())
+        if duplicate_keys:
+            raise ValueError(f"duplicate metric keys found: {duplicate_keys}")
+        weight = _validate_metric_weight("left", weight)
+        other_weight = _validate_metric_weight("right", other_weight)
+        total_weight = weight + other_weight
+        final_score = (
+            0.0
+            if total_weight == 0.0
+            else (self.final_score * weight + other.final_score * other_weight)
+            / total_weight
+        )
         return MetricsOutputs(
-            (self.final_score + other.final_score) / 2,
+            final_score,
             {**self.metric_values, **other.metric_values},
             {**self.is_positive, **other.is_positive},
         )
@@ -1134,9 +1159,101 @@ class MetricValues(NamedTuple):
     is_positive: Dict[str, bool]
 
 
+def _validate_metric_output(output: MetricsOutputs) -> None:
+    value_keys = output.metric_values.keys()
+    positive_keys = output.is_positive.keys()
+    if value_keys != positive_keys:
+        raise ValueError("metric values and directions should have identical keys")
+
+
+def _validate_metric_weight(identifier: str, raw_weight: float) -> float:
+    try:
+        weight = float(raw_weight)
+    except (TypeError, ValueError):
+        raise ValueError(f"invalid weight found for metric '{identifier}'")
+    if not math.isfinite(weight) or weight < 0.0:
+        raise ValueError(f"invalid weight found for metric '{identifier}'")
+    return weight
+
+
+@dataclass(frozen=True)
+class MetricResult:
+    """A batch metric output together with its sample aggregation weight."""
+
+    value: MetricsOutputs
+    sample_count: float = 1.0
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.sample_count) or self.sample_count <= 0.0:
+            raise ValueError("sample count should be finite and positive")
+
+
+class MetricAccumulator:
+    """Accumulate mean-like batch metrics according to their sample counts."""
+
+    def __init__(self) -> None:
+        self._score_sum = 0.0
+        self._sample_count = 0.0
+        self._metric_sums: Dict[str, float] = {}
+        self._metric_counts: Dict[str, float] = {}
+        self._is_positive: Dict[str, bool] = {}
+
+    def add(self, result: MetricResult) -> None:
+        output = result.value
+        _validate_metric_output(output)
+        for key, is_positive in output.is_positive.items():
+            previous = self._is_positive.get(key)
+            if previous is not None and previous != is_positive:
+                raise ValueError(f"conflicting direction found for metric '{key}'")
+        sample_count = result.sample_count
+        self._score_sum += output.final_score * sample_count
+        self._sample_count += sample_count
+        for key, value in output.metric_values.items():
+            self._metric_sums[key] = (
+                self._metric_sums.get(key, 0.0) + value * sample_count
+            )
+            self._metric_counts[key] = self._metric_counts.get(key, 0.0) + sample_count
+        self._is_positive.update(output.is_positive)
+
+    def finalize(self) -> Optional[MetricsOutputs]:
+        if self._sample_count == 0.0:
+            return None
+        return MetricsOutputs(
+            self._score_sum / self._sample_count,
+            {
+                key: value / self._metric_counts[key]
+                for key, value in self._metric_sums.items()
+            },
+            self._is_positive.copy(),
+        )
+
+
 def replace_keys(d: Dict[str, Any], identifier: str) -> Dict[str, Any]:
     prefix = f"{identifier}_"
     return {identifier if k == SCORE_KEY else f"{prefix}{k}": v for k, v in d.items()}
+
+
+def _replace_identifier(
+    d: Dict[str, Any],
+    identifier: str,
+    replacement: str,
+) -> Dict[str, Any]:
+    if identifier == replacement:
+        return d
+    prefix = f"{identifier}_"
+    replacement_prefix = f"{replacement}_"
+    return {
+        (
+            replacement
+            if key == identifier
+            else (
+                f"{replacement_prefix}{key[len(prefix):]}"
+                if key.startswith(prefix)
+                else key
+            )
+        ): value
+        for key, value in d.items()
+    }
 
 
 def to_metric_outputs(
@@ -1308,6 +1425,24 @@ class IStreamMetric(IMetric):
         return to_metric_outputs(self.__identifier__, self.is_positive, metric_values)
 
 
+def _get_unique_metric_keys(metric_list: List[IMetric]) -> List[str]:
+    reserved = {metric.__identifier__ for metric in metric_list}
+    used = set()
+    keys = []
+    for metric in metric_list:
+        identifier = metric.__identifier__
+        key = identifier
+        if key in used:
+            index = 1
+            key = f"{identifier}_{index}"
+            while key in reserved or key in used:
+                index += 1
+                key = f"{identifier}_{index}"
+        used.add(key)
+        keys.append(key)
+    return keys
+
+
 class MultipleMetrics(IMetric):
     def __init__(
         self,
@@ -1317,8 +1452,27 @@ class MultipleMetrics(IMetric):
     ):
         super().__init__()
         self.metrics = metric_list
-        self.weights = weights or {}
+        self.metric_keys = _get_unique_metric_keys(metric_list)
+        self.weights = {
+            key: _validate_metric_weight(key, weight)
+            for key, weight in (weights or {}).items()
+        }
         self.__identifier__ = " | ".join(m.__identifier__ for m in metric_list)
+
+    def _get_metric_weight(self, metric: IMetric, metric_key: str) -> float:
+        return self.weights.get(
+            metric_key,
+            self.weights.get(metric.__identifier__, 1.0),
+        )
+
+    def _get_score_weight(self, *, for_streaming: bool) -> float:
+        total = 0.0
+        for metric, metric_key in zip(self.metrics, self.metric_keys):
+            if isinstance(metric, IStreamMetric) != for_streaming:
+                continue
+            if not metric.not_include_in_score:
+                total += self._get_metric_weight(metric, metric_key)
+        return total
 
     @property
     def is_positive(self) -> bool:
@@ -1360,7 +1514,8 @@ class MultipleMetrics(IMetric):
         metrics_values: Dict[str, float] = {}
         is_positive: Dict[str, bool] = {}
         metric_outputs: MetricsOutputs
-        for metric in self.metrics:
+        num_outputs = 0
+        for metric, metric_key in zip(self.metrics, self.metric_keys):
             if isinstance(metric, IStreamMetric):
                 if not for_streaming:
                     continue
@@ -1371,15 +1526,31 @@ class MultipleMetrics(IMetric):
                 metric_outputs = metric.evaluate(tensor_batch, tensor_outputs, loader)  # type: ignore
                 if metric_outputs is None:
                     raise RuntimeError("non streaming metric should not return None")
-            metrics_values.update(metric_outputs.metric_values)
-            is_positive.update(metric_outputs.is_positive)
+            num_outputs += 1
+            _validate_metric_output(metric_outputs)
+            metric_values = _replace_identifier(
+                metric_outputs.metric_values,
+                metric.__identifier__,
+                metric_key,
+            )
+            metric_directions = _replace_identifier(
+                metric_outputs.is_positive,
+                metric.__identifier__,
+                metric_key,
+            )
+            duplicate_keys = sorted(metrics_values.keys() & metric_values.keys())
+            if duplicate_keys:
+                raise ValueError(f"duplicate metric keys found: {duplicate_keys}")
+            metrics_values.update(metric_values)
+            is_positive.update(metric_directions)
             if not metric.not_include_in_score:
-                w = self.weights.get(metric.__identifier__, 1.0)
+                w = self._get_metric_weight(metric, metric_key)
                 weights.append(w)
                 scores.append(metric_outputs.final_score * w)
-        if not scores:
+        if num_outputs == 0:
             return None
-        final_score = sum(scores) / (sum(weights) + 1.0e-12)
+        total_weight = sum(weights)
+        final_score = 0.0 if total_weight == 0.0 else sum(scores) / total_weight
         return MetricsOutputs(final_score, metrics_values, is_positive)
 
     def reset(self) -> None:

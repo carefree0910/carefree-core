@@ -17,12 +17,14 @@ from accelerate.utils import gather_object
 from .schema import IModel
 from .schema import IMetric
 from .schema import InjectFn
-from .schema import IInference
 from .schema import DataLoader
+from .schema import IInference
+from .schema import MetricResult
 from .schema import IStreamMetric
 from .schema import MetricsOutputs
 from .schema import MultipleMetrics
 from .schema import InferenceOutputs
+from .schema import MetricAccumulator
 from .toolkit import get_device
 from .toolkit import np_batch_to_tensor
 from .toolkit import tensor_batch_to_np
@@ -37,6 +39,17 @@ from ..toolkit.array import to_device
 from ..toolkit.types import tensor_dict_type
 
 TTensors = Dict[str, List[Union[Tensor, Any]]]
+
+
+def _get_sample_count(tensor_batch: tensor_dict_type) -> float:
+    candidates = [
+        tensor_batch.get(LABEL_KEY),
+        *tensor_batch.values(),
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, Tensor) and candidate.ndim > 0:
+            return float(candidate.shape[0])
+    return 1.0
 
 
 def no_sync_context(accelerator: Accelerator, model: IModel) -> ContextManager:
@@ -167,7 +180,7 @@ class Inference(IInference):
             all_inputs: TTensors = {}
             all_labels: TTensors = {}
             all_outputs: TTensors = {}
-            metric_outputs_list: List[MetricsOutputs] = []
+            metric_results: List[MetricResult] = []
             loss_tensors_lists: TTensors = {}
 
             device = None if self.model is None else get_device(self.model.m)
@@ -195,6 +208,7 @@ class Inference(IInference):
             for i, tensor_batch in iterator:
                 if i / len(loader) >= portion:
                     break
+                sample_count = _get_sample_count(tensor_batch)
                 if i == 0 and accelerator is not None:
                     remainder = accelerator.gradient_state.remainder
                 tensor_outputs = None
@@ -230,7 +244,9 @@ class Inference(IInference):
                 if metrics is not None and not metrics.requires_all:
                     metric_outputs = metrics.evaluate(tensor_batch, tensor_outputs)
                     if metric_outputs is not None:
-                        metric_outputs_list.append(metric_outputs)
+                        metric_results.append(
+                            MetricResult(metric_outputs, sample_count)
+                        )
                     if is_stream_metric:
                         metrics.update(tensor_batch, tensor_outputs)  # type: ignore
                 # gather
@@ -289,14 +305,18 @@ class Inference(IInference):
                     assert concated_inputs is not None
                     assert concated_outputs is not None
                     mo = metrics.evaluate(concated_inputs, concated_outputs, loader)
-                    metric_outputs_list = [mo]  # type: ignore
+                    metric_results = [] if mo is None else [MetricResult(mo)]
+                metric_accumulator = MetricAccumulator()
+                for metric_result in metric_results:
+                    metric_accumulator.add(metric_result)
+                reduced = metric_accumulator.finalize()
                 if accelerator is not None:
-                    gathered_metric_outputs_lists = gather_object([metric_outputs_list])
-                    metric_outputs_list = []
-                    for mol in gathered_metric_outputs_lists:
-                        metric_outputs_list.extend(mol)
-                if metric_outputs_list:
-                    reduced = MetricsOutputs.reduce(metric_outputs_list)
+                    gathered_metric_outputs = gather_object([reduced])
+                    metric_accumulator = MetricAccumulator()
+                    for metric_output in gathered_metric_outputs:
+                        if metric_output is not None:
+                            metric_accumulator.add(MetricResult(metric_output))
+                    reduced = metric_accumulator.finalize()
                 if is_stream_metric:
                     if isinstance(metrics, MultipleMetrics):
                         stream_outputs = metrics.finalize()
@@ -305,7 +325,12 @@ class Inference(IInference):
                     if reduced is None:
                         reduced = stream_outputs
                     else:
-                        reduced = reduced.union(stream_outputs)
+                        assert isinstance(metrics, MultipleMetrics)
+                        reduced = reduced.union(
+                            stream_outputs,
+                            weight=metrics._get_score_weight(for_streaming=False),
+                            other_weight=metrics._get_score_weight(for_streaming=True),
+                        )
                 if reduced is None:
                     raise RuntimeError("no metric outputs found")
                 final_metric_outputs = reduced

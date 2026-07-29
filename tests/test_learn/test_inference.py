@@ -119,6 +119,65 @@ class TestInference(unittest.TestCase):
                     (len(batches) * batch_size, output_dim),
                 )
 
+    def test_uneven_batch_metric_aggregation(self) -> None:
+        self.assertEqual(learn_inference._get_sample_count({}), 1.0)
+
+        batches = [
+            {
+                cflearn.INPUT_KEY: torch.tensor([[0.0], [0.0]]),
+                cflearn.LABEL_KEY: torch.tensor([[0.0], [0.0]]),
+            },
+            {
+                cflearn.INPUT_KEY: torch.tensor([[3.0]]),
+                cflearn.LABEL_KEY: torch.tensor([[0.0]]),
+            },
+        ]
+        loader = MagicMock()
+        loader.__len__.return_value = len(batches)
+        loader.__iter__.side_effect = lambda: iter(batches)
+        onnx = Mock()
+        onnx.predict.side_effect = lambda batch: {
+            cflearn.PREDICTIONS_KEY: batch[cflearn.INPUT_KEY]
+        }
+
+        outputs = cflearn.Inference(onnx=onnx).get_outputs(
+            loader,
+            metrics=cflearn.IMetric.fuse(["mse", "stream_mse"]),
+            recover_labels=False,
+            recover_predictions=False,
+        )
+
+        metric_outputs = outputs.metric_outputs
+        self.assertIsNotNone(metric_outputs)
+        metric_values = metric_outputs.metric_values
+        self.assertEqual(metric_values["mse"], 3.0)
+        self.assertEqual(metric_values["stream_mse"], 3.0)
+        self.assertEqual(metric_outputs.final_score, -3.0)
+
+        class DiagnosticMSE(cflearn.MSE):
+            __identifier__ = "diagnostic_mse"
+
+            @property
+            def not_include_in_score(self) -> bool:
+                return True
+
+        mixed_outputs = cflearn.Inference(onnx=onnx).get_outputs(
+            loader,
+            metrics=cflearn.MultipleMetrics(
+                [
+                    DiagnosticMSE(),
+                    cflearn.StreamMSE(),
+                ]
+            ),
+            recover_labels=False,
+            recover_predictions=False,
+        )
+        mixed_metric_outputs = mixed_outputs.metric_outputs
+        self.assertIsNotNone(mixed_metric_outputs)
+        self.assertEqual(mixed_metric_outputs.metric_values["diagnostic_mse"], 3.0)
+        self.assertEqual(mixed_metric_outputs.metric_values["stream_mse"], 3.0)
+        self.assertEqual(mixed_metric_outputs.final_score, -3.0)
+
     def test_inference(self) -> None:
         with self.assertRaises(ValueError):
             cflearn.Inference()
