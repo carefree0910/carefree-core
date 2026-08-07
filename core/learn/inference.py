@@ -211,6 +211,7 @@ class Inference(IInference):
                 sample_count = _get_sample_count(tensor_batch)
                 if i == 0 and accelerator is not None:
                     remainder = accelerator.gradient_state.remainder
+                step_outputs = None
                 tensor_outputs = None
                 if self.onnx is not None:
                     # will not consider distributed stuffs at onnx inference
