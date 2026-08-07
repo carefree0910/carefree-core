@@ -201,6 +201,219 @@ class TestInference(unittest.TestCase):
         original_step.assert_not_called()
         self.assertEqual(replacement_step.call_count, len(loader))
 
+    def test_empty_loader(self) -> None:
+        loader = MagicMock()
+        loader.__len__.return_value = 0
+        loader.__iter__.return_value = iter([])
+        progress = MagicMock()
+        progress.add_task.return_value = 7
+        onnx = Mock()
+
+        outputs = cflearn.Inference(onnx=onnx).get_outputs(
+            loader,
+            progress=progress,
+        )
+
+        self.assertDictEqual(outputs.forward_results, {})
+        self.assertDictEqual(outputs.labels, {})
+        self.assertIsNone(outputs.metric_outputs)
+        self.assertIsNone(outputs.loss_items)
+        onnx.predict.assert_not_called()
+        self.assertEqual(progress.add_task.call_args.kwargs["total"], 0)
+        progress.advance.assert_not_called()
+        progress.stop.assert_called_once_with()
+        progress.remove_task.assert_called_once_with(7)
+
+    def test_portion_progress_alignment(self) -> None:
+        batches = [{cflearn.INPUT_KEY: torch.tensor([[float(i)]])} for i in range(3)]
+        cases = [
+            (-1.0, 0),
+            (0.0, 0),
+            (0.5, 2),
+            (2.0, 3),
+            (float("nan"), 3),
+        ]
+        for portion, expected in cases:
+            with self.subTest(portion=portion):
+                yielded = []
+
+                def iterate():
+                    for i, batch in enumerate(batches):
+                        yielded.append(i)
+                        yield batch
+
+                loader = MagicMock()
+                loader.__len__.return_value = len(batches)
+                loader.__iter__.side_effect = iterate
+                progress = MagicMock()
+                progress.add_task.return_value = 7
+                onnx = Mock()
+                onnx.predict.side_effect = lambda batch: {
+                    cflearn.PREDICTIONS_KEY: batch[cflearn.INPUT_KEY]
+                }
+
+                outputs = cflearn.Inference(onnx=onnx).get_outputs(
+                    loader,
+                    portion=portion,
+                    recover_labels=False,
+                    recover_predictions=False,
+                    progress=progress,
+                )
+
+                self.assertListEqual(yielded, list(range(expected)))
+                self.assertEqual(onnx.predict.call_count, expected)
+                self.assertEqual(progress.add_task.call_args.kwargs["total"], expected)
+                self.assertEqual(progress.advance.call_count, expected)
+                progress.stop.assert_called_once_with()
+                progress.remove_task.assert_called_once_with(7)
+                if expected == 0:
+                    self.assertDictEqual(outputs.forward_results, {})
+                else:
+                    predictions = outputs.forward_results[cflearn.PREDICTIONS_KEY]
+                    np.testing.assert_array_equal(
+                        predictions,
+                        np.arange(expected, dtype=np.float32)[..., None],
+                    )
+
+    def test_uneven_padded_batches(self) -> None:
+        def inference_with(batches, **kwargs):
+            loader = MagicMock()
+            loader.__len__.return_value = len(batches)
+            loader.__iter__.side_effect = lambda: iter(batches)
+            onnx = Mock()
+            onnx.predict.side_effect = lambda batch: {
+                cflearn.PREDICTIONS_KEY: batch[cflearn.INPUT_KEY]
+            }
+            return cflearn.Inference(onnx=onnx).get_outputs(
+                loader,
+                recover_labels=False,
+                recover_predictions=False,
+                **kwargs,
+            )
+
+        plain = inference_with(
+            [
+                {cflearn.INPUT_KEY: torch.tensor([[1.0, 2.0], [3.0, 4.0]])},
+                {cflearn.INPUT_KEY: torch.tensor([[5.0, 6.0]])},
+            ]
+        )
+        np.testing.assert_array_equal(
+            plain.forward_results[cflearn.PREDICTIONS_KEY],
+            np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        )
+
+        padded = inference_with(
+            [
+                {cflearn.INPUT_KEY: torch.tensor([[1.0, 2.0], [3.0, 4.0]])},
+                {cflearn.INPUT_KEY: torch.tensor([[5.0, 6.0, 7.0]])},
+            ],
+            pad_dim=1,
+            verbose=False,
+        )
+        np.testing.assert_allclose(
+            padded.forward_results[cflearn.PREDICTIONS_KEY],
+            np.array(
+                [
+                    [1.0, 2.0, np.nan],
+                    [3.0, 4.0, np.nan],
+                    [5.0, 6.0, 7.0],
+                ]
+            ),
+            equal_nan=True,
+        )
+
+    def test_non_tensor_outputs(self) -> None:
+        batches = [
+            {cflearn.INPUT_KEY: torch.tensor([[1.0]])},
+            {cflearn.INPUT_KEY: torch.tensor([[2.0]])},
+        ]
+        loader = MagicMock()
+        loader.__len__.return_value = len(batches)
+        loader.__iter__.side_effect = lambda: iter(batches)
+        config = cflearn.Config(
+            module_name="linear",
+            module_config={"input_dim": 1, "output_dim": 1},
+            loss_name="mse",
+        )
+        model = cflearn.IModel.from_config(config)
+
+        def step(batch_idx, tensor_batch, *args, **kwargs):
+            value = tensor_batch[cflearn.INPUT_KEY]
+            return cflearn.StepOutputs(
+                {
+                    cflearn.PREDICTIONS_KEY: value,
+                    "tag": f"batch-{batch_idx}",
+                    "metadata": {
+                        "tensor": value + 10.0,
+                        "items": [value + 20.0],
+                        "pair": (value + 30.0, f"item-{batch_idx}"),
+                    },
+                },
+                {},
+            )
+
+        with patch.object(model, "step", side_effect=step):
+            outputs = cflearn.Inference(model=model).get_outputs(
+                loader,
+                target_outputs=[cflearn.PREDICTIONS_KEY, "tag", "metadata"],
+                recover_labels=False,
+                recover_predictions=False,
+            )
+
+        np.testing.assert_array_equal(
+            outputs.forward_results[cflearn.PREDICTIONS_KEY],
+            np.array([[1.0], [2.0]]),
+        )
+        self.assertListEqual(outputs.forward_results["tag"], ["batch-0", "batch-1"])
+        metadata = outputs.forward_results["metadata"]
+        self.assertEqual(len(metadata), 2)
+        for i, item in enumerate(metadata):
+            value = float(i + 1)
+            self.assertEqual(item["tensor"].device.type, "cpu")
+            self.assertEqual(item["tensor"].item(), value + 10.0)
+            self.assertEqual(item["items"][0].device.type, "cpu")
+            self.assertEqual(item["items"][0].item(), value + 20.0)
+            self.assertIsInstance(item["pair"], tuple)
+            self.assertEqual(item["pair"][0].device.type, "cpu")
+            self.assertEqual(item["pair"][0].item(), value + 30.0)
+            self.assertEqual(item["pair"][1], f"item-{i}")
+
+    def test_raw_outputs_with_labels(self) -> None:
+        batches = [
+            {
+                cflearn.INPUT_KEY: torch.tensor([[1.0], [2.0]]),
+                cflearn.LABEL_KEY: torch.tensor([[3.0], [4.0]]),
+            },
+            {
+                cflearn.INPUT_KEY: torch.tensor([[5.0]]),
+                cflearn.LABEL_KEY: torch.tensor([[6.0]]),
+            },
+        ]
+        loader = MagicMock()
+        loader.__len__.return_value = len(batches)
+        loader.__iter__.side_effect = lambda: iter(batches)
+        onnx = Mock()
+        onnx.predict.side_effect = lambda batch: {
+            cflearn.PREDICTIONS_KEY: batch[cflearn.INPUT_KEY]
+        }
+
+        outputs = cflearn.Inference(onnx=onnx).get_outputs(
+            loader,
+            return_labels=True,
+            concat_outputs=False,
+            recover_labels=False,
+            recover_predictions=False,
+        )
+
+        predictions = outputs.forward_results[cflearn.PREDICTIONS_KEY]
+        self.assertEqual(len(predictions), 2)
+        self.assertTupleEqual(predictions[0].shape, (2, 1))
+        self.assertTupleEqual(predictions[1].shape, (1, 1))
+        np.testing.assert_array_equal(
+            outputs.labels[cflearn.LABEL_KEY],
+            np.array([[3.0], [4.0], [6.0]]),
+        )
+
     def test_uneven_batch_metric_aggregation(self) -> None:
         self.assertEqual(learn_inference._get_sample_count({}), 1.0)
 
@@ -689,6 +902,8 @@ class TestInference(unittest.TestCase):
             inference.get_outputs(loader, pad_dim=0)
         with self.assertRaises(RuntimeError):
             inference.get_outputs(loader, pad_dim={"foo": 0}, accelerator=Accelerator())
+        with self.assertRaises(ValueError):
+            inference.get_outputs(loader, pad_dim=2)
         o0 = inference.get_outputs(loader, pad_dim=1)
         o1 = inference.get_outputs(loader, pad_dim=1, accelerator=Accelerator())
         o2 = inference.get_outputs(
@@ -696,6 +911,7 @@ class TestInference(unittest.TestCase):
             pad_dim={cflearn.PREDICTIONS_KEY: 1},
             accelerator=Accelerator(),
         )
+        o3 = inference.get_outputs(loader, pad_dim=-1, verbose=False)
         gt = np.array(
             [
                 [0, 0, 0],
@@ -715,6 +931,7 @@ class TestInference(unittest.TestCase):
         np.testing.assert_array_equal(o0.forward_results[cflearn.PREDICTIONS_KEY], gt)
         np.testing.assert_array_equal(o1.forward_results[cflearn.PREDICTIONS_KEY], gt)
         np.testing.assert_array_equal(o2.forward_results[cflearn.PREDICTIONS_KEY], gt)
+        np.testing.assert_array_equal(o3.forward_results[cflearn.PREDICTIONS_KEY], gt)
 
         x_float = np.empty_like(x)
         x_float[:] = [sample.astype(np.float32) for sample in x]

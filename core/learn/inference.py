@@ -12,6 +12,7 @@ from typing import Callable
 from typing import Optional
 from typing import Sequence
 from typing import ContextManager
+from itertools import islice
 from accelerate import Accelerator
 from contextlib import nullcontext
 from dataclasses import field
@@ -57,6 +58,14 @@ def _get_sample_count(tensor_batch: tensor_dict_type) -> float:
         if isinstance(candidate, Tensor) and candidate.ndim > 0:
             return float(candidate.shape[0])
     return 1.0
+
+
+def _get_num_batches(loader_length: int, portion: float) -> int:
+    if loader_length == 0 or portion <= 0.0:
+        return 0
+    if portion >= 1.0 or math.isnan(portion):
+        return loader_length
+    return math.ceil(loader_length * portion)
 
 
 def _gather_objects(objects: List[Any]) -> List[Any]:
@@ -119,6 +128,84 @@ class InferenceRequest:
     pad_dim: Optional[Union[int, Dict[str, int]]] = None
     verbose: bool = True
     forward_kwargs: Dict[str, Any] = field(default_factory=dict)
+
+
+class OutputAccumulator:
+    request: InferenceRequest
+    values: Dict[str, List[Any]]
+
+    def __init__(self, request: InferenceRequest) -> None:
+        self.request = request
+        self.values = {}
+
+    @staticmethod
+    def _to_cpu(value: Any) -> Any:
+        if isinstance(value, Tensor):
+            return value.cpu()
+        if isinstance(value, dict):
+            return {k: OutputAccumulator._to_cpu(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [OutputAccumulator._to_cpu(v) for v in value]
+        if isinstance(value, tuple):
+            return tuple(OutputAccumulator._to_cpu(v) for v in value)
+        return value
+
+    def add(self, key: str, value: Any) -> Any:
+        value = self._to_cpu(value)
+        self.values.setdefault(key, []).append(value)
+        return value
+
+    def _get_pad_dim(self, key: str) -> Optional[int]:
+        pad_dim = self.request.pad_dim
+        if pad_dim is None:
+            return None
+        return pad_dim if isinstance(pad_dim, int) else pad_dim.get(key)
+
+    def _pad(self, key: str, tensors: List[Tensor]) -> List[Tensor]:
+        pad_dim = self._get_pad_dim(key)
+        if pad_dim is None:
+            return tensors
+        num_dim = tensors[0].ndim
+        if not -num_dim <= pad_dim < num_dim:
+            raise ValueError(
+                f"invalid `pad_dim` {pad_dim} for '{key}' with {num_dim} dimensions"
+            )
+        dim = pad_dim % num_dim
+        if dim == 0:
+            return tensors
+        max_shape = max(tensor.shape[dim] for tensor in tensors)
+        if all(tensor.shape[dim] == max_shape for tensor in tensors):
+            return tensors
+        if self.request.verbose:
+            accelerator = self.request.accelerator
+            rank = 0 if accelerator is None else accelerator.process_index
+            console.warn(
+                rf"\[rank {rank}] padding '{key}' at dim {dim} to {max_shape}, please perform "
+                "post-processing to remove the paddings if necessary."
+            )
+        padded = []
+        for tensor in tensors:
+            shape = list(tensor.shape)
+            shape[dim] = max_shape
+            if is_int(tensor):
+                new = tensor.new_zeros(shape)
+            else:
+                new = tensor.new_full(shape, torch.nan)
+            slices = [slice(None)] * tensor.ndim
+            slices[dim] = slice(0, tensor.shape[dim])
+            new[tuple(slices)] = tensor
+            padded.append(new)
+        return padded
+
+    def finalize(self) -> tensor_dict_type:
+        outputs: tensor_dict_type = {}
+        for key, values in self.values.items():
+            if not all(isinstance(value, Tensor) for value in values):
+                outputs[key] = values
+                continue
+            tensors = [value for value in values if isinstance(value, Tensor)]
+            outputs[key] = torch.cat(self._pad(key, tensors))
+        return outputs
 
 
 class InferenceExecutor(ABC):
@@ -224,47 +311,6 @@ class InferenceRunner:
         self.executor = executor
         self.progress_task = None
 
-    def _get_pad_dim(self, key: str) -> Optional[int]:
-        pad_dim = self.request.pad_dim
-        if pad_dim is None:
-            return None
-        return pad_dim if isinstance(pad_dim, int) else pad_dim.get(key)
-
-    def _concat(self, tensors: TTensors) -> Any:
-        concated: tensor_dict_type = {}
-        for k, v in tensors.items():
-            if not isinstance(v[0], Tensor):
-                concated[k] = v
-                continue
-            k_pad_dim = self._get_pad_dim(k)
-            if k_pad_dim is None:
-                concated[k] = torch.cat(v)
-                continue
-            max_shape = max([tensor.shape[k_pad_dim] for tensor in v])
-            if all(tensor.shape[k_pad_dim] == max_shape for tensor in v):
-                concated[k] = torch.cat(v)
-                continue
-            if self.request.verbose:
-                accelerator = self.request.accelerator
-                rank = 0 if accelerator is None else accelerator.process_index
-                console.warn(
-                    rf"\[rank {rank}] padding '{k}' at dim {k_pad_dim} to {max_shape}, please perform "
-                    "post-processing to remove the paddings if necessary."
-                )
-            shapes = [len(v), *v[0].shape]
-            shapes[k_pad_dim + 1] = max_shape
-            if is_int(v[0]):
-                new = v[0].new_zeros(shapes)
-            else:
-                new = v[0].new_full(shapes, torch.nan)
-            for i, tensor in enumerate(v):
-                i_slices = [slice(None)] * len(shapes)
-                i_slices[0] = slice(i, i + 1)
-                i_slices[k_pad_dim + 1] = slice(0, tensor.shape[k_pad_dim])
-                new[tuple(i_slices)] = tensor
-            concated[k] = new.view(shapes[0] * shapes[1], *shapes[2:])
-        return concated
-
     def _recover_labels(self, tensors: tensor_dict_type) -> tensor_dict_type:
         if self.request.recover_labels:
             tensors = shallow_copy_dict(tensors)
@@ -303,16 +349,17 @@ class InferenceRunner:
         loader = request.loader
         metrics = request.metrics
         accelerator = request.accelerator
-        all_inputs: TTensors = {}
-        all_labels: TTensors = {}
-        all_outputs: TTensors = {}
+        inputs = OutputAccumulator(request)
+        labels = OutputAccumulator(request)
+        outputs = OutputAccumulator(request)
         accumulator = MetricAccumulator()
         losses: TTensors = {}
 
-        iterator = enumerate(loader)
+        num_batches = _get_num_batches(len(loader), request.portion)
+        iterator = islice(enumerate(loader), num_batches)
         if request.progress is not None:
             progress_kw = shallow_copy_dict(request.progress_kwargs or {})
-            progress_kw.setdefault("total", math.floor(len(loader) * request.portion))
+            progress_kw.setdefault("total", num_batches)
             progress_kw.setdefault("description", f"[{INFERENCE_COLOR}]inference")
             self.progress_task = request.progress.add_task(**progress_kw)
         stream_metrics: List[IStreamMetric[Any]]
@@ -337,8 +384,6 @@ class InferenceRunner:
         if stream_metrics:
             metrics.reset()  # type: ignore
         for i, tensor_batch in iterator:
-            if i / len(loader) >= request.portion:
-                break
             if i == 0 and accelerator is not None:
                 remainder = accelerator.gradient_state.remainder
             tensor_batch = self.executor.prepare_batch(tensor_batch, request)
@@ -372,31 +417,24 @@ class InferenceRunner:
                 if metrics_requires_all:
                     for k, v in tensor_batch.items():
                         if v is not None and metrics.requires(k):  # type: ignore
-                            if not isinstance(v, Tensor):
-                                v_cpu = v
-                            else:
-                                v_cpu = v.cpu()
+                            v_cpu = inputs.add(k, v)
                             batch_inputs[k] = v_cpu
-                            all_inputs.setdefault(k, []).append(v_cpu)
                 for k, v in tensor_outputs.items():
                     if v is not None and (
                         k in request.target_outputs
                         or (metrics_requires_all and metrics.requires(k))  # type: ignore
                     ):
-                        all_outputs.setdefault(k, []).append(v.cpu())
+                        outputs.add(k, v)
             if request.target_inputs is not None:
                 for k in request.target_inputs:
-                    v = tensor_batch[k]
-                    if isinstance(v, Tensor):
-                        v = v.cpu()
-                    all_outputs.setdefault(k, []).append(v)
+                    outputs.add(k, tensor_batch[k])
             if request.return_labels:
                 for k, v in tensor_batch.items():
                     if v is not None and k in request.target_labels:
                         v_cpu = batch_inputs.get(k)
                         if v_cpu is None:
-                            v_cpu = v.cpu()
-                        all_labels.setdefault(k, []).append(v_cpu)
+                            v_cpu = v
+                        labels.add(k, v_cpu)
             # progress
             if request.progress is not None and self.progress_task is not None:
                 request.progress.advance(self.progress_task)
@@ -404,22 +442,16 @@ class InferenceRunner:
 
         # gather
         need_concat = request.concat_outputs or metrics_requires_all
-        if not need_concat:
-            concated_inputs = concated_outputs = concated_labels = None
-        else:
-            if not metrics_requires_all:
-                concated_inputs = None
-            else:
-                concated_inputs = self._concat(all_inputs)
-            concated_outputs = self._concat(all_outputs)
-            concated_labels = self._concat(all_labels)
+        joined_inputs = inputs.finalize() if metrics_requires_all else None
+        joined_outputs = outputs.finalize() if need_concat else None
+        joined_labels = labels.finalize() if request.return_labels else None
         # gather metric outputs
         final_metric_outputs = None
         if metrics is not None:
             if metrics_requires_all:
-                assert concated_inputs is not None
-                assert concated_outputs is not None
-                mo = metrics.evaluate(concated_inputs, concated_outputs, loader)
+                assert joined_inputs is not None
+                assert joined_outputs is not None
+                mo = metrics.evaluate(joined_inputs, joined_outputs, loader)
                 if mo is not None:
                     accumulator.add(MetricResult(mo))
             accumulator = _merge_metrics(accelerator, accumulator, stream_metrics)
@@ -451,9 +483,21 @@ class InferenceRunner:
                         vg[-1] = vg[-1][:remainder]
                     losses[k] = vg
 
+        final_outputs: Union[tensor_dict_type, TTensors]
+        if request.concat_outputs:
+            assert joined_outputs is not None
+            final_outputs = joined_outputs
+        else:
+            final_outputs = outputs.values
+        final_labels: Union[tensor_dict_type, TTensors]
+        if request.return_labels:
+            assert joined_labels is not None
+            final_labels = joined_labels
+        else:
+            final_labels = labels.values
         return InferenceOutputs(
-            concated_outputs if request.concat_outputs else all_outputs,  # type: ignore
-            concated_labels if request.return_labels else all_labels,  # type: ignore
+            final_outputs,
+            final_labels,
             final_metric_outputs,
             (
                 None
