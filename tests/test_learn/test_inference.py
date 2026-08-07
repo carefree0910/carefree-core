@@ -35,6 +35,7 @@ class TestInference(unittest.TestCase):
     def test_public_contract(self) -> None:
         self.assertIs(cflearn.Inference, learn_inference.Inference)
         self.assertIs(cflearn.InferenceOutputs, learn_schema.InferenceOutputs)
+        self.assertListEqual(learn_inference.__all__, ["Inference"])
         self.assertEqual(
             inspect.signature(cflearn.Inference.get_outputs),
             inspect.signature(learn_schema.IInference.get_outputs),
@@ -169,6 +170,36 @@ class TestInference(unittest.TestCase):
                     outputs.forward_results[cflearn.PREDICTIONS_KEY].shape,
                     (len(batches) * batch_size, output_dim),
                 )
+
+    def test_native_model_can_be_rebound(self) -> None:
+        x = np.random.randn(2, 3).astype(np.float32)
+        loader = cflearn.ArrayData.init().fit(x).build_loader(x)
+        config = cflearn.Config(
+            module_name="linear",
+            module_config={"input_dim": 3, "output_dim": 1},
+            loss_name="mse",
+        )
+        original = cflearn.IModel.from_config(config)
+        replacement = cflearn.IModel.from_config(config)
+        inference = cflearn.Inference(model=original)
+        inference.model = replacement
+
+        with patch.object(original, "step", wraps=original.step) as original_step:
+            with patch.object(
+                replacement,
+                "step",
+                wraps=replacement.step,
+            ) as replacement_step:
+                inference.get_outputs(
+                    loader,
+                    target_outputs=[cflearn.PREDICTIONS_KEY],
+                    target_labels=[cflearn.LABEL_KEY],
+                    recover_labels=False,
+                    recover_predictions=False,
+                )
+
+        original_step.assert_not_called()
+        self.assertEqual(replacement_step.call_count, len(loader))
 
     def test_uneven_batch_metric_aggregation(self) -> None:
         self.assertEqual(learn_inference._get_sample_count({}), 1.0)
