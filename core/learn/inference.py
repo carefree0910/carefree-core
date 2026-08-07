@@ -379,7 +379,7 @@ class InferenceRunner:
                 "detected `requires_all` metrics, it is recommended to implement "
                 "an `IStreamMetric` version to reduce memory footprint."
             )
-        gather_outputs = request.return_outputs or metrics_requires_all
+        collect_outputs = request.return_outputs or metrics_requires_all
         remainder = -1
         if stream_metrics:
             metrics.reset()  # type: ignore
@@ -411,9 +411,9 @@ class InferenceRunner:
                         )
                 if stream_metrics:
                     metrics.update(tensor_batch, tensor_outputs)  # type: ignore
-            # gather
+            # collect
             batch_inputs: tensor_dict_type = {}
-            if gather_outputs:
+            if collect_outputs:
                 if metrics_requires_all:
                     for k, v in tensor_batch.items():
                         if v is not None and metrics.requires(k):  # type: ignore
@@ -440,7 +440,7 @@ class InferenceRunner:
                 request.progress.advance(self.progress_task)
         self._cleanup_progress()
 
-        # gather
+        # finalize
         need_concat = request.concat_outputs or metrics_requires_all
         joined_inputs = inputs.finalize() if metrics_requires_all else None
         joined_outputs = outputs.finalize() if need_concat else None
