@@ -9,10 +9,12 @@ import core.learn as cflearn
 import torch.distributed as dist
 
 from pathlib import Path
+from typing import Tuple
 from typing import Optional
 from datetime import timedelta
 from accelerate import Accelerator
 from core.toolkit.misc import is_rank_0
+from torch.utils.data import DataLoader
 from torch.nn.parallel import DistributedDataParallel
 from torch.distributed.elastic.multiprocessing.errors import record
 
@@ -26,12 +28,31 @@ def _parse_args() -> argparse.Namespace:
             "rank_failure",
             "global_main_write",
             "prepared_pipeline",
+            "prepared_remainder",
+            "uneven_metric_state",
             "timeout",
         ),
         required=True,
     )
     parser.add_argument("--shared-target", type=Path)
     return parser.parse_args()
+
+
+def _make_identity_model() -> Tuple[cflearn.Config, cflearn.IModel]:
+    config = cflearn.Config(
+        module_name="linear",
+        module_config={
+            "input_dim": 1,
+            "output_dim": 1,
+            "bias": False,
+        },
+        loss_name="mse",
+        use_losses_as_metrics=True,
+    )
+    model = cflearn.IModel.from_config(config)
+    with torch.no_grad():
+        next(model.m.parameters()).fill_(1.0)
+    return config, model
 
 
 def _run_success(rank: int) -> None:
@@ -132,6 +153,76 @@ def _run_prepared_pipeline(rank: int) -> None:
     print(f"rank {rank}: prepared pipeline prediction success", flush=True)
 
 
+def _run_prepared_remainder(rank: int) -> None:
+    config, model = _make_identity_model()
+    values = torch.tensor([[0.0], [0.0], [3.0]])
+    dataset = [
+        {
+            cflearn.INPUT_KEY: value,
+            cflearn.LABEL_KEY: torch.zeros_like(value),
+        }
+        for value in values
+    ]
+    accelerator = Accelerator(cpu=True)
+    loader = accelerator.prepare(
+        DataLoader(
+            dataset,
+            batch_size=1,
+            shuffle=False,
+        )
+    )
+    outputs = model.evaluate(
+        config,
+        None,
+        cflearn.Inference(model=model),
+        loader,
+        return_outputs=False,
+        recover_labels=False,
+        recover_predictions=False,
+        concat_outputs=False,
+        use_inference_mode=False,
+        accelerator=accelerator,
+        verbose=False,
+    )
+
+    assert outputs.loss_items is not None
+    assert outputs.loss_items[cflearn.LOSS_KEY] == 3.0
+    print(f"rank {rank}: prepared remainder success", flush=True)
+
+
+def _run_uneven_metric_state(rank: int) -> None:
+    config, model = _make_identity_model()
+    values = [0.0, 0.0] if rank == 0 else [3.0]
+    inputs = torch.tensor(values, dtype=torch.float32).reshape(-1, 1)
+    loader = [
+        {
+            cflearn.INPUT_KEY: inputs,
+            cflearn.LABEL_KEY: torch.zeros_like(inputs),
+        }
+    ]
+    outputs = model.evaluate(
+        config,
+        cflearn.IMetric.fuse(["mse", "stream_mse"]),
+        cflearn.Inference(model=model),
+        loader,  # type: ignore
+        return_outputs=False,
+        recover_labels=False,
+        recover_predictions=False,
+        concat_outputs=False,
+        accelerator=Accelerator(cpu=True),
+        verbose=False,
+    )
+
+    expected_metric = 3.0
+    assert outputs.loss_items is not None
+    assert outputs.loss_items[cflearn.LOSS_KEY] == 4.5
+    metric_outputs = outputs.metric_outputs
+    assert metric_outputs is not None
+    for key in ["mse", "stream_mse"]:
+        assert metric_outputs.metric_values[key] == expected_metric
+    print(f"rank {rank}: uneven metric state success", flush=True)
+
+
 @record
 def main() -> None:
     args = _parse_args()
@@ -156,6 +247,10 @@ def main() -> None:
             _run_global_main_write(rank, args.shared_target)
         elif args.scenario == "prepared_pipeline":
             _run_prepared_pipeline(rank)
+        elif args.scenario == "prepared_remainder":
+            _run_prepared_remainder(rank)
+        elif args.scenario == "uneven_metric_state":
+            _run_uneven_metric_state(rank)
         else:
             _run_timeout(rank)
     finally:

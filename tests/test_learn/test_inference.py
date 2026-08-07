@@ -9,6 +9,7 @@ import core.learn.schema as learn_schema
 import core.learn.inference as learn_inference
 
 from torch import Tensor
+from typing import Tuple
 from typing import Optional
 from accelerate import Accelerator
 from rich.progress import Progress
@@ -18,6 +19,16 @@ from unittest.mock import MagicMock
 from unittest.mock import PropertyMock
 from core.learn.schema import DataLoader
 from core.toolkit.types import np_dict_type
+
+
+def _make_loss_model() -> Tuple[cflearn.Config, cflearn.IModel]:
+    cflearn.register_module("$loss_identity", allow_duplicate=True)(nn.Identity)
+    config = cflearn.Config(
+        module_name="$loss_identity",
+        loss_name="mse",
+        use_losses_as_metrics=True,
+    )
+    return config, cflearn.IModel.from_config(config)
 
 
 class TestInference(unittest.TestCase):
@@ -57,6 +68,46 @@ class TestInference(unittest.TestCase):
         self.assertIs(outputs.labels, labels)
         self.assertIs(outputs.metric_outputs, metric_outputs)
         self.assertIs(outputs.loss_items, loss_items)
+
+    def test_distributed_helpers(self) -> None:
+        def gather(objects):
+            self.assertFalse(torch.is_inference_mode_enabled())
+            return objects
+
+        with patch.object(learn_inference, "gather_object", side_effect=gather):
+            with torch.inference_mode():
+                self.assertListEqual(learn_inference._gather_objects([1]), [1])
+
+        accumulator = cflearn.MetricAccumulator()
+        stream = cflearn.StreamMSE()
+        stream.reset()
+        self.assertIs(
+            learn_inference._merge_metrics(None, accumulator, [stream]),
+            accumulator,
+        )
+        with patch.object(
+            learn_inference,
+            "_gather_objects",
+            return_value=[
+                (cflearn.MetricAccumulator(), [(0.0, 2)]),
+                (cflearn.MetricAccumulator(), [(9.0, 1)]),
+            ],
+        ) as gather:
+            merged = learn_inference._merge_metrics(
+                MagicMock(),
+                accumulator,
+                [stream],
+            )
+        gather.assert_called_once()
+        self.assertIsNone(merged.finalize())
+        self.assertEqual(stream.finalize(), 3.0)
+        with patch.object(
+            learn_inference,
+            "_gather_objects",
+            return_value=[(accumulator, [None])],
+        ):
+            learn_inference._merge_metrics(MagicMock(), accumulator, [stream])
+        self.assertEqual(stream.finalize(), 3.0)
 
     def test_successful_native_inference_is_single_pass(self) -> None:
         input_dim = 3
@@ -233,11 +284,10 @@ class TestInference(unittest.TestCase):
             model_outputs.metric_outputs.metric_values["stream_mse"],
         )
         stream_metric = cflearn.StreamMSE()
-        with patch.object(stream_metric, "evaluate", return_value=None):
-            stream_outputs = inference.get_outputs(
-                loader,
-                metrics=stream_metric,
-            )
+        stream_outputs = inference.get_outputs(
+            loader,
+            metrics=stream_metric,
+        )
         self.assertAlmostEqual(
             stream_outputs.metric_outputs.metric_values["stream_mse"],
             model_outputs.metric_outputs.metric_values["stream_mse"],
@@ -440,6 +490,63 @@ class TestInference(unittest.TestCase):
         inference = cflearn.Inference(model=cflearn.IModel.from_config(config))
         with self.assertRaises(RuntimeError):
             inference.get_outputs(loader, metrics=EmptyMetric())
+
+    def test_batch_averaged_loss(self) -> None:
+        batches = [
+            {
+                cflearn.INPUT_KEY: torch.zeros(2, 1),
+                cflearn.LABEL_KEY: torch.zeros(2, 1),
+            },
+            {
+                cflearn.INPUT_KEY: torch.tensor([[3.0]]),
+                cflearn.LABEL_KEY: torch.zeros(1, 1),
+            },
+        ]
+        config, model = _make_loss_model()
+        outputs = model.evaluate(
+            config,
+            None,
+            cflearn.Inference(model=model),
+            batches,  # type: ignore
+            recover_labels=False,
+            recover_predictions=False,
+        )
+
+        self.assertIsNotNone(outputs.loss_items)
+        self.assertEqual(outputs.loss_items[cflearn.LOSS_KEY], 4.5)
+
+    def test_remainder_aware_loss(self) -> None:
+        batches = [
+            {
+                cflearn.INPUT_KEY: torch.zeros(1, 1),
+                cflearn.LABEL_KEY: torch.zeros(1, 1),
+            },
+            {
+                cflearn.INPUT_KEY: torch.tensor([[3.0]]),
+                cflearn.LABEL_KEY: torch.zeros(1, 1),
+            },
+        ]
+        accelerator = MagicMock()
+        accelerator.gradient_state.remainder = 1
+
+        def gather(losses):
+            self.assertFalse(torch.is_inference_mode_enabled())
+            return [torch.cat([loss, torch.zeros_like(loss)]) for loss in losses]
+
+        accelerator.gather.side_effect = gather
+        config, model = _make_loss_model()
+        outputs = model.evaluate(
+            config,
+            None,
+            cflearn.Inference(model=model),
+            batches,  # type: ignore
+            recover_labels=False,
+            recover_predictions=False,
+            accelerator=accelerator,
+        )
+
+        self.assertIsNotNone(outputs.loss_items)
+        self.assertEqual(outputs.loss_items[cflearn.LOSS_KEY], 3.0)
 
     def test_inference_error_does_not_retry_with_grad(self) -> None:
         run_states = []

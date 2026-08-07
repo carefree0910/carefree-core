@@ -57,6 +57,24 @@ def test_cpu_ddp_pipeline_uses_prepared_model(
     assert "rank 1: prepared pipeline prediction success" in result.rank_logs[1]
 
 
+def test_cpu_ddp_preserves_prepared_loader_remainder(
+    cpu_ddp: CPUDistributedHarness,
+) -> None:
+    result = cpu_ddp.run("prepared_remainder")
+
+    assert "rank 0: prepared remainder success" in result.rank_logs[0]
+    assert "rank 1: prepared remainder success" in result.rank_logs[1]
+
+
+def test_cpu_ddp_merges_uneven_metric_state(
+    cpu_ddp: CPUDistributedHarness,
+) -> None:
+    result = cpu_ddp.run("uneven_metric_state")
+
+    assert "rank 0: uneven metric state success" in result.rank_logs[0]
+    assert "rank 1: uneven metric state success" in result.rank_logs[1]
+
+
 def test_cpu_ddp_timeout_collects_logs_and_reaps_process_group(
     cpu_ddp: CPUDistributedHarness,
 ) -> None:

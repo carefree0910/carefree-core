@@ -111,6 +111,7 @@ TLs = List[TL]
 TDataLoaders = Tuple["DataLoader", Optional["DataLoader"]]
 T_db = TypeVar("T_db", bound="IDataBlock", covariant=True)
 TDataBlock = TypeVar("TDataBlock", bound="IDataBlock", covariant=True)
+TStreamState = TypeVar("TStreamState")
 
 
 # collections
@@ -1215,6 +1216,22 @@ class MetricAccumulator:
             self._metric_counts[key] = self._metric_counts.get(key, 0.0) + sample_count
         self._is_positive.update(output.is_positive)
 
+    def merge(self, other: "MetricAccumulator") -> None:
+        """merge another accumulator without finalizing either state"""
+
+        for key, is_positive in other._is_positive.items():
+            previous = self._is_positive.get(key)
+            if previous is not None and previous != is_positive:
+                raise ValueError(f"conflicting direction found for metric '{key}'")
+        self._score_sum += other._score_sum
+        self._sample_count += other._sample_count
+        for key, value in other._metric_sums.items():
+            self._metric_sums[key] = self._metric_sums.get(key, 0.0) + value
+            self._metric_counts[key] = (
+                self._metric_counts.get(key, 0.0) + other._metric_counts[key]
+            )
+        self._is_positive.update(other._is_positive)
+
     def finalize(self) -> Optional[MetricsOutputs]:
         if self._sample_count == 0.0:
             return None
@@ -1366,7 +1383,7 @@ class IMetric(WithRegister["IMetric"], metaclass=ABCMeta):
         return to_metric_outputs(self.__identifier__, self.is_positive, metric_values)
 
 
-class IStreamMetric(IMetric):
+class IStreamMetric(IMetric, Generic[TStreamState]):
     """
     an interface for metrics that support streaming calculation.
 
@@ -1398,6 +1415,24 @@ class IStreamMetric(IMetric):
     @abstractmethod
     def finalize(self) -> metric_values_type:
         """finalize the streaming context and return the final metric value(s)"""
+
+    # optional callbacks
+
+    def get_distributed_state(self) -> Optional[TStreamState]:
+        """
+        Return a CPU-picklable merge state, or `None` to keep rank-local behavior.
+        """
+
+        return None
+
+    def merge_distributed_states(self, states: List[TStreamState]) -> None:
+        """
+        Replace local state with all rank states returned by `get_distributed_state`.
+        """
+
+        raise RuntimeError(
+            f"`{self.__class__.__name__}` does not support distributed state merging"
+        )
 
     def forward(
         self,

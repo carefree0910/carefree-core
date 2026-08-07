@@ -9,10 +9,12 @@ if TYPE_CHECKING:
     from typing import Dict
     from typing import List
     from typing import Type
+    from typing import Tuple
     from typing import Union
     from typing import Optional
     from typing_extensions import assert_type
     from core.learn import Inference
+    from core.learn import StreamMSE
     from core.learn.schema import Config
     from core.learn.schema import IModel
     from core.learn.schema import IMetric
@@ -85,7 +87,36 @@ if TYPE_CHECKING:
             )
 
     @IMetric.register("typing.stream_metric")
-    class ExternalStreamMetric(IStreamMetric):
+    class ExternalStreamMetric(IStreamMetric[Dict[str, float]]):
+        @property
+        def is_positive(self) -> bool:
+            return False
+
+        def reset(self) -> None:
+            return None
+
+        def update(
+            self,
+            tensor_batch: tensor_dict_type,
+            tensor_outputs: tensor_dict_type,
+            loader: Optional[DataLoader] = None,
+        ) -> None:
+            return None
+
+        def finalize(self) -> float:
+            return 0.0
+
+    class ExternalMergeableStreamMetric(ExternalStreamMetric):
+        def get_distributed_state(self) -> Dict[str, float]:
+            return {}
+
+        def merge_distributed_states(
+            self,
+            states: List[Dict[str, float]],
+        ) -> None:
+            return None
+
+    class LegacyStreamMetric(IStreamMetric):
         @property
         def is_positive(self) -> bool:
             return False
@@ -129,6 +160,8 @@ if TYPE_CHECKING:
     metric = ExternalMetric()
     metric_values_metric = ExternalMetricValues()
     stream_metric = ExternalStreamMetric()
+    mergeable_stream_metric = ExternalMergeableStreamMetric()
+    legacy_stream_metric = LegacyStreamMetric()
     model_config = Config()
     model_config.module_name = "typing.model"
     assert_type(data_block.configs, Dict[str, Any])
@@ -164,6 +197,15 @@ if TYPE_CHECKING:
     assert_type(metric_values_metric.evaluate({}, {}), Optional[MetricsOutputs])
     assert_type(stream_metric.evaluate({}, {}), Optional[MetricsOutputs])
     assert_type(stream_metric.report(stream_metric.finalize()), MetricsOutputs)
+    assert_type(stream_metric.get_distributed_state(), Optional[Dict[str, float]])
+    assert_type(
+        mergeable_stream_metric.get_distributed_state(),
+        Dict[str, float],
+    )
+    assert_type(mergeable_stream_metric.merge_distributed_states([{}]), None)
+    stream_mse = StreamMSE()
+    assert_type(stream_mse.get_distributed_state(), Tuple[float, int])
+    assert_type(legacy_stream_metric.get_distributed_state(), Optional[Any])
     assert_type(ExternalModel, Type[ExternalModel])
     assert_type(IModel.make("typing.model", {}), IModel)
     assert_type(ExternalModel.make("typing.model", {}), IModel)
@@ -203,6 +245,7 @@ if TYPE_CHECKING:
     assert_type(metric_result, MetricResult)
     assert_type(metric_result.value, MetricsOutputs)
     assert_type(metric_result.sample_count, float)
+    assert_type(metric_accumulator.merge(MetricAccumulator()), None)
     assert_type(metric_accumulator.finalize(), Optional[MetricsOutputs])
     assert_type(inference_outputs, InferenceOutputs)
     assert_type(

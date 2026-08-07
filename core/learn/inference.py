@@ -21,7 +21,6 @@ from .schema import DataLoader
 from .schema import IInference
 from .schema import MetricResult
 from .schema import IStreamMetric
-from .schema import MetricsOutputs
 from .schema import MultipleMetrics
 from .schema import InferenceOutputs
 from .schema import MetricAccumulator
@@ -50,6 +49,33 @@ def _get_sample_count(tensor_batch: tensor_dict_type) -> float:
         if isinstance(candidate, Tensor) and candidate.ndim > 0:
             return float(candidate.shape[0])
     return 1.0
+
+
+def _gather_objects(objects: List[Any]) -> List[Any]:
+    # Object collectives mutate their internal tensors, which is not allowed when
+    # those tensors are created by an enclosing `inference_mode` context.
+    with torch.inference_mode(False):
+        gathered: List[Any] = gather_object(objects)
+    return gathered
+
+
+def _merge_metrics(
+    accelerator: Optional[Accelerator],
+    accumulator: MetricAccumulator,
+    stream_metrics: List[IStreamMetric[Any]],
+) -> MetricAccumulator:
+    if accelerator is None:
+        return accumulator
+    states = [metric.get_distributed_state() for metric in stream_metrics]
+    gathered = _gather_objects([(accumulator, states)])
+    merged = MetricAccumulator()
+    for other, _ in gathered:
+        merged.merge(other)
+    for i, metric in enumerate(stream_metrics):
+        metric_states = [rank_states[i] for _, rank_states in gathered]
+        if all(state is not None for state in metric_states):
+            metric.merge_distributed_states(metric_states)
+    return merged
 
 
 def no_sync_context(accelerator: Accelerator, model: IModel) -> ContextManager:
@@ -180,8 +206,8 @@ class Inference(IInference):
             all_inputs: TTensors = {}
             all_labels: TTensors = {}
             all_outputs: TTensors = {}
-            metric_results: List[MetricResult] = []
-            loss_tensors_lists: TTensors = {}
+            accumulator = MetricAccumulator()
+            losses: TTensors = {}
 
             device = None if self.model is None else get_device(self.model.m)
             iterator = enumerate(loader)
@@ -190,9 +216,15 @@ class Inference(IInference):
                 progress_kw.setdefault("total", math.floor(len(loader) * portion))
                 progress_kw.setdefault("description", f"[{INFERENCE_COLOR}]inference")
                 flags.progress_task = progress.add_task(**progress_kw)
-            is_stream_metric = isinstance(metrics, IStreamMetric) or (
-                isinstance(metrics, MultipleMetrics) and metrics.has_streaming
-            )
+            stream_metrics: List[IStreamMetric[Any]]
+            if isinstance(metrics, IStreamMetric):
+                stream_metrics = [metrics]
+            elif isinstance(metrics, MultipleMetrics):
+                stream_metrics = [
+                    m for m in metrics.metrics if isinstance(m, IStreamMetric)
+                ]
+            else:
+                stream_metrics = []
             metrics_requires_all = metrics is not None and metrics.requires_all
             if metrics_requires_all and (
                 accelerator is None or accelerator.is_local_main_process
@@ -203,12 +235,11 @@ class Inference(IInference):
                 )
             gather_outputs = return_outputs or metrics_requires_all
             remainder = -1
-            if is_stream_metric:
+            if stream_metrics:
                 metrics.reset()  # type: ignore
             for i, tensor_batch in iterator:
                 if i / len(loader) >= portion:
                     break
-                sample_count = _get_sample_count(tensor_batch)
                 if i == 0 and accelerator is not None:
                     remainder = accelerator.gradient_state.remainder
                 step_outputs = None
@@ -239,16 +270,20 @@ class Inference(IInference):
                     tensor_outputs = step_outputs.forward_results
                     if use_losses_as_metrics:
                         for k, v in step_outputs.loss_tensors.items():
-                            loss_tensors_lists.setdefault(k, []).append(v)
+                            losses.setdefault(k, []).append(v)
                 assert tensor_outputs is not None
                 # metrics
                 if metrics is not None and not metrics.requires_all:
-                    metric_outputs = metrics.evaluate(tensor_batch, tensor_outputs)
-                    if metric_outputs is not None:
-                        metric_results.append(
-                            MetricResult(metric_outputs, sample_count)
-                        )
-                    if is_stream_metric:
+                    if not isinstance(metrics, IStreamMetric):
+                        metric_outputs = metrics.evaluate(tensor_batch, tensor_outputs)
+                        if metric_outputs is not None:
+                            accumulator.add(
+                                MetricResult(
+                                    metric_outputs,
+                                    _get_sample_count(tensor_batch),
+                                )
+                            )
+                    if stream_metrics:
                         metrics.update(tensor_batch, tensor_outputs)  # type: ignore
                 # gather
                 batch_inputs: tensor_dict_type = {}
@@ -287,7 +322,6 @@ class Inference(IInference):
             cleanup_progress()
 
             # gather
-            is_rank_0 = accelerator is None or accelerator.is_main_process
             need_concat = concat_outputs or metrics_requires_all
             if not need_concat:
                 concated_inputs = concated_outputs = concated_labels = None
@@ -301,24 +335,15 @@ class Inference(IInference):
             # gather metric outputs
             final_metric_outputs = None
             if metrics is not None:
-                reduced = None
                 if metrics_requires_all:
                     assert concated_inputs is not None
                     assert concated_outputs is not None
                     mo = metrics.evaluate(concated_inputs, concated_outputs, loader)
-                    metric_results = [] if mo is None else [MetricResult(mo)]
-                metric_accumulator = MetricAccumulator()
-                for metric_result in metric_results:
-                    metric_accumulator.add(metric_result)
-                reduced = metric_accumulator.finalize()
-                if accelerator is not None:
-                    gathered_metric_outputs = gather_object([reduced])
-                    metric_accumulator = MetricAccumulator()
-                    for metric_output in gathered_metric_outputs:
-                        if metric_output is not None:
-                            metric_accumulator.add(MetricResult(metric_output))
-                    reduced = metric_accumulator.finalize()
-                if is_stream_metric:
+                    if mo is not None:
+                        accumulator.add(MetricResult(mo))
+                accumulator = _merge_metrics(accelerator, accumulator, stream_metrics)
+                reduced = accumulator.finalize()
+                if stream_metrics:
                     if isinstance(metrics, MultipleMetrics):
                         stream_outputs = metrics.finalize()
                     else:
@@ -338,11 +363,12 @@ class Inference(IInference):
             # handle accelerator stuffs
             if accelerator is not None:
                 accelerator.wait_for_everyone()
-                for k, vl in loss_tensors_lists.items():
-                    vg = accelerator.gather(vl)
-                    if remainder > 0:
-                        vg[-1] = vg[-1][:remainder]
-                    loss_tensors_lists[k] = vg
+                with torch.inference_mode(False):
+                    for k, vl in losses.items():
+                        vg = accelerator.gather(vl)
+                        if remainder > 0:
+                            vg[-1] = vg[-1][:remainder]
+                        losses[k] = vg
 
             return InferenceOutputs(
                 concated_outputs if concat_outputs else all_outputs,  # type: ignore
@@ -351,10 +377,7 @@ class Inference(IInference):
                 (
                     None
                     if not use_losses_as_metrics
-                    else {
-                        k: torch.cat(v).mean().item()
-                        for k, v in loss_tensors_lists.items()
-                    }
+                    else {k: torch.cat(v).mean().item() for k, v in losses.items()}
                 ),
             )
 

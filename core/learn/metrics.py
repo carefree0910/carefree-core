@@ -1,5 +1,7 @@
 import torch
 
+from typing import List
+from typing import Tuple
 from typing import Optional
 
 from .schema import IMetric
@@ -85,7 +87,7 @@ class Correlation(IMetric):
 
 
 @IMetric.register("stream_mse")
-class StreamMSE(IStreamMetric):
+class StreamMSE(IStreamMetric[Tuple[float, int]]):
     error: float
     num: int
 
@@ -110,6 +112,13 @@ class StreamMSE(IStreamMetric):
 
     def finalize(self) -> float:
         return self.error / self.num if self.num > 0 else 0.0
+
+    def get_distributed_state(self) -> Tuple[float, int]:
+        return self.error, self.num
+
+    def merge_distributed_states(self, states: List[Tuple[float, int]]) -> None:
+        self.error = sum(state[0] for state in states)
+        self.num = sum(state[1] for state in states)
 
 
 __all__ = [

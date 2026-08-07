@@ -80,7 +80,9 @@ class TestMetrics(unittest.TestCase):
             },
         )
         accumulator.add(cflearn.MetricResult(first, sample_count=2.0))
-        accumulator.add(cflearn.MetricResult(second))
+        other = cflearn.MetricAccumulator()
+        other.add(cflearn.MetricResult(second))
+        accumulator.merge(other)
         reduced = accumulator.finalize()
         self.assertIsNotNone(reduced)
         self.assertAlmostEqual(reduced.final_score, 11.0 / 3.0)
@@ -108,6 +110,10 @@ class TestMetrics(unittest.TestCase):
         conflicting_accumulator.add(cflearn.MetricResult(first))
         with self.assertRaisesRegex(ValueError, "metric"):
             conflicting_accumulator.add(cflearn.MetricResult(conflicting))
+        conflicting_other = cflearn.MetricAccumulator()
+        conflicting_other.add(cflearn.MetricResult(conflicting))
+        with self.assertRaisesRegex(ValueError, "metric"):
+            conflicting_accumulator.merge(conflicting_other)
 
         invalid = cflearn.MetricsOutputs(
             1.0,
@@ -554,6 +560,33 @@ class TestMetrics(unittest.TestCase):
         metric.reset()
         self.assertEqual(metric.num_reset, 2)
         self.assertEqual(metric.num_update, 0)
+        self.assertIsNone(metric.get_distributed_state())
+        with self.assertRaisesRegex(RuntimeError, "does not support"):
+            metric.merge_distributed_states([None])
+
+    def test_stream_mse_distributed_state(self) -> None:
+        first = cflearn.StreamMSE()
+        first.reset()
+        first.update(
+            {cflearn.LABEL_KEY: torch.zeros(2)},
+            {cflearn.PREDICTIONS_KEY: torch.tensor([1.0, 3.0])},
+        )
+        second = cflearn.StreamMSE()
+        second.reset()
+        second.update(
+            {cflearn.LABEL_KEY: torch.zeros(1)},
+            {cflearn.PREDICTIONS_KEY: torch.tensor([2.0])},
+        )
+
+        metric = cflearn.StreamMSE()
+        metric.merge_distributed_states(
+            [
+                first.get_distributed_state(),
+                second.get_distributed_state(),
+            ]
+        )
+
+        self.assertAlmostEqual(metric.finalize(), 14.0 / 3.0)
 
     def test_metrics(self) -> None:
         def to_tensor(key: str) -> torch.Tensor:
@@ -562,6 +595,7 @@ class TestMetrics(unittest.TestCase):
         x = torch.randn(11, 1)
         y = torch.randn(11, 1)
         metric = cflearn.IMetric.fuse(["mae", "mse", "corr", "stream_mse"])
+        self.assertTrue(metric.has_streaming)
         with self.assertRaises(RuntimeError):
             metric.is_positive
         with self.assertRaises(NotImplementedError):

@@ -157,8 +157,8 @@ class CPUDistributedHarness:
             environment.pop(key, None)
         # pytest-cov injects coverage into every descendant process. The timeout
         # scenario intentionally kills its workers, which can leave a partial
-        # `.coverage.*` file in the repository. These test workers do not execute
-        # production code whose coverage belongs in the parent report.
+        # `.coverage.*` file in the repository, so disable worker coverage for
+        # every harness scenario instead of special-casing the timeout.
         for key in tuple(environment):
             if key.startswith("COV_CORE_"):
                 environment.pop(key)
