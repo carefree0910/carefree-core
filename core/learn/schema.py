@@ -15,6 +15,7 @@ from abc import ABC
 from abc import ABCMeta
 from enum import Enum
 from pydantic import Field
+from collections import deque
 from torch import device
 from torch import Tensor
 from typing import Any
@@ -22,6 +23,7 @@ from typing import Set
 from typing import Dict
 from typing import List
 from typing import Type
+from typing import Deque
 from typing import Tuple
 from typing import Union
 from typing import Generic
@@ -44,6 +46,7 @@ from pydantic.dataclasses import dataclass as pydantic_dataclass
 from accelerate.utils import PrecisionType
 from accelerate.utils import send_to_device
 from accelerate.utils import extract_model_from_parallel
+from concurrent.futures import Future
 from concurrent.futures import ThreadPoolExecutor
 from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import Dataset
@@ -377,12 +380,18 @@ ADLI_CALLBACKS = AsyncDataLoaderIterCallbacks()
 
 class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
     _pool: ThreadPoolExecutor
-    _queue: Optional[List[AsyncPack]]
+    _queue: Deque[AsyncPack]
+    _futures: Dict[int, "Future[None]"]
     _drained: bool
     _queue_cursor: int
     _dataset: IAsyncDataset
+    _initialized: bool
     _finalized: bool
     _results: Dict[int, Any]
+
+    enabled: bool
+    presend_device: Optional[str]
+    async_prefetch_factor: int
 
     def __init__(self, loader: "DataLoader"):
         super().__init__(loader)
@@ -402,7 +411,8 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
 
     def _initialize(self) -> None:
         self._pool = ThreadPoolExecutor(max_workers=self.async_prefetch_factor)
-        self._queue = None
+        self._queue = deque()
+        self._futures = {}
         self._drained = False
         self._queue_cursor = 0
         self._results = {}
@@ -413,6 +423,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
     def _cleanup(self) -> None:
         ADLI_CALLBACKS.call_cleanup()
         self._pool.shutdown()
+        self._futures.clear()
         self._results.clear()
         self._dataset.async_finalize()
 
@@ -459,40 +470,45 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
     def _submit_next(self) -> None:
         cursor = self._queue_cursor
         index = self._next_index()
-        self._queue.append(AsyncPack(cursor, index))  # type: ignore
+        pack = AsyncPack(cursor, index)
+        self._queue.append(pack)
         self._queue_cursor = cursor + 1
-        self._pool.submit(self._async_submit, cursor, index)
+        self._submit(pack)
+
+    def _submit(self, pack: AsyncPack) -> None:
+        self._futures[pack.cursor] = self._pool.submit(
+            self._async_submit,
+            pack.cursor,
+            pack.index,
+        )
 
     def _next_data(self) -> Any:
         if not self.enabled:
             return super()._next_data()
+        if self._initialized and self._finalized:
+            raise StopIteration
         if not self._initialized:
             self._initialize()
-        if self._queue is None:
-            self._queue = []
             try:
                 for _ in range(self.async_prefetch_factor):
                     self._submit_next()
             except StopIteration:
                 self._drained = True
-        else:
-            if not self._drained:
-                try:
-                    self._submit_next()
-                except StopIteration:
-                    self._drained = True
-            if len(self._queue) == 0:
-                self._finalize()
-        return self._poll(self._queue.pop(0).cursor)
+        elif not self._drained:
+            try:
+                self._submit_next()
+            except StopIteration:
+                self._drained = True
+        if not self._queue:
+            self._finalize()
+        return self._poll(self._queue.popleft().cursor)
 
     def _poll(self, cursor: int) -> Any:
-        while True:
-            data = self._results.pop(cursor, None)
-            if data is not None:
-                if isinstance(data, AsyncExceptionPack):
-                    return self._handle_exception(data)
-                return data
-            time.sleep(0.001)
+        self._futures.pop(cursor).result()
+        data = self._results.pop(cursor)
+        if isinstance(data, AsyncExceptionPack):
+            return self._handle_exception(data)
+        return data
 
     def _handle_exception(self, pack: AsyncExceptionPack) -> Any:
         if isinstance(pack.e, str):
@@ -500,14 +516,14 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         else:
             err_msg = f"{pack.e}\n{''.join(traceback.format_tb(pack.e.__traceback__))}"
         console.error(f"trying to recover from error: {err_msg}")
-        queue = self._queue or []
+        queue = self._queue.copy()
         queue_cursor = self._queue_cursor
-        to_re_submit = queue + [pack]
+        to_re_submit = [*queue, pack]
         self._cleanup()
         self._dataset.async_recover()
         self._initialize()
         for re_submit in to_re_submit:
-            self._pool.submit(self._async_submit, re_submit.cursor, re_submit.index)
+            self._submit(re_submit)
         self._queue = queue
         self._queue_cursor = queue_cursor
         return self._poll(pack.cursor)

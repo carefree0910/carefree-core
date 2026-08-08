@@ -18,6 +18,7 @@ from core.learn.schema import AsyncIterManager
 from core.learn.schema import AsyncExceptionPack
 from core.learn.schema import AsyncDataLoaderIter
 from core.learn.schema import AsyncDataLoaderIterCallbacks
+from torch.utils.data.dataloader import _SingleProcessDataLoaderIter
 
 
 class _IdentityData:
@@ -187,6 +188,7 @@ def test_async_loader_extension_contract() -> None:
     pack = AsyncExceptionPack(1, [2], "failed")
     assert (pack.cursor, pack.index, pack.e) == (1, [2], "failed")
     assert isinstance(ADLI_CALLBACKS, AsyncDataLoaderIterCallbacks)
+    assert issubclass(AsyncDataLoaderIter, _SingleProcessDataLoaderIter)
     for name in [
         "_initialize",
         "_cleanup",
@@ -349,6 +351,57 @@ def test_async_loader_preserves_order_with_bounded_prefetch() -> None:
         assert [batch["value"].item() for batch in values] == [0, 1, 2, 3]
         assert dataset.completed_cursors[:2] == [1, 0]
         assert dataset.num_finalize == 1
+    finally:
+        AsyncIterManager.cleanup(id(loader))
+
+
+def test_async_loader_keeps_extension_hooks_live(monkeypatch) -> None:
+    initialized = []
+    submitted = []
+    original_initialize = AsyncDataLoaderIter._initialize
+
+    def initialize(iterator: AsyncDataLoaderIter) -> None:
+        initialized.append(iterator)
+        original_initialize(iterator)
+
+    def submit(iterator: AsyncDataLoaderIter, cursor: int, index: Any) -> None:
+        submitted.append((cursor, index))
+        iterator._results[cursor] = {"value": torch.as_tensor(index) + 10}
+
+    monkeypatch.setattr(AsyncDataLoaderIter, "_initialize", initialize)
+    monkeypatch.setattr(AsyncDataLoaderIter, "_async_submit", submit)
+    dataset = _RecoveringAsyncDataset(size=3)
+    loader = _make_loader(dataset, async_prefetch_factor=2)
+
+    try:
+        assert [batch["value"].item() for batch in loader] == [10, 11, 12]
+        assert len(initialized) == 1
+        assert sorted(cursor for cursor, _ in submitted) == [0, 1, 2]
+    finally:
+        AsyncIterManager.cleanup(id(loader))
+
+
+def test_async_loader_waits_for_submitted_future() -> None:
+    waited = []
+    iterator = object.__new__(AsyncDataLoaderIter)
+    iterator._futures = {0: SimpleNamespace(result=lambda: waited.append(True))}
+    iterator._results = {0: "data"}
+
+    assert iterator._poll(0) == "data"
+    assert waited == [True]
+
+
+def test_async_loader_propagates_unhandled_worker_exception(monkeypatch) -> None:
+    def submit(_iterator: AsyncDataLoaderIter, _cursor: int, _index: Any) -> None:
+        raise RuntimeError("worker failed")
+
+    monkeypatch.setattr(AsyncDataLoaderIter, "_async_submit", submit)
+    dataset = _RecoveringAsyncDataset()
+    loader = _make_loader(dataset, async_prefetch_factor=1)
+
+    try:
+        with pytest.raises(RuntimeError, match="worker failed"):
+            list(loader)
     finally:
         AsyncIterManager.cleanup(id(loader))
 
@@ -559,16 +612,27 @@ def test_prepare_dataloader_does_not_stack_iteration_adapters() -> None:
     assert process_calls == [False]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="P0-05 phase 2: an empty async DataLoader should stop normally",
-)
 def test_empty_async_loader_stops_normally() -> None:
     dataset = _RecoveringAsyncDataset(size=0)
     loader = _make_loader(dataset, async_prefetch_factor=2)
 
     try:
         assert list(loader) == []
+        assert dataset.events == ["reset", "finalize"]
+    finally:
+        AsyncIterManager.cleanup(id(loader))
+
+
+def test_empty_async_iterator_finalizes_once() -> None:
+    dataset = _RecoveringAsyncDataset(size=0)
+    loader = _make_loader(dataset, async_prefetch_factor=2)
+    iterator = AsyncDataLoaderIter(loader)
+
+    try:
+        for _ in range(2):
+            with pytest.raises(StopIteration):
+                next(iterator)
+        assert dataset.events == ["reset", "finalize"]
     finally:
         AsyncIterManager.cleanup(id(loader))
 

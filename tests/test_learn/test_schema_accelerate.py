@@ -18,9 +18,9 @@ from accelerate import Accelerator
 from core.learn.schema import IAsyncDataset
 from accelerate.data_loader import DataLoaderShard
 from core.learn.schema import AsyncIterManager
+from core.learn.schema import AsyncDataLoaderIter
 from accelerate.data_loader import DataLoaderDispatcher
 from accelerate import DataLoaderConfiguration
-
 
 _MISSING = object()
 _ACCELERATE_LOADER_STATES = []
@@ -249,6 +249,8 @@ def test_prepare_async_dataloader_preserves_repeated_iteration(
         assert type(prepared) is expected_type
         assert base.async_prefetch
         assert base.async_prefetch_factor == 2
+        base_iterator = base.__iter__()
+        assert isinstance(base_iterator, AsyncDataLoaderIter)
         for iteration in range(1, 3):
             values = [batch["value"].tolist() for batch in prepared]
             assert values == [[10, 11], [12, 13], [14]]
