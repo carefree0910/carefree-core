@@ -568,6 +568,11 @@ class DataLoader(TorchDataLoader):
     async_prefetch_factor: int
 
     def _get_iterator(self) -> _BaseDataLoaderIter:
+        if self.async_prefetch:
+            if self.num_workers != 0:
+                raise ValueError("async prefetch requires `num_workers=0`")
+            if self.async_prefetch_factor <= 0:
+                raise ValueError("`async_prefetch_factor` should be positive")
         if self.num_workers == 0:
             return AsyncIterManager.new(id(self), lambda: AsyncDataLoaderIter(self))
         return super()._get_iterator()  # pragma: no cover
@@ -605,18 +610,22 @@ class DataLoader(TorchDataLoader):
     def get_input_sample(self, device: device_type = None) -> tensor_dict_type:
         prev_factor = self.async_prefetch_factor
         self.async_prefetch_factor = 1
-        pseudo_batch = self.dataset.pseudo_batch(device)
-        if pseudo_batch is None:
-            pseudo_batch = self.get_one_batch(device)
-        for k, v in pseudo_batch.items():
-            if isinstance(v, Tensor):
-                pseudo_batch[k] = v[:1]
-            elif isinstance(v, list):
-                pseudo_batch[k] = [vv[:1] if isinstance(vv, Tensor) else vv for vv in v]
-            else:
-                pseudo_batch[k] = v
-        self.async_prefetch_factor = prev_factor
-        return pseudo_batch
+        try:
+            pseudo_batch = self.dataset.pseudo_batch(device)
+            if pseudo_batch is None:
+                pseudo_batch = self.get_one_batch(device)
+            for k, v in pseudo_batch.items():
+                if isinstance(v, Tensor):
+                    pseudo_batch[k] = v[:1]
+                elif isinstance(v, list):
+                    pseudo_batch[k] = [
+                        vv[:1] if isinstance(vv, Tensor) else vv for vv in v
+                    ]
+                else:
+                    pseudo_batch[k] = v
+            return pseudo_batch
+        finally:
+            self.async_prefetch_factor = prev_factor
 
 
 def prepare_dataloaders(accelerator: Accelerator, *loaders: TL) -> TLs:

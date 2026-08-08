@@ -184,8 +184,9 @@ def _make_loader(
     dataset: IAsyncDataset,
     *,
     async_prefetch_factor: int,
+    num_workers: int = 0,
 ) -> DataLoader:
-    loader = DataLoader(dataset, batch_size=1)
+    loader = DataLoader(dataset, batch_size=1, num_workers=num_workers)
     loader.data = _IdentityData()
     loader.for_inference = False
     loader.presend_device = None
@@ -270,6 +271,50 @@ def test_async_loader_config_serialization_contract() -> None:
     assert not legacy.async_prefetch
     assert legacy.async_prefetch_factor == 4
     assert legacy.async_prefetch_factor_for_validation is None
+
+
+@pytest.mark.parametrize("factor", [0, -1])
+def test_async_loader_validates_active_prefetch_factor(factor: int) -> None:
+    dataset = _RecoveringAsyncDataset()
+    loader = _make_loader(dataset, async_prefetch_factor=factor)
+
+    with pytest.raises(ValueError, match="async_prefetch_factor.*positive"):
+        list(loader)
+
+    assert id(loader) not in AsyncIterManager._cur
+
+
+def test_async_loader_validates_worker_count() -> None:
+    dataset = _RecoveringAsyncDataset()
+    loader = _make_loader(dataset, async_prefetch_factor=1, num_workers=1)
+
+    with pytest.raises(ValueError, match="num_workers=0"):
+        list(loader)
+
+    assert id(loader) not in AsyncIterManager._cur
+
+
+def test_async_loader_allows_inactive_prefetch_settings() -> None:
+    data, _, _ = cflearn.testing.arange_data(n=1, batch_size=1)
+    data.config.async_prefetch_factor = 0
+    data.config.presend_device = "cuda"
+    loader = data.build_loaders()[0]
+
+    assert not loader.async_prefetch
+    assert loader.presend_device == "cuda"
+    assert len(list(loader)) == 1
+
+
+def test_async_loader_keeps_validation_factor_fallback() -> None:
+    data, _, _ = cflearn.testing.arange_data(n=2, batch_size=1)
+    assert data.bundle is not None
+    data.config.async_prefetch = True
+    data.config.async_prefetch_factor = 2
+    data.config.async_prefetch_factor_for_validation = 0
+    loader = data.build_loader(data.bundle.x_train)
+
+    assert loader.async_prefetch_factor == 2
+    assert len(list(loader)) == 2
 
 
 def test_async_iterator_manager_removes_by_identity(monkeypatch) -> None:
@@ -555,6 +600,41 @@ def test_async_loader_restarts_after_early_exit() -> None:
         AsyncIterManager.cleanup(id(loader))
 
 
+def test_async_loaders_keep_overlapping_iterations_isolated() -> None:
+    first_dataset = _RecoveringAsyncDataset(size=4)
+    second_dataset = _RecoveringAsyncDataset(size=5)
+    first_loader = _make_loader(first_dataset, async_prefetch_factor=2)
+    second_loader = _make_loader(second_dataset, async_prefetch_factor=3)
+
+    try:
+        for _ in range(2):
+            first_iterator = iter(first_loader)
+            second_iterator = iter(second_loader)
+            first_values = [next(first_iterator)["value"].item()]
+            second_values = [next(second_iterator)["value"].item()]
+
+            assert set(AsyncIterManager._cur) == {
+                id(first_loader),
+                id(second_loader),
+            }
+
+            first_values.extend(batch["value"].item() for batch in first_iterator)
+            assert id(first_loader) not in AsyncIterManager._cur
+            assert id(second_loader) in AsyncIterManager._cur
+            second_values.extend(batch["value"].item() for batch in second_iterator)
+
+            assert first_values == [0, 1, 2, 3]
+            assert second_values == [0, 1, 2, 3, 4]
+            assert AsyncIterManager._cur == {}
+
+        for dataset in [first_dataset, second_dataset]:
+            assert dataset.events.count("reset") == 2
+            assert dataset.events.count("finalize") == 2
+    finally:
+        AsyncIterManager.cleanup(id(first_loader))
+        AsyncIterManager.cleanup(id(second_loader))
+
+
 @pytest.mark.parametrize("failure", ["submit", "fetch"])
 def test_async_loader_recovers_from_failure(failure: str) -> None:
     dataset = _RecoveringAsyncDataset(failure, size=5)
@@ -825,10 +905,6 @@ def test_prepare_dataloader_does_not_affect_unprepared_instances() -> None:
         assert untouched.process_calls == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="P0-05 phase 5: temporary prefetch settings should be transactional",
-)
 def test_get_input_sample_restores_prefetch_factor_after_failure() -> None:
     dataset = _RecoveringAsyncDataset()
     loader = _make_loader(dataset, async_prefetch_factor=3)
@@ -836,5 +912,17 @@ def test_get_input_sample_restores_prefetch_factor_after_failure() -> None:
     with patch.object(dataset, "pseudo_batch", side_effect=RuntimeError("failed")):
         with pytest.raises(RuntimeError, match="failed"):
             loader.get_input_sample()
+
+    assert loader.async_prefetch_factor == 3
+
+
+def test_get_input_sample_restores_prefetch_factor_after_fallback_failure() -> None:
+    dataset = _RecoveringAsyncDataset()
+    loader = _make_loader(dataset, async_prefetch_factor=3)
+
+    with patch.object(dataset, "pseudo_batch", return_value=None):
+        with patch.object(loader, "get_one_batch", side_effect=RuntimeError("failed")):
+            with pytest.raises(RuntimeError, match="failed"):
+                loader.get_input_sample()
 
     assert loader.async_prefetch_factor == 3
