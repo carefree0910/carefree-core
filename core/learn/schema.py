@@ -27,6 +27,7 @@ from typing import Deque
 from typing import Tuple
 from typing import Union
 from typing import Generic
+from typing import Mapping
 from typing import TypeVar
 from typing import Callable
 from typing import Iterator
@@ -35,6 +36,7 @@ from typing import Protocol
 from typing import NamedTuple
 from typing import ContextManager
 from datetime import timedelta
+from types import MappingProxyType
 from accelerate import Accelerator
 from accelerate import InitProcessGroupKwargs
 from contextlib import nullcontext
@@ -101,7 +103,7 @@ data_type = Optional[Union[str, np.ndarray, np_dict_type, td_type, Any]]
 configs_type = Optional[Union[List[Dict[str, Any]], Dict[str, Any]]]
 sample_weights_type = Optional[Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]]
 raw_forward_results_type = Union[Tensor, td_type]
-losses_type = Union[Tensor, td_type]
+losses_type = Optional[Union[Tensor, td_type]]
 metric_values_type = Union[float, "MetricValues"]
 
 T_d = TypeVar("T_d", bound="IData", covariant=True)
@@ -1140,6 +1142,28 @@ class IData(  # type: ignore
 # loss
 
 
+@dataclass(frozen=True)
+class LossResult:
+    primary: Tensor
+    components: Mapping[str, Tensor]
+
+
+def normalize_loss_result(losses: losses_type) -> Optional[LossResult]:
+    if losses is None:
+        return None
+    if isinstance(losses, Tensor):
+        return LossResult(losses, MappingProxyType({}))
+    if LOSS_KEY not in losses:
+        raise ValueError(f"loss dictionary should contain '{LOSS_KEY}'")
+    for key, value in losses.items():
+        if not isinstance(value, Tensor):
+            raise TypeError(f"loss '{key}' should be a tensor")
+    return LossResult(
+        losses[LOSS_KEY],
+        MappingProxyType({k: v for k, v in losses.items() if k != LOSS_KEY}),
+    )
+
+
 class ILoss(nn.Module, metaclass=ABCMeta):
     __identifier__: str
 
@@ -1150,7 +1174,7 @@ class ILoss(nn.Module, metaclass=ABCMeta):
         batch: tensor_dict_type,
         state: Optional["TrainerState"] = None,
     ) -> losses_type:
-        """this method should return the loss, it could be a tensor or a tensor dict"""
+        """this method should return a tensor, a tensor dict, or `None`"""
 
 
 # metrics
@@ -1779,6 +1803,23 @@ class ClosurePack(NamedTuple):
     accelerator: Accelerator
 
 
+class GetBackwardLossFn(Protocol):
+    def __call__(
+        self,
+        state: "TrainerState",
+        loss_res: "TrainStepLoss",
+        update: bool,
+    ) -> Optional[Tensor]: ...
+
+
+class WillSkipBackwardFn(Protocol):
+    def __call__(self, state: "TrainerState", update: bool) -> bool: ...
+
+
+class ClosurePackStepFn(Protocol):
+    def __call__(self, pack: ClosurePack) -> object: ...
+
+
 def get_backward_loss(
     optimizer: Optimizer,
     state: "TrainerState",
@@ -1786,6 +1827,7 @@ def get_backward_loss(
     update: bool,
 ) -> Optional[Tensor]:
     base_optimizer = getattr(optimizer, "optimizer", optimizer)
+    fn: Optional[GetBackwardLossFn]
     fn = getattr(base_optimizer, "get_backward_loss", None)
     if fn is None:
         return loss_res.loss
@@ -1798,6 +1840,7 @@ def will_skip_backward(
     update: bool,
 ) -> bool:
     base_optimizer = getattr(optimizer, "optimizer", optimizer)
+    fn: Optional[WillSkipBackwardFn]
     fn = getattr(base_optimizer, "will_skip_backward", None)
     if fn is None:
         return False
@@ -1861,7 +1904,11 @@ def get_update_fn(trainer: "ITrainer") -> Callable[
                     trainer.accelerator,
                 )
             )
-            optimizer.step(cp)  # type: ignore
+            if cp is None:
+                optimizer.step(None)
+            else:
+                step: ClosurePackStepFn = getattr(optimizer, "step")
+                step(cp)
             optimizer.zero_grad()
 
     return update_fn
@@ -2279,6 +2326,12 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         final_scores = []
         loss_items = outputs.loss_items
         metric_outputs = outputs.metric_outputs
+        if loss_items is not None and metric_outputs is not None:
+            duplicated = set(loss_items).intersection(metric_outputs.metric_values)
+            if duplicated:
+                raise ValueError(
+                    f"duplicated loss and metric keys: {sorted(duplicated)}"
+                )
         if loss_items is not None:
             metric_values.update(loss_items)
             is_positive.update({k: False for k in loss_items})
@@ -2291,6 +2344,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
             # but if no other scores are available, we should still use it
             if final_score != 0 or not final_scores:
                 final_scores.append(final_score)
+        if not final_scores:
+            raise ValueError("evaluation should produce losses or metrics")
         final_score = sum(final_scores) / len(final_scores)
         outputs.metric_outputs = MetricsOutputs(final_score, metric_values, is_positive)
         return outputs

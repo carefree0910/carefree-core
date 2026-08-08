@@ -15,9 +15,11 @@ if TYPE_CHECKING:
     from accelerate import Accelerator
     from typing_extensions import assert_type
     from core.learn.schema import prepare_dataloaders
+    from core.learn.schema import normalize_loss_result
 
     from core.learn import Inference
     from core.learn import StreamMSE
+    from core.learn.schema import ILoss
     from core.learn.schema import Config
     from core.learn.schema import IModel
     from core.learn.schema import IMetric
@@ -28,17 +30,23 @@ if TYPE_CHECKING:
     from core.learn.schema import DataLoader
     from core.learn.schema import DLSettings
     from core.learn.schema import IDataBlock
+    from core.learn.schema import LossResult
+    from core.learn.schema import ClosurePack
     from core.learn.schema import MetricResult
     from core.learn.schema import MetricValues
     from core.learn.schema import IAsyncDataset
     from core.learn.schema import IStreamMetric
+    from core.learn.schema import TrainStepLoss
     from core.learn.schema import MetricsOutputs
     from core.learn.schema import LoggingSettings
     from core.learn.schema import RuntimeSettings
     from core.learn.schema import TrainerCallback
     from core.learn.schema import InferenceOutputs
+    from core.learn.schema import ClosurePackStepFn
+    from core.learn.schema import GetBackwardLossFn
     from core.learn.schema import MetricAccumulator
     from core.learn.schema import EvaluationSettings
+    from core.learn.schema import WillSkipBackwardFn
     from core.learn.schema import DistributedSettings
     from core.learn.schema import PersistenceSettings
     from core.learn.schema import OptimizationSettings
@@ -159,6 +167,30 @@ if TYPE_CHECKING:
         def finalize(self) -> float:
             return 0.0
 
+    class OptionalLoss(ILoss):
+        def forward(
+            self,
+            forward_results: tensor_dict_type,
+            batch: tensor_dict_type,
+            state: Optional[Any] = None,
+        ) -> Optional[torch.Tensor]:
+            return None
+
+    class OptimizerExtensions:
+        def get_backward_loss(
+            self,
+            state: Any,
+            loss_res: TrainStepLoss,
+            update: bool,
+        ) -> Optional[torch.Tensor]:
+            return loss_res.loss
+
+        def will_skip_backward(self, state: Any, update: bool) -> bool:
+            return False
+
+        def step(self, pack: ClosurePack) -> None:
+            return None
+
     @IModel.register("typing.model")
     class ExternalModel(IModel):
         def __init__(self) -> None:
@@ -186,6 +218,11 @@ if TYPE_CHECKING:
     stream_metric = ExternalStreamMetric()
     mergeable_stream_metric = ExternalMergeableStreamMetric()
     legacy_stream_metric = LegacyStreamMetric()
+    optional_loss = OptionalLoss()
+    optimizer_extensions = OptimizerExtensions()
+    backward_loss_fn: GetBackwardLossFn = optimizer_extensions.get_backward_loss
+    skip_backward_fn: WillSkipBackwardFn = optimizer_extensions.will_skip_backward
+    closure_step_fn: ClosurePackStepFn = optimizer_extensions.step
     model_config = Config()
     data_config = DataConfig()
     model_config.module_name = "typing.model"
@@ -239,6 +276,8 @@ if TYPE_CHECKING:
     assert_type(IModel.make("typing.model", {}), IModel)
     assert_type(ExternalModel.make("typing.model", {}), IModel)
     assert_type(IModel.from_config(model_config), IModel)
+    assert_type(normalize_loss_result(None), Optional[LossResult])
+    assert_type(optional_loss.forward({}, {}), Optional[torch.Tensor])
     assert_type(ExternalCallback, Type[ExternalCallback])
     assert_type(TrainerCallback.make("typing.callback", {}), TrainerCallback)
     assert_type(

@@ -13,6 +13,7 @@ from .schema import build_loss
 from .schema import register_loss
 from ..schema import ILoss
 from ..schema import TrainerState
+from ..schema import normalize_loss_result
 from ..constants import LOSS_KEY
 from ..constants import INPUT_KEY
 from ..constants import LABEL_KEY
@@ -115,6 +116,13 @@ class MultiLoss(ILoss):
     def __init__(self, losses: List[Dict[str, Any]]):
         super().__init__()
         loss_items = [LossItem(**loss) for loss in losses]
+        if not loss_items:
+            raise ValueError("at least one loss should be provided")
+        tags = [loss.tag or loss.name for loss in loss_items]
+        if LOSS_KEY in tags:
+            raise ValueError(f"'{LOSS_KEY}' is reserved for the primary loss")
+        if len(tags) != len(set(tags)):
+            raise ValueError("loss tags should be unique")
         self.losses = nn.ModuleDict(
             {
                 loss.tag or loss.name: build_loss(loss.name, config=loss.config)
@@ -128,21 +136,30 @@ class MultiLoss(ILoss):
         forward_results: tensor_dict_type,  # type: ignore
         batch: tensor_dict_type,
         state: Optional[TrainerState] = None,
-    ) -> tensor_dict_type:
-        loss = 0.0
+    ) -> Optional[tensor_dict_type]:
+        loss: Optional[Tensor] = None
         losses: tensor_dict_type = {}
         for k, loss_fn in self.losses.items():
             k_losses = loss_fn(forward_results, batch, state)
-            if k_losses is None:
+            loss_result = normalize_loss_result(k_losses)
+            if loss_result is None:
                 continue
+            weighted = self.weights[k] * loss_result.primary
+            loss = weighted if loss is None else loss + weighted
             if isinstance(k_losses, Tensor):
-                losses[k] = k_losses
-                loss += self.weights[k] * k_losses  # type: ignore
+                i_losses = {k: loss_result.primary}
             else:
-                k_loss = k_losses.pop(LOSS_KEY)
-                loss += self.weights[k] * k_loss
-                for kk, vk in k_losses.items():
-                    losses[f"{k}_{kk}"] = vk
+                i_losses = {
+                    f"{k}_{kk}": vk for kk, vk in loss_result.components.items()
+                }
+            duplicated = set(losses).intersection(i_losses)
+            if duplicated:
+                raise ValueError(
+                    f"duplicated flattened loss keys: {sorted(duplicated)}"
+                )
+            losses.update(i_losses)
+        if loss is None:
+            return None
         losses[LOSS_KEY] = loss
         return losses
 

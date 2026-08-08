@@ -1,5 +1,4 @@
 import torch
-import pytest
 import unittest
 
 import core.learn as cflearn
@@ -117,11 +116,6 @@ class TestLosses(unittest.TestCase):
             2.0 * tensor_loss + 3.0 * dict_loss,
         )
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="MultiLoss currently pops the primary loss from child dictionaries",
-    )
     def test_multi_loss_preserves_child_dict_results(self) -> None:
         primary = torch.tensor(2.0)
         auxiliary = torch.tensor(3.0)
@@ -151,20 +145,10 @@ class TestLosses(unittest.TestCase):
         self.assertIs(positional_loss, loss)
         self.assertIs(positional_loss_tensors, loss_tensors)
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="MultiLoss currently accepts an empty loss configuration",
-    )
     def test_multi_loss_rejects_empty_configuration(self) -> None:
         with self.assertRaises(ValueError):
             cflearn.MultiLoss([])
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="MultiLoss currently overwrites duplicate effective tags",
-    )
     def test_multi_loss_rejects_duplicate_effective_tags(self) -> None:
         with self.assertRaises(ValueError):
             cflearn.MultiLoss(
@@ -174,27 +158,105 @@ class TestLosses(unittest.TestCase):
                 ]
             )
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=ZeroDivisionError,
-        reason="IModel.evaluate currently divides by zero without losses or metrics",
-    )
     def test_evaluate_defines_empty_score_boundary(self) -> None:
         outputs = cflearn.InferenceOutputs({}, {}, None, None)
         inference = Mock()
         inference.get_outputs.return_value = outputs
-        try:
-            result = cflearn.IModel.evaluate(
+        with self.assertRaisesRegex(ValueError, "losses or metrics"):
+            cflearn.IModel.evaluate(
                 Mock(),
                 cflearn.TrainerConfig(),
                 None,
                 inference,
                 Mock(),
             )
-        except ValueError:
-            return
+
+        outputs.loss_items = {}
+        result = cflearn.IModel.evaluate(
+            Mock(),
+            cflearn.TrainerConfig(),
+            None,
+            inference,
+            Mock(),
+        )
         self.assertIs(result, outputs)
         self.assertIsNotNone(result.metric_outputs)
+        self.assertEqual(result.metric_outputs.final_score, 0.0)
+
+    def test_loss_result_normalization(self) -> None:
+        primary = torch.tensor(2.0)
+        auxiliary = torch.tensor(3.0)
+        tensor_result = cflearn.normalize_loss_result(primary)
+        self.assertIsNotNone(tensor_result)
+        self.assertIs(tensor_result.primary, primary)
+        self.assertFalse(tensor_result.components)
+
+        raw = {cflearn.LOSS_KEY: primary, "auxiliary": auxiliary}
+        result = cflearn.normalize_loss_result(raw)
+
+        self.assertIsNotNone(result)
+        self.assertIs(result.primary, primary)
+        self.assertDictEqual(dict(result.components), {"auxiliary": auxiliary})
+        components: Any = result.components
+        with self.assertRaises(TypeError):
+            components["new"] = torch.tensor(4.0)
+        self.assertDictEqual(raw, {cflearn.LOSS_KEY: primary, "auxiliary": auxiliary})
+        self.assertIsNone(cflearn.normalize_loss_result(None))
+        with self.assertRaisesRegex(ValueError, cflearn.LOSS_KEY):
+            cflearn.normalize_loss_result({"auxiliary": auxiliary})
+        invalid: Any = {cflearn.LOSS_KEY: primary, "auxiliary": 1.0}
+        with self.assertRaisesRegex(TypeError, "auxiliary"):
+            cflearn.normalize_loss_result(invalid)
+
+    def test_multi_loss_inactive_and_collision_boundaries(self) -> None:
+        @cflearn.register_loss("contract_inactive", allow_duplicate=True)
+        class InactiveLoss(cflearn.ILoss):
+            def forward(self, forward_results, batch, state=None) -> None:
+                return None
+
+        inactive = cflearn.MultiLoss([{"name": "contract_inactive"}])
+        self.assertIsNone(inactive({}, {}))
+        with self.assertRaisesRegex(ValueError, "should not be None"):
+            cflearn.CommonTrainStep(inactive).loss_fn(Mock(), None, {}, {})
+
+        @cflearn.register_loss("contract_collision_a", allow_duplicate=True)
+        class CollisionA(cflearn.ILoss):
+            def forward(self, forward_results, batch, state=None):
+                return {cflearn.LOSS_KEY: torch.tensor(1.0), "b_c": torch.tensor(2.0)}
+
+        @cflearn.register_loss("contract_collision_b", allow_duplicate=True)
+        class CollisionB(cflearn.ILoss):
+            def forward(self, forward_results, batch, state=None):
+                return {cflearn.LOSS_KEY: torch.tensor(3.0), "c": torch.tensor(4.0)}
+
+        collision = cflearn.MultiLoss(
+            [
+                {"name": "contract_collision_a", "tag": "a"},
+                {"name": "contract_collision_b", "tag": "a_b"},
+            ]
+        )
+        with self.assertRaisesRegex(ValueError, "a_b_c"):
+            collision({}, {})
+        with self.assertRaisesRegex(ValueError, "reserved"):
+            cflearn.MultiLoss([{"name": "mse", "tag": cflearn.LOSS_KEY}])
+
+    def test_evaluate_rejects_loss_metric_key_collisions(self) -> None:
+        outputs = cflearn.InferenceOutputs(
+            {},
+            {},
+            cflearn.MetricsOutputs(1.0, {"shared": 1.0}, {"shared": True}),
+            {"shared": 2.0},
+        )
+        inference = Mock()
+        inference.get_outputs.return_value = outputs
+        with self.assertRaisesRegex(ValueError, "shared"):
+            cflearn.IModel.evaluate(
+                Mock(),
+                cflearn.TrainerConfig(),
+                None,
+                inference,
+                Mock(),
+            )
 
 
 if __name__ == "__main__":

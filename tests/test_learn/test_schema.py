@@ -222,19 +222,36 @@ class TestSchema(unittest.TestCase):
                 self.skip_args = state, update
                 return True
 
+        class HookProxy:
+            def __init__(self, hooks):
+                self.hooks = hooks
+
+            def __getattr__(self, name):
+                return getattr(self.hooks, name)
+
         state = SimpleNamespace(step=1)
         loss_res = TrainStepLoss(
             torch.tensor(2.0),
             {cflearn.LOSS_KEY: torch.tensor(2.0)},
         )
         hooks = OptimizerHooks()
-        optimizer = SimpleNamespace(optimizer=hooks)
+        optimizers = [
+            hooks,
+            SimpleNamespace(optimizer=hooks),
+            SimpleNamespace(optimizer=HookProxy(hooks)),
+        ]
+        for optimizer in optimizers:
+            backward_loss = get_backward_loss(optimizer, state, loss_res, True)
+            torch.testing.assert_close(backward_loss, torch.tensor(4.0))
+            self.assertEqual(hooks.backward_args, (state, loss_res, True))
+            self.assertTrue(will_skip_backward(optimizer, state, False))
+            self.assertEqual(hooks.skip_args, (state, False))
 
-        backward_loss = get_backward_loss(optimizer, state, loss_res, True)
-        torch.testing.assert_close(backward_loss, torch.tensor(4.0))
-        self.assertEqual(hooks.backward_args, (state, loss_res, True))
-        self.assertTrue(will_skip_backward(optimizer, state, False))
-        self.assertEqual(hooks.skip_args, (state, False))
+        optimizer = SimpleNamespace()
+        self.assertIs(
+            get_backward_loss(optimizer, state, loss_res, True), loss_res.loss
+        )
+        self.assertFalse(will_skip_backward(optimizer, state, False))
 
     def test_model_runtime_paths(self):
         config = cflearn.Config(
