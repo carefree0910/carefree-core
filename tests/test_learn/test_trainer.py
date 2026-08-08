@@ -115,6 +115,84 @@ class TestTrainer(unittest.TestCase):
         config.tqdm_settings = tqdm_settings.asdict()
         cflearn.TrainingPipeline.init(config).fit(self.data)
 
+    def test_callback_success_contract(self) -> None:
+        callback = Mock(spec=cflearn.TrainerCallback)
+
+        @cflearn.TrainerCallback.register("success_contract", allow_duplicate=True)
+        class SuccessContractCallback(cflearn.TrainerCallback):
+            def __new__(cls):
+                return callback
+
+        config = self.config.copy()
+        config.workspace = str(self.tmp_path / "success_contract")
+        config.auto_callback = False
+        config.callback_names = ["success_contract"]
+        pipeline = cflearn.TrainingPipeline.init(config).fit(
+            self.data,
+            do_summary=False,
+        )
+        trainer = pipeline.training.build_trainer.trainer
+
+        self.assertListEqual(
+            [record[0] for record in callback.method_calls],
+            [
+                "initialize",
+                "after_workspace_prepared",
+                "before_summary",
+                "before_loop",
+                "before_loop_with_loaders",
+                "at_epoch_start",
+                "at_step_start",
+                "mutate_forward_kwargs",
+                "mutate_loss_kwargs",
+                "before_gradient_update",
+                "log_lr",
+                "after_gradient_update",
+                "log_train_step",
+                "after_train_step",
+                "before_monitor_logging",
+                "log_metrics_msg",
+                "log_metrics",
+                "log_artifacts",
+                "after_monitor",
+                "after_save_checkpoint",
+                "at_step_end",
+                "at_terminate",
+                "at_epoch_end",
+                "after_loop",
+                "log_metrics_msg",
+                "log_metrics",
+                "log_artifacts",
+                "finalize",
+            ],
+        )
+        callback.finalize.assert_called_once_with(trainer)
+        train_loader = callback.before_loop_with_loaders.call_args.args[1]
+        self.assertIs(callback.at_epoch_start.call_args.args[1], train_loader)
+        batch = callback.at_step_start.call_args.args[0]
+        self.assertIs(callback.before_gradient_update.call_args.args[1], batch)
+        self.assertIs(callback.after_gradient_update.call_args.args[1], batch)
+        self.assertIs(callback.after_train_step.call_args.args[0], batch)
+        self.assertIs(
+            callback.before_gradient_update.call_args.args[2],
+            callback.after_gradient_update.call_args.args[2],
+        )
+        step_outputs = callback.after_train_step.call_args.args[1]
+        self.assertIs(callback.log_train_step.call_args.args[0], step_outputs)
+        monitored = callback.after_monitor.call_args.args[0]
+        self.assertIs(
+            callback.log_metrics.call_args_list[0].args[0],
+            monitored.metric_outputs,
+        )
+
+        callback.reset_mock()
+        trainer.accelerator = Mock(
+            is_local_main_process=False,
+            is_main_process=False,
+        )
+        trainer.log_with(trainer.final_results)
+        self.assertListEqual(callback.method_calls, [])
+
     def test_callback_cleanup_before_loop_failure(self) -> None:
         events = []
         failure_stage = ""
