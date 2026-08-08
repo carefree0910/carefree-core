@@ -478,7 +478,7 @@ class InferenceRunner:
             accelerator.wait_for_everyone()
             with torch.inference_mode(False):
                 for k, vl in losses.items():
-                    vg = accelerator.gather(vl)
+                    vg = accelerator.gather([torch.atleast_1d(v) for v in vl])
                     if remainder > 0:
                         vg[-1] = vg[-1][:remainder]
                     losses[k] = vg
@@ -502,7 +502,7 @@ class InferenceRunner:
             (
                 None
                 if not request.use_losses_as_metrics
-                else {k: torch.cat(v).mean().item() for k, v in losses.items()}
+                else {k: torch.hstack(v).mean().item() for k, v in losses.items()}
             ),
         )
 

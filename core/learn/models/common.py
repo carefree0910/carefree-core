@@ -21,7 +21,6 @@ from ..schema import normalize_loss_result
 from ..modules import build_module
 from ..modules import EMA
 from ..toolkit import get_clones
-from ..constants import LOSS_KEY
 from ..modules.common import get_tgt_params
 from ...toolkit.misc import safe_execute
 from ...toolkit.types import tensor_dict_type
@@ -43,9 +42,7 @@ class CommonTrainStep(TrainStep):
         loss_result = normalize_loss_result(self.loss(forward_results, batch, state))
         if loss_result is None:
             raise ValueError("loss should not be None in a training step")
-        loss_tensors = {LOSS_KEY: loss_result.primary[None]}
-        loss_tensors.update({k: v[None] for k, v in loss_result.components.items()})
-        return TrainStepLoss(loss_result.primary, loss_tensors)
+        return loss_result
 
 
 @IModel.register("common")

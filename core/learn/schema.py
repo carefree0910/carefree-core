@@ -1142,26 +1142,22 @@ class IData(  # type: ignore
 # loss
 
 
-@dataclass(frozen=True)
-class LossResult:
-    primary: Tensor
-    components: Mapping[str, Tensor]
+class TrainStepLoss(NamedTuple):
+    loss: Tensor
+    loss_tensors: Mapping[str, Tensor]
 
 
-def normalize_loss_result(losses: losses_type) -> Optional[LossResult]:
+def normalize_loss_result(losses: losses_type) -> Optional[TrainStepLoss]:
     if losses is None:
         return None
     if isinstance(losses, Tensor):
-        return LossResult(losses, MappingProxyType({}))
+        return TrainStepLoss(losses, MappingProxyType({LOSS_KEY: losses}))
     if LOSS_KEY not in losses:
         raise ValueError(f"loss dictionary should contain '{LOSS_KEY}'")
     for key, value in losses.items():
         if not isinstance(value, Tensor):
             raise TypeError(f"loss '{key}' should be a tensor")
-    return LossResult(
-        losses[LOSS_KEY],
-        MappingProxyType({k: v for k, v in losses.items() if k != LOSS_KEY}),
-    )
+    return TrainStepLoss(losses[LOSS_KEY], MappingProxyType(dict(losses)))
 
 
 class ILoss(nn.Module, metaclass=ABCMeta):
@@ -1938,11 +1934,6 @@ class StepOutputs:
         return {k: v.item() for k, v in self.loss_tensors.items()}
 
 
-class TrainStepLoss(NamedTuple):
-    loss: Tensor
-    loss_tensors: tensor_dict_type
-
-
 class TrainStep(ABC):
     def __init__(
         self,
@@ -2117,7 +2108,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                 fw = recover_predictions_fn(fw)
             return fw
 
-        loss_tensors = {}
+        loss_tensors: tensor_dict_type = {}
         loss_kwargs = loss_kwargs or {}
         forward_kwargs = forward_kwargs or {}
         get_fw = lambda: self.run(batch_idx, batch, None, **forward_kwargs)

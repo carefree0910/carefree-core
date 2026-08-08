@@ -30,7 +30,6 @@ if TYPE_CHECKING:
     from core.learn.schema import DataLoader
     from core.learn.schema import DLSettings
     from core.learn.schema import IDataBlock
-    from core.learn.schema import LossResult
     from core.learn.schema import ClosurePack
     from core.learn.schema import MetricResult
     from core.learn.schema import MetricValues
@@ -276,7 +275,7 @@ if TYPE_CHECKING:
     assert_type(IModel.make("typing.model", {}), IModel)
     assert_type(ExternalModel.make("typing.model", {}), IModel)
     assert_type(IModel.from_config(model_config), IModel)
-    assert_type(normalize_loss_result(None), Optional[LossResult])
+    assert_type(normalize_loss_result(None), Optional[TrainStepLoss])
     assert_type(optional_loss.forward({}, {}), Optional[torch.Tensor])
     assert_type(ExternalCallback, Type[ExternalCallback])
     assert_type(TrainerCallback.make("typing.callback", {}), TrainerCallback)

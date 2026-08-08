@@ -144,13 +144,15 @@ class MultiLoss(ILoss):
             loss_result = normalize_loss_result(k_losses)
             if loss_result is None:
                 continue
-            weighted = self.weights[k] * loss_result.primary
+            weighted = self.weights[k] * loss_result.loss
             loss = weighted if loss is None else loss + weighted
             if isinstance(k_losses, Tensor):
-                i_losses = {k: loss_result.primary}
+                i_losses = {k: loss_result.loss}
             else:
                 i_losses = {
-                    f"{k}_{kk}": vk for kk, vk in loss_result.components.items()
+                    f"{k}_{kk}": vk
+                    for kk, vk in loss_result.loss_tensors.items()
+                    if kk != LOSS_KEY
                 }
             duplicated = set(losses).intersection(i_losses)
             if duplicated:

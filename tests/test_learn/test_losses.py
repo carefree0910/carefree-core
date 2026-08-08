@@ -183,23 +183,27 @@ class TestLosses(unittest.TestCase):
         self.assertIsNotNone(result.metric_outputs)
         self.assertEqual(result.metric_outputs.final_score, 0.0)
 
-    def test_loss_result_normalization(self) -> None:
+    def test_train_step_loss_normalization(self) -> None:
         primary = torch.tensor(2.0)
         auxiliary = torch.tensor(3.0)
         tensor_result = cflearn.normalize_loss_result(primary)
         self.assertIsNotNone(tensor_result)
-        self.assertIs(tensor_result.primary, primary)
-        self.assertFalse(tensor_result.components)
+        self.assertIs(tensor_result.loss, primary)
+        self.assertDictEqual(
+            dict(tensor_result.loss_tensors),
+            {cflearn.LOSS_KEY: primary},
+        )
 
         raw = {cflearn.LOSS_KEY: primary, "auxiliary": auxiliary}
         result = cflearn.normalize_loss_result(raw)
 
         self.assertIsNotNone(result)
-        self.assertIs(result.primary, primary)
-        self.assertDictEqual(dict(result.components), {"auxiliary": auxiliary})
-        components: Any = result.components
+        self.assertIs(result.loss, primary)
+        self.assertDictEqual(dict(result.loss_tensors), raw)
+        self.assertIsNot(result.loss_tensors, raw)
+        loss_tensors: Any = result.loss_tensors
         with self.assertRaises(TypeError):
-            components["new"] = torch.tensor(4.0)
+            loss_tensors["new"] = torch.tensor(4.0)
         self.assertDictEqual(raw, {cflearn.LOSS_KEY: primary, "auxiliary": auxiliary})
         self.assertIsNone(cflearn.normalize_loss_result(None))
         with self.assertRaisesRegex(ValueError, cflearn.LOSS_KEY):
