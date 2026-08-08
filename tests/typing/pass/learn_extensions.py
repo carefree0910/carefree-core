@@ -12,7 +12,10 @@ if TYPE_CHECKING:
     from typing import Tuple
     from typing import Union
     from typing import Optional
+    from accelerate import Accelerator
     from typing_extensions import assert_type
+    from core.learn.schema import prepare_dataloaders
+
     from core.learn import Inference
     from core.learn import StreamMSE
     from core.learn.schema import Config
@@ -21,11 +24,13 @@ if TYPE_CHECKING:
     from core.learn.schema import ITrainer
     from core.learn.schema import TrainStep
     from core.learn.schema import DataBundle
+    from core.learn.schema import DataConfig
     from core.learn.schema import DataLoader
     from core.learn.schema import DLSettings
     from core.learn.schema import IDataBlock
     from core.learn.schema import MetricResult
     from core.learn.schema import MetricValues
+    from core.learn.schema import IAsyncDataset
     from core.learn.schema import IStreamMetric
     from core.learn.schema import MetricsOutputs
     from core.learn.schema import LoggingSettings
@@ -116,6 +121,25 @@ if TYPE_CHECKING:
         ) -> None:
             return None
 
+    class ExternalAsyncDataset(IAsyncDataset):
+        def __len__(self) -> int:
+            return 1
+
+        def async_reset(self) -> None:
+            return None
+
+        def async_submit(self, cursor: int, index: Any) -> bool:
+            return True
+
+        def async_fetch(self, cursor: int, index: Any) -> Optional[Any]:
+            return None
+
+        def async_finalize(self) -> None:
+            return None
+
+        def async_recover(self) -> None:
+            return None
+
     class LegacyStreamMetric(IStreamMetric):
         @property
         def is_positive(self) -> bool:
@@ -163,6 +187,7 @@ if TYPE_CHECKING:
     mergeable_stream_metric = ExternalMergeableStreamMetric()
     legacy_stream_metric = LegacyStreamMetric()
     model_config = Config()
+    data_config = DataConfig()
     model_config.module_name = "typing.model"
     assert_type(data_block.configs, Dict[str, Any])
     assert_type(model_config.callback_names, Optional[List[str]])
@@ -174,6 +199,10 @@ if TYPE_CHECKING:
     assert_type(model_config.evaluation, EvaluationSettings)
     assert_type(model_config.logging, LoggingSettings)
     assert_type(model_config.persistence, PersistenceSettings)
+    assert_type(data_config.presend_device, Optional[str])
+    assert_type(data_config.async_prefetch, bool)
+    assert_type(data_config.async_prefetch_factor, int)
+    assert_type(data_config.async_prefetch_factor_for_validation, Optional[int])
     legacy_config = Config.construct({"callback_names": "typing.callback"})
     assert_type(legacy_config, Config)
     assert_type(legacy_config.from_info({"num_epoch": 1}), Config)
@@ -264,3 +293,15 @@ if TYPE_CHECKING:
         loader: DataLoader,
     ) -> None:
         assert_type(inference.get_outputs(loader), InferenceOutputs)
+
+    def check_async_loader(
+        accelerator: Accelerator,
+        loader: DataLoader,
+    ) -> None:
+        assert_type(loader.presend_device, Optional[str])
+        assert_type(loader.async_prefetch, bool)
+        assert_type(loader.async_prefetch_factor, int)
+        assert_type(
+            prepare_dataloaders(accelerator, loader),
+            List[Optional[DataLoader]],
+        )
