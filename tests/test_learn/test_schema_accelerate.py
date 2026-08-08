@@ -138,11 +138,6 @@ def _restore_accelerate_loader_classes() -> Iterator[None]:
 
 
 @pytest.mark.parametrize("dispatch_batches", [False, True])
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="P0-05 phase 4: preparing a core loader should not affect Accelerate siblings",
-)
 def test_prepare_dataloader_keeps_accelerate_siblings_isolated(
     tmp_path: Path,
     dispatch_batches: bool,
@@ -262,4 +257,42 @@ def test_prepare_async_dataloader_preserves_repeated_iteration(
             assert prepared.end_of_dataloader
         assert data.process_flags == [False] * 6
     finally:
+        AsyncIterManager.cleanup(id(base))
+
+
+@pytest.mark.parametrize("dispatch_batches", [False, True])
+def test_prepare_async_dataloader_releases_abandoned_iteration(
+    dispatch_batches: bool,
+) -> None:
+    dataset = _TrackingAsyncDataset(5)
+    data = _TrackingData()
+    loader = _make_loader(
+        dataset,
+        data,
+        for_inference=False,
+        async_prefetch=True,
+    )
+    accelerator = Accelerator(
+        cpu=True,
+        dataloader_config=DataLoaderConfiguration(
+            dispatch_batches=dispatch_batches,
+        ),
+    )
+    prepared = prepare_dataloaders(accelerator, loader)[0]
+    base = prepared.base_dataloader
+    iterator = iter(prepared)
+
+    try:
+        assert next(iterator)["value"].tolist() == [10, 11]
+
+        iterator.close()
+
+        assert id(base) not in AsyncIterManager._cur
+        assert dataset.num_finalizes == 1
+        values = [batch["value"].tolist() for batch in prepared]
+        assert values == [[10, 11], [12, 13], [14]]
+        assert dataset.num_async_resets == 2
+        assert dataset.num_finalizes == 2
+    finally:
+        iterator.close()
         AsyncIterManager.cleanup(id(base))

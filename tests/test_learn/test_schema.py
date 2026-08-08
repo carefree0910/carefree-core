@@ -76,7 +76,8 @@ class TestSchema(unittest.TestCase):
 
     def test_prepare_async_dataloader(self):
         class PreparedLoader:
-            _iter_prepared_ = True
+            def __iter__(self):
+                return iter(())
 
         base = SimpleNamespace()
         prepared = PreparedLoader()

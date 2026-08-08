@@ -626,13 +626,33 @@ def prepare_dataloaders(accelerator: Accelerator, *loaders: TL) -> TLs:
     for loader, prepared in zip(loaders, prepared_loaders):
         if loader is not None:
 
-            def _iter_factory(original_iter: Callable) -> Callable:
-                def _iter(self: DataLoader) -> Iterator[tensor_dict_type]:
+            def _iter_factory(
+                original_iter: Callable[[Any], Iterator[Any]],
+            ) -> Callable[[Any], Iterator[Any]]:
+                def _prepared_iter(self: Any) -> Iterator[Any]:
                     process_fn = self.data.process_batch
                     self.dataset.reset(for_inference=self.for_inference)
-                    for batch in original_iter(self):
-                        yield process_fn(batch, for_inference=self.for_inference)
+                    base = self.base_dataloader
+                    iterator = original_iter(self)
+                    managed = None
+                    try:
+                        for batch in iterator:
+                            if managed is None:
+                                managed = AsyncIterManager._cur.get(id(base))
+                            yield process_fn(batch, for_inference=self.for_inference)
+                    finally:
+                        if managed is None:
+                            managed = AsyncIterManager._cur.get(id(base))
+                        if managed is not None:
+                            AsyncIterManager.remove(managed)
 
+                def _iter(self: Any) -> Iterator[Any]:
+                    # the class flag marks the router; the instance flag selects it
+                    if not self.__dict__.get("_iter_prepared_", False):
+                        return original_iter(self)
+                    return _prepared_iter(self)
+
+                setattr(_iter, "_cflearn_iter_prepared_", True)
                 return _iter
 
             d = prepared
@@ -649,10 +669,10 @@ def prepare_dataloaders(accelerator: Accelerator, *loaders: TL) -> TLs:
                 get_iterator = (lambda ins: lambda: DataLoader._get_iterator(ins))(base)
                 base._get_iterator = get_iterator
             td = type(d)
-            iter_prepared = getattr(td, "_iter_prepared_", False)
-            if not iter_prepared:
+            if not getattr(td.__iter__, "_cflearn_iter_prepared_", False):
                 td.__iter__ = _iter_factory(td.__iter__)
-                td._iter_prepared_ = True
+            td._iter_prepared_ = True
+            d._iter_prepared_ = True
             if not loader.data.config.loader_seed_sync:
                 prepared.rng_types = None
     return prepared_loaders

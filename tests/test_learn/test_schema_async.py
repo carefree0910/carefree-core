@@ -640,6 +640,7 @@ def test_prepare_dataloader_adapts_builtin_iteration() -> None:
         for_inference=True,
     )
     assert prepared is target
+    assert "__iter__" not in prepared.__dict__
 
     iterator = iter(prepared)
     assert events == []
@@ -778,10 +779,6 @@ def test_empty_async_iterator_finalizes_once() -> None:
         AsyncIterManager.cleanup(id(loader))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="P0-05 phase 4: preparing one loader should not affect its siblings",
-)
 def test_prepare_dataloader_does_not_affect_unprepared_instances() -> None:
     class Dataset:
         def __init__(self):
@@ -797,6 +794,7 @@ def test_prepare_dataloader_does_not_affect_unprepared_instances() -> None:
             self.for_inference = True
             self.process_calls = []
             self.num_iterations = 0
+            self.last_iterator = None
             self.data = SimpleNamespace(process_batch=self.process_batch)
 
         def process_batch(self, batch, *, for_inference: bool):
@@ -805,17 +803,21 @@ def test_prepare_dataloader_does_not_affect_unprepared_instances() -> None:
 
         def __iter__(self):
             self.num_iterations += 1
-            return iter([{"value": torch.tensor([self.value])}])
+            self.last_iterator = iter([{"value": torch.tensor([self.value])}])
+            return self.last_iterator
 
     existing = PreparedLoader(1)
-    _prepare_fake_loader(
+    prepared = _prepare_fake_loader(
         PreparedLoader(0),
-        lambda batch, *, for_inference: batch,
+        lambda batch, *, for_inference: {"value": batch["value"] + 10},
         for_inference=False,
     )
+    assert list(iter(prepared))[0]["value"].item() == 10
 
     for untouched, expected in [(existing, 1), (PreparedLoader(2), 2)]:
-        batches = list(iter(untouched))
+        iterator = iter(untouched)
+        assert iterator is untouched.last_iterator
+        batches = list(iterator)
         assert len(batches) == 1
         assert batches[0]["value"].item() == expected
         assert untouched.num_iterations == 1
