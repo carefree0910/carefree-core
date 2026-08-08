@@ -300,16 +300,16 @@ class AsyncIterManager:
 
     @classmethod
     def remove(cls, iter: "AsyncDataLoaderIter") -> None:
-        for id, v in cls._cur.items():
+        for loader_id, v in list(cls._cur.items()):
             if v is iter:
-                cls.cleanup(id)
+                cls.cleanup(loader_id)
+                return None
 
     @classmethod
     def cleanup(cls, id: int) -> None:
         cur = cls._cur.pop(id, None)
         if cur is not None:
-            if not cur._finalized:
-                cur._cleanup()
+            cur._cleanup()
 
 
 class AsyncDataLoaderIterCallbacks:
@@ -333,19 +333,19 @@ class AsyncDataLoaderIterCallbacks:
     def register_del(self, fn: Callable[[np.ndarray], None]) -> None:
         self.register(fn, self.del_callbacks)
 
-    def register_del_once(self, fn: Callable[[np.ndarray], None]) -> None:
+    def register_del_once(self, fn: Callable[[np.ndarray], bool]) -> None:
         self.register(fn, self.del_once_callbacks)
 
     def unregister_del(self, fn: Callable[[np.ndarray], None]) -> None:
         self.unregister(fn, self.del_callbacks)
 
-    def register_cleanup(self, fn: Callable[[np.ndarray], None]) -> None:
+    def register_cleanup(self, fn: Callable[[], None]) -> None:
         self.register(fn, self.cleanup_callbacks)
 
-    def register_cleanup_once(self, fn: Callable[[np.ndarray], None]) -> None:
+    def register_cleanup_once(self, fn: Callable[[], None]) -> None:
         self.register(fn, self.cleanup_once_callbacks)
 
-    def unregister_cleanup(self, fn: Callable[[np.ndarray], None]) -> None:
+    def unregister_cleanup(self, fn: Callable[[], None]) -> None:
         self.unregister(fn, self.cleanup_callbacks)
 
     def unregister_all(self) -> None:
@@ -388,6 +388,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
     _initialized: bool
     _finalized: bool
     _results: Dict[int, Any]
+    _retried: Set[int]
 
     enabled: bool
     presend_device: Optional[str]
@@ -404,10 +405,7 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
             )  # pragma: no cover
         self._finalized = True
         self._initialized = False
-
-    def __del__(self) -> None:
-        ADLI_CALLBACKS.call_cleanup()
-        AsyncIterManager.remove(self)
+        self._retried = set()
 
     def _initialize(self) -> None:
         self._pool = ThreadPoolExecutor(max_workers=self.async_prefetch_factor)
@@ -421,15 +419,26 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         self._initialized = True
 
     def _cleanup(self) -> None:
-        ADLI_CALLBACKS.call_cleanup()
-        self._pool.shutdown()
-        self._futures.clear()
-        self._results.clear()
-        self._dataset.async_finalize()
+        if self._finalized:
+            return None
+        self._finalized = True
+        for future in self._futures.values():
+            future.cancel()
+        try:
+            try:
+                ADLI_CALLBACKS.call_cleanup()
+            finally:
+                self._dataset.async_finalize()
+        finally:
+            try:
+                self._pool.shutdown(wait=True)
+            finally:
+                self._queue.clear()
+                self._futures.clear()
+                self._results.clear()
 
     def _finalize(self) -> None:
         self._cleanup()
-        self._finalized = True
         raise StopIteration
 
     def _async_submit(self, cursor: int, index: Any) -> None:
@@ -508,14 +517,21 @@ class AsyncDataLoaderIter(_SingleProcessDataLoaderIter):
         data = self._results.pop(cursor)
         if isinstance(data, AsyncExceptionPack):
             return self._handle_exception(data)
+        self._retried.discard(cursor)
         return data
 
     def _handle_exception(self, pack: AsyncExceptionPack) -> Any:
+        if pack.cursor in self._retried:
+            self._cleanup()
+            if isinstance(pack.e, Exception):
+                raise pack.e
+            raise RuntimeError(pack.e)
         if isinstance(pack.e, str):
             err_msg = pack.e
         else:
             err_msg = f"{pack.e}\n{''.join(traceback.format_tb(pack.e.__traceback__))}"
         console.error(f"trying to recover from error: {err_msg}")
+        self._retried.add(pack.cursor)
         queue = self._queue.copy()
         queue_cursor = self._queue_cursor
         to_re_submit = [*queue, pack]
@@ -558,8 +574,13 @@ class DataLoader(TorchDataLoader):
 
     def __iter__(self) -> Iterator[tensor_dict_type]:  # type: ignore
         self.dataset.reset(for_inference=self.for_inference)
-        for batch in super().__iter__():
-            yield self.data.process_batch(batch, for_inference=self.for_inference)
+        iterator = super().__iter__()
+        try:
+            for batch in iterator:
+                yield self.data.process_batch(batch, for_inference=self.for_inference)
+        finally:
+            if isinstance(iterator, AsyncDataLoaderIter):
+                AsyncIterManager.remove(iterator)
 
     def recover_labels(self, key: str, y: Tensor) -> Tensor:
         return self.data.recover_labels(key, y)

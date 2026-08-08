@@ -83,29 +83,8 @@ _CUSTOM_INITIALIZERS_BASELINE = dict(_CUSTOM_INITIALIZERS)
 
 
 def _clear_async_iterators() -> None:
-    # Different loaders may share one dataset, so close every worker pool but
-    # finalize each dataset at most once.
-    iterators = {
-        id(iterator): iterator
-        for iterator in learn_schema.AsyncIterManager._cur.values()
-    }
-    learn_schema.AsyncIterManager._cur.clear()
-    active_datasets = {}
-    finalized_dataset_ids = set()
-    for iterator in iterators.values():
-        if not iterator._initialized:
-            continue
-        dataset_id = id(iterator._dataset)
-        if iterator._finalized:
-            finalized_dataset_ids.add(dataset_id)
-            continue
-        iterator._pool.shutdown(wait=True)
-        iterator._results.clear()
-        iterator._finalized = True
-        active_datasets[dataset_id] = iterator._dataset
-    for dataset_id, dataset in active_datasets.items():
-        if dataset_id not in finalized_dataset_ids:
-            dataset.async_finalize()
+    for loader_id in list(learn_schema.AsyncIterManager._cur):
+        learn_schema.AsyncIterManager.cleanup(loader_id)
 
 
 def _restore_learn_state() -> None:

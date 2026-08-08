@@ -1,5 +1,4 @@
 import torch
-import pytest
 import unittest
 
 import numpy as np
@@ -261,10 +260,6 @@ class TestData(unittest.TestCase):
         np.testing.assert_allclose(b0, b1)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="P0-05: abandoning an async DataLoader retains its iterator and worker pool",
-)
 def test_abandoned_async_loader_releases_iterator() -> None:
     x = np.random.randn(64, 4)
     y = np.random.randn(64, 1)

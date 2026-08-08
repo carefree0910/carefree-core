@@ -127,6 +127,59 @@ class _PollingAsyncDataset(_RecoveringAsyncDataset):
         return super().async_fetch(cursor, index)
 
 
+class _BlockingAsyncDataset(IAsyncDataset):
+    def __init__(self, finalize_releases: bool):
+        self.finalize_releases = finalize_releases
+        self.blocked = threading.Event()
+        self.release = threading.Event()
+        self.num_finalize = 0
+
+    def __len__(self) -> int:
+        return 2
+
+    def async_reset(self) -> None:
+        pass
+
+    def async_submit(self, cursor: int, index: Any) -> bool:
+        return True
+
+    def async_fetch(self, cursor: int, index: Any) -> Dict[str, torch.Tensor]:
+        if cursor > 0:
+            self.blocked.set()
+            assert self.release.wait(5.0)
+        return {"value": torch.as_tensor(index)}
+
+    def async_finalize(self) -> None:
+        self.num_finalize += 1
+        if self.finalize_releases:
+            self.release.set()
+
+    def async_recover(self) -> None:
+        pass
+
+
+class _PermanentFailureDataset(_RecoveringAsyncDataset):
+    def __init__(self, failure: str):
+        super().__init__(failure, size=1)
+        self.error = RuntimeError(f"{failure} failed")
+
+    def async_submit(self, cursor: int, index: Any) -> bool:
+        self.events.append("submit")
+        if self.failure == "submit":
+            return False
+        self.submitted[cursor] = index
+        return True
+
+    def async_fetch(self, cursor: int, index: Any) -> Dict[str, torch.Tensor]:
+        self.events.append("fetch")
+        raise self.error
+
+    def async_recover(self) -> None:
+        super().async_recover()
+        if self.events.count("recover") > 1:
+            raise AssertionError("async recovery should be bounded")
+
+
 def _make_loader(
     dataset: IAsyncDataset,
     *,
@@ -219,14 +272,24 @@ def test_async_loader_config_serialization_contract() -> None:
     assert legacy.async_prefetch_factor_for_validation is None
 
 
-def test_async_iterator_manager_remove_delegates_cleanup(monkeypatch) -> None:
-    iterator = object()
-    monkeypatch.setattr(AsyncIterManager, "_cur", {123: iterator})
+def test_async_iterator_manager_removes_by_identity(monkeypatch) -> None:
+    cleaned = []
 
-    with patch.object(AsyncIterManager, "cleanup") as cleanup:
-        AsyncIterManager.remove(iterator)
+    class Iterator:
+        _finalized = False
 
-    cleanup.assert_called_once_with(123)
+        def _cleanup(self) -> None:
+            self._finalized = True
+            cleaned.append(self)
+
+    first = Iterator()
+    second = Iterator()
+    monkeypatch.setattr(AsyncIterManager, "_cur", {123: first, 456: second})
+
+    AsyncIterManager.remove(first)
+
+    assert AsyncIterManager._cur == {456: second}
+    assert cleaned == [first]
 
 
 def test_async_iterator_callbacks_lifecycle() -> None:
@@ -329,6 +392,7 @@ def test_async_loader_handles_partial_initial_prefetch() -> None:
         with pytest.raises(StopIteration):
             next(iterator)
         assert dataset.events == ["reset", "submit", "fetch", "finalize"]
+        assert id(loader) not in AsyncIterManager._cur
     finally:
         AsyncIterManager.cleanup(id(loader))
 
@@ -386,6 +450,7 @@ def test_async_loader_waits_for_submitted_future() -> None:
     iterator = object.__new__(AsyncDataLoaderIter)
     iterator._futures = {0: SimpleNamespace(result=lambda: waited.append(True))}
     iterator._results = {0: "data"}
+    iterator._retried = set()
 
     assert iterator._poll(0) == "data"
     assert waited == [True]
@@ -402,8 +467,64 @@ def test_async_loader_propagates_unhandled_worker_exception(monkeypatch) -> None
     try:
         with pytest.raises(RuntimeError, match="worker failed"):
             list(loader)
+        assert dataset.events == ["reset", "finalize"]
+        assert id(loader) not in AsyncIterManager._cur
     finally:
         AsyncIterManager.cleanup(id(loader))
+
+
+@pytest.mark.parametrize("release_from", ["callback", "dataset"])
+def test_async_loader_close_releases_blocked_prefetch(release_from: str) -> None:
+    dataset = _BlockingAsyncDataset(release_from == "dataset")
+    loader = _make_loader(dataset, async_prefetch_factor=2)
+    iterator = iter(loader)
+    cleaned = []
+
+    def cleanup() -> None:
+        cleaned.append(True)
+        if release_from == "callback":
+            dataset.release.set()
+
+    ADLI_CALLBACKS.register_cleanup(cleanup)
+    try:
+        assert next(iterator)["value"].item() == 0
+        assert dataset.blocked.wait(5.0)
+        managed = AsyncIterManager._cur[id(loader)]
+        threads = list(managed._pool._threads)
+        errors = []
+        closed = threading.Event()
+
+        def close() -> None:
+            try:
+                iterator.close()
+            except BaseException as err:
+                errors.append(err)
+            finally:
+                closed.set()
+
+        closer = threading.Thread(target=close)
+        closer.start()
+        closed_without_rescue = closed.wait(1.0)
+        dataset.release.set()
+        closer.join(5.0)
+
+        assert closed_without_rescue
+        assert not closer.is_alive()
+        assert errors == []
+        assert id(loader) not in AsyncIterManager._cur
+        assert dataset.num_finalize == 1
+        assert cleaned == [True]
+        assert managed._futures == {}
+        assert managed._results == {}
+        assert all(not thread.is_alive() for thread in threads)
+
+        managed._cleanup()
+        assert dataset.num_finalize == 1
+        assert cleaned == [True]
+    finally:
+        dataset.release.set()
+        AsyncIterManager.cleanup(id(loader))
+        ADLI_CALLBACKS.unregister_cleanup(cleanup)
 
 
 def test_async_loader_polls_until_data_is_ready() -> None:
@@ -451,6 +572,26 @@ def test_async_loader_recovers_from_failure(failure: str) -> None:
             assert "async submit failed" in error.call_args.args[0]
         else:
             assert "fetch failed" in error.call_args.args[0]
+    finally:
+        AsyncIterManager.cleanup(id(loader))
+
+
+@pytest.mark.parametrize("failure", ["submit", "fetch"])
+def test_async_loader_bounds_recovery(failure: str) -> None:
+    dataset = _PermanentFailureDataset(failure)
+    loader = _make_loader(dataset, async_prefetch_factor=1)
+
+    try:
+        with patch("core.learn.schema.console.error") as error:
+            with pytest.raises(RuntimeError, match=f"{failure} failed") as raised:
+                list(loader)
+        if failure == "fetch":
+            assert raised.value is dataset.error
+        assert dataset.events.count("recover") == 1
+        assert dataset.events.count("reset") == 2
+        assert dataset.events.count("finalize") == 2
+        error.assert_called_once()
+        assert id(loader) not in AsyncIterManager._cur
     finally:
         AsyncIterManager.cleanup(id(loader))
 
