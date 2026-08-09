@@ -2115,10 +2115,13 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         train_steps = self.train_steps
         if not train_steps:
             return StepOutputs(postprocess(get_fw()), {})
-        fw = None
-        for train_step in self.train_steps:
+        active_train_steps: List[TrainStep] = []
+        for train_step in train_steps:
             if train_step.should_skip(self, None):
                 continue
+            active_train_steps.append(train_step)
+        fw = None
+        for train_step in active_train_steps:
             if fw is None or train_step.requires_new_forward:
                 fw = postprocess(get_fw())
             if get_losses:
@@ -2188,12 +2191,16 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         """
 
         state = trainer.state
+        train_steps = self.train_steps
+        active_train_steps: List[TrainStep] = []
+        for train_step in train_steps:
+            if train_step.should_skip(self, state):
+                continue
+            active_train_steps.append(train_step)
         # sanity check
         fw_has_grad = True
         fw_train_step: Optional[TrainStep] = None
-        for train_step in self.train_steps:
-            if train_step.should_skip(self, state):
-                continue
+        for train_step in active_train_steps:
             if fw_train_step is None or train_step.requires_new_forward:
                 fw_has_grad = train_step.requires_grad_in_forward
                 fw_train_step = train_step
@@ -2214,18 +2221,14 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         get_fw = lambda: self.run(batch_idx, batch, state, **forward_kwargs)
 
         def can_disable_forward_grad(train_step_idx: int) -> bool:
-            for next_train_step in self.train_steps[train_step_idx + 1 :]:
-                if next_train_step.should_skip(self, state):
-                    continue
+            for next_train_step in active_train_steps[train_step_idx + 1 :]:
                 if next_train_step.requires_new_forward:
                     return True
                 if next_train_step.requires_grad_in_forward:
                     return False
             return True
 
-        for train_step_idx, train_step in enumerate(self.train_steps):
-            if train_step.should_skip(self, state):
-                continue
+        for train_step_idx, train_step in enumerate(active_train_steps):
             update = (
                 state.step
                 % (train_step.grad_accumulate or trainer.config.grad_accumulate)
@@ -2260,7 +2263,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         for c in trainer.callbacks:
             c.after_gradient_update(trainer, batch, forward, loss_tensors, any_update)
         # train step callbacks
-        for train_step in self.train_steps:
+        for train_step in train_steps:
             train_step.callback(self, trainer, batch, forward)
         return StepOutputs(forward, loss_tensors)
 

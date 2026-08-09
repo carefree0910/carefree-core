@@ -95,11 +95,6 @@ def make_trainer(optimizers, *, state=None, callbacks=None, closure=False):
     return trainer
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="P0-06: capture dynamic train steps once",
-)
 def test_model_operations_capture_dynamic_steps_once():
     models = []
     batch = {cflearn.INPUT_KEY: torch.ones(1, 1)}
@@ -118,11 +113,6 @@ def test_model_operations_capture_dynamic_steps_once():
     assert len(models[1].provided_steps[0].callback_calls) == 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="P0-06: evaluate should_skip once",
-)
 def test_train_evaluates_stateful_skip_once():
     step = Step(skip_fn=lambda num_calls: num_calls > 1)
     model = Model(lambda: [step])
@@ -174,6 +164,120 @@ def test_train_binds_deferred_closures_to_steps():
     for pack in packs:
         pack.loss_fn()
     assert [len(step.loss_calls) for step in steps] == [1, 1]
+
+
+def test_model_operations_preserve_repeated_step_positions():
+    batch = {cflearn.INPUT_KEY: torch.ones(1, 1)}
+    shared_step = Step()
+    model = Model(lambda: [shared_step, shared_step])
+    model.step(0, batch, get_losses=True)
+    assert shared_step.skip_states == [None, None]
+    assert len(shared_step.loss_calls) == 2
+
+    shared_step = Step()
+    shared_step.requires_new_forward = True
+    model = Model(lambda: [shared_step, shared_step])
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    trainer = make_trainer({"all": optimizer})
+
+    model.train(0, batch, trainer, {}, {})
+
+    assert shared_step.skip_states == [trainer.state, trainer.state]
+    assert len(shared_step.loss_calls) == 2
+    assert len(shared_step.callback_calls) == 2
+
+
+def test_all_skipped_train_keeps_callback_contract():
+    skipped_step = Step(skip_fn=lambda _: True)
+    model = Model(lambda: [skipped_step])
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    callback = cflearn.TrainingLoopCallback()
+    trainer = make_trainer({"all": optimizer}, callbacks=[callback])
+    batch = {cflearn.INPUT_KEY: torch.ones(1, 1)}
+
+    with patch.object(
+        model,
+        "run",
+        wraps=model.run,
+    ) as run, patch.object(
+        trainer.accelerator,
+        "backward",
+        wraps=trainer.accelerator.backward,
+    ) as backward, patch.object(
+        optimizer,
+        "step",
+        wraps=optimizer.step,
+    ) as optimizer_step, patch.object(
+        optimizer,
+        "zero_grad",
+        wraps=optimizer.zero_grad,
+    ) as zero_grad, patch.object(
+        callback,
+        "after_gradient_update",
+        wraps=callback.after_gradient_update,
+    ) as after_gradient_update:
+        outputs = model.train(0, batch, trainer, {}, {})
+
+    run.assert_called_once_with(0, batch, trainer.state)
+    backward.assert_not_called()
+    optimizer_step.assert_not_called()
+    zero_grad.assert_not_called()
+    after_gradient_update.assert_called_once()
+    callback_args = after_gradient_update.call_args.args
+    assert callback_args[0] is trainer
+    assert callback_args[1] is batch
+    assert callback_args[2] is outputs.forward_results
+    assert callback_args[3:] == ({}, False)
+    assert skipped_step.skip_states == [trainer.state]
+    assert skipped_step.loss_calls == []
+    assert len(skipped_step.callback_calls) == 1
+    assert skipped_step.callback_calls[0] is outputs.forward_results
+
+
+def test_accumulating_step_only_runs_backward_and_no_sync():
+    train_step = Step(grad_accumulate=2)
+    model = Model(lambda: [train_step])
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    callback = cflearn.TrainingLoopCallback()
+    trainer = make_trainer({"all": optimizer}, callbacks=[callback])
+    trainer.model = model
+    batch = {cflearn.INPUT_KEY: torch.ones(1, 1)}
+
+    with patch.object(
+        trainer.accelerator,
+        "backward",
+        wraps=trainer.accelerator.backward,
+    ) as backward, patch.object(
+        trainer.accelerator,
+        "no_sync",
+        wraps=trainer.accelerator.no_sync,
+    ) as no_sync, patch.object(
+        optimizer,
+        "step",
+        wraps=optimizer.step,
+    ) as optimizer_step, patch.object(
+        optimizer,
+        "zero_grad",
+        wraps=optimizer.zero_grad,
+    ) as zero_grad, patch.object(
+        callback,
+        "before_gradient_update",
+        wraps=callback.before_gradient_update,
+    ) as before_gradient_update, patch.object(
+        callback,
+        "after_gradient_update",
+        wraps=callback.after_gradient_update,
+    ) as after_gradient_update:
+        model.train(0, batch, trainer, {}, {})
+
+    backward.assert_called_once()
+    no_sync.assert_called_once_with(model.m)
+    optimizer_step.assert_not_called()
+    zero_grad.assert_not_called()
+    before_gradient_update.assert_called_once()
+    after_gradient_update.assert_called_once()
+    assert before_gradient_update.call_args.args[-1] is False
+    assert after_gradient_update.call_args.args[-1] is False
 
 
 def test_closure_optimizer_hooks_and_callback_identity():
