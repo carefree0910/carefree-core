@@ -118,9 +118,13 @@ class TestToolkit(unittest.TestCase):
     def test_show_or_save(self, mock_show) -> None:
         show_or_save(None)
         mock_show.assert_called_once()
-        fig = Mock()
-        show_or_save("", fig=fig)
-        fig.savefig.assert_called_once()
+
+        fig = plt.figure()
+        export_path = self.tmp_path / "figure.png"
+        with patch.object(fig, "savefig", wraps=fig.savefig) as savefig:
+            show_or_save(str(export_path), fig=fig)
+        savefig.assert_called_once_with(str(export_path))
+        self.assertTrue(export_path.is_file())
 
     @patch("core.learn.toolkit.plt.show")
     def test_show_or_return(self, mock_show) -> None:

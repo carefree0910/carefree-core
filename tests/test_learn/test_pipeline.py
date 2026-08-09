@@ -2,6 +2,7 @@ import os
 import sys
 import torch
 import pytest
+import inspect
 import unittest
 
 import numpy as np
@@ -10,11 +11,12 @@ import core.learn as cflearn
 import torch.nn.functional as F
 
 from pathlib import Path
+from accelerate import Accelerator
 from unittest.mock import patch
-from unittest.mock import Mock
 from core.learn.schema import losses_type
 from core.toolkit.misc import random_hash
 from core.toolkit.misc import get_latest_workspace
+from core.toolkit.misc import DDPInfo
 from core.learn.pipeline.blocks.basic import StateInfo
 from core.learn.pipeline.blocks.basic import OptimizerSettings
 
@@ -65,8 +67,12 @@ class TestPipeline(unittest.TestCase):
             cflearn.TrainingPipeline.init(config).predict(test_loader)
         with self.assertRaises(ValueError):
             p0.predict(test_loader, return_classes=True, return_probabilities=True)
-        malformed_outputs = Mock()
-        malformed_outputs.forward_results = {cflearn.PREDICTIONS_KEY: []}
+        malformed_outputs = cflearn.InferenceOutputs(
+            forward_results={cflearn.PREDICTIONS_KEY: []},
+            labels={},
+            metric_outputs=None,
+            loss_items=None,
+        )
         with patch.object(
             p0.build_inference.inference,
             "get_outputs",
@@ -103,15 +109,20 @@ class TestPipeline(unittest.TestCase):
             loss_name="mse",
         )
         pipeline = cflearn.InferencePipeline.build_with(config)
-        loader = Mock()
+        data, *_ = cflearn.testing.arange_data(n=1, dim=2, batch_size=1)
+        loader = data.build_loader(data.bundle.x_train, batch_size=1)
         preserved = torch.ones(1)
 
         def predict(predictions, **kwargs):
-            outputs = Mock()
-            outputs.forward_results = {
-                cflearn.PREDICTIONS_KEY: predictions,
-                "preserved": preserved,
-            }
+            outputs = cflearn.InferenceOutputs(
+                forward_results={
+                    cflearn.PREDICTIONS_KEY: predictions,
+                    "preserved": preserved,
+                },
+                labels={},
+                metric_outputs=None,
+                loss_items=None,
+            )
             with patch.object(
                 pipeline.build_inference.inference,
                 "get_outputs",
@@ -249,8 +260,14 @@ class TestPipeline(unittest.TestCase):
         self.assertIs(callback_predictions[0], callback_classes)
 
         # Flag conflicts are still reported only after inference has run.
-        outputs = Mock()
-        outputs.forward_results = {cflearn.PREDICTIONS_KEY: torch.zeros(1, 1)}
+        outputs = cflearn.InferenceOutputs(
+            forward_results={
+                cflearn.PREDICTIONS_KEY: torch.zeros(1, 1),
+            },
+            labels={},
+            metric_outputs=None,
+            loss_items=None,
+        )
         with patch.object(
             pipeline.build_inference.inference,
             "get_outputs",
@@ -265,33 +282,6 @@ class TestPipeline(unittest.TestCase):
         get_outputs.assert_called_once()
 
     def test_prepare_distributed_with(self):
-        @cflearn.IModel.register("$test_prepared_model")
-        class PreparedModel(cflearn.IModel):
-            @property
-            def train_steps(self):
-                return []
-
-            @property
-            def all_modules(self):
-                return [self.m]
-
-            def build(self, config):
-                self.m = cflearn.build_module(
-                    config.module_name,
-                    config=config.module_config,
-                )
-                self.runtime_state = object()
-
-        class PreparedModule(nn.Module):
-            def __init__(self, module):
-                super().__init__()
-                self.module = module
-                self.num_forwards = 0
-
-            def forward(self, inputs):
-                self.num_forwards += 1
-                return inputs.new_full((len(inputs), 1), 7.0)
-
         data, in_dim, out_dim = cflearn.testing.arange_data(
             n=4,
             dim=2,
@@ -299,45 +289,68 @@ class TestPipeline(unittest.TestCase):
             batch_size=4,
         )
         config = cflearn.Config(
-            model=PreparedModel.__identifier__,
             module_name="linear",
             module_config={"input_dim": in_dim, "output_dim": out_dim},
+            loss_name="mse",
         )
         pipeline = cflearn.InferencePipeline.build_with(config)
         build_model = pipeline.build_model
         inference = pipeline.build_inference.inference
         original_model = build_model.model
-        original_module = original_model.m
-        runtime_state = original_model.runtime_state
-        prepared_module = PreparedModule(original_module)
-        accelerator = Mock()
-        accelerator.prepare.return_value = prepared_module
+        original_modules = original_model.all_modules
+        runtime_state = object()
+        original_model.runtime_state = runtime_state
+        loader = data.build_loader(data.bundle.x_train, batch_size=4)
+        predictions_before = pipeline.predict(
+            loader,
+            recover_predictions=False,
+        )[cflearn.PREDICTIONS_KEY]
+        accelerator = Accelerator(cpu=True)
 
         with patch.object(
-            original_model,
-            "from_accelerator",
-            side_effect=RuntimeError("failed to construct prepared model"),
-        ):
-            with self.assertRaisesRegex(RuntimeError, "failed to construct"):
-                pipeline.prepare_distributed_with(accelerator)
+            accelerator,
+            "prepare",
+            wraps=accelerator.prepare,
+        ) as prepare:
+            with patch.object(
+                original_model,
+                "from_accelerator",
+                side_effect=RuntimeError("failed to construct prepared model"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "failed to construct"):
+                    pipeline.prepare_distributed_with(accelerator)
+            returned = pipeline.prepare_distributed_with(accelerator)
         self.assertIs(build_model.model, original_model)
         self.assertIs(inference.model, original_model)
 
-        returned = pipeline.prepare_distributed_with(accelerator)
         prepared_model = build_model.model
         self.assertIsNone(returned)
-        self.assertEqual(accelerator.prepare.call_count, 2)
-        accelerator.prepare.assert_called_with(original_module)
+        self.assertEqual(prepare.call_count, 2)
+        for call in prepare.call_args_list:
+            self.assertTupleEqual(call.args, tuple(original_modules))
         self.assertIs(prepared_model, original_model)
-        self.assertIs(prepared_model.m, prepared_module)
         self.assertIs(prepared_model.runtime_state, runtime_state)
         self.assertIs(inference.model, prepared_model)
-        loader = data.build_loader(data.bundle.x_train, batch_size=4)
-        predictions = pipeline.predict(loader, recover_predictions=False)[
+        predictions_after = pipeline.predict(loader, recover_predictions=False)[
             cflearn.PREDICTIONS_KEY
         ]
-        self.assertEqual(prepared_module.num_forwards, 1)
-        torch.testing.assert_close(predictions, torch.full((4, 1), 7.0))
+        torch.testing.assert_close(predictions_after, predictions_before)
+
+        single_model = cflearn.EnsembleModel(original_model, 1)
+        single_model.loss = None
+        build_model.model = single_model
+        inference.model = single_model
+        single_module = single_model.m
+        with patch.object(
+            accelerator,
+            "prepare",
+            wraps=accelerator.prepare,
+        ) as prepare:
+            returned = pipeline.prepare_distributed_with(accelerator)
+        self.assertIsNone(returned)
+        prepare.assert_called_once_with(single_module)
+        self.assertIs(build_model.model, single_model)
+        self.assertIs(inference.model, single_model)
 
     def test_load_training(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()
@@ -409,10 +422,9 @@ class TestPipeline(unittest.TestCase):
         cflearn.PipelineSerializer.update(p1, update_workspace)
         p_folder = update_workspace / cflearn.PipelineSerializer.pipeline_folder
         cflearn.PipelineSerializer._load(p_folder)
+
         with self.assertRaises(ValueError):
-            m_block = Mock()
-            m_block.__identifier__ = "foo"
-            cflearn.PipelineSerializer._load(p_folder, focuses=[m_block])
+            cflearn.PipelineSerializer._load(p_folder, focuses=[cflearn.TrainingBlock])
         p2 = cflearn.PipelineSerializer.load_inference(update_workspace)
         r2 = p2.predict(test_loader)[cflearn.PREDICTIONS_KEY]
         np.testing.assert_allclose(r1, r2)
@@ -420,8 +432,14 @@ class TestPipeline(unittest.TestCase):
             cflearn.PipelineSerializer.update(p1, self.tmp_path / "missing")
 
     def test_scripted_serializer_contract(self):
-        pipeline = Mock()
-        scripted = Mock()
+        pipeline = cflearn.InferencePipeline.build_with(
+            cflearn.Config(
+                module_name="linear",
+                module_config={"input_dim": 1, "output_dim": 1},
+                loss_name="mse",
+            )
+        )
+        scripted = torch.jit.trace(nn.Linear(1, 1), torch.ones(1, 1))
         export_file = "model.pt"
         with patch.object(
             cflearn.PipelineSerializer,
@@ -619,17 +637,21 @@ class TestBlocks(unittest.TestCase):
         block = cflearn.PrepareWorkspaceBlock()
         block2 = cflearn.SerializeDataBlock()
         block.training_workspace = self._workspace("_foo")
-        mock_ddp_info = Mock()
-        mock_ddp_info.local_rank = 1
-        mock_ddp_info.world_size = 2
+        ddp_info = DDPInfo(rank=1, world_size=2, local_rank=1)
+        ddp_env = {
+            "RANK": str(ddp_info.rank),
+            "WORLD_SIZE": str(ddp_info.world_size),
+            "LOCAL_RANK": str(ddp_info.local_rank),
+        }
+        with patch.dict(os.environ, ddp_env):
+            self.assertFalse(block.is_local_rank_0)
         with patch("core.learn.pipeline.blocks.basic.is_dist_initialized") as mock_dist:
             mock_dist.return_value = True
             with patch("core.learn.pipeline.common.is_ddp") as mock_ddp, patch(
                 "core.learn.pipeline.common.get_ddp_info"
             ) as mock_info:
                 mock_ddp.return_value = True
-                mock_info.return_value = mock_ddp_info
-                self.assertFalse(block.is_local_rank_0)
+                mock_info.return_value = ddp_info
                 block.build(config)
                 block2.save_extra(self._workspace("data"))
         block = cflearn.ExtractStateInfoBlock()
@@ -637,9 +659,8 @@ class TestBlocks(unittest.TestCase):
         self.assertFalse(block.try_load(self._workspace("_bar")))
         with self.assertRaises(ValueError):
             block.from_scratch(config)
-        with patch("core.learn.pipeline.blocks.basic.get_ddp_info") as mock_info:
+        with patch.dict(os.environ, ddp_env):
             block.data = data
-            mock_info.return_value = mock_ddp_info
             block.from_scratch(config)
         block = cflearn.BuildMonitorsBlock()
         block.build(config)
@@ -652,8 +673,8 @@ class TestBlocks(unittest.TestCase):
         with patch("core.learn.pipeline.blocks.basic.inspect") as mock_inspect:
             mock_inspect.currentframe.return_value = None
             block.save_extra(None)
-            frame = Mock()
-            frame.f_back = None
+            frame = inspect.currentframe()
+            self.assertIsNotNone(frame)
             mock_inspect.currentframe.return_value = frame
             mock_inspect.getsource.return_value = "source = True\n"
             script_folder = self.tmp_path / "script"

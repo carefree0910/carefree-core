@@ -6,6 +6,7 @@ import core.learn as cflearn
 
 from typing import Optional
 from pathlib import Path
+from unittest.mock import patch
 from core.learn.schema import DataLoader
 from core.toolkit.types import np_dict_type
 
@@ -67,12 +68,36 @@ class TestONNX(unittest.TestCase):
 
         onnx_inference = cflearn.Inference(onnx=str(onnx_file))
         onnx_inference.get_outputs(loader, metrics=FooMetric(), return_labels=True)
-        onnx_outputs = onnx_inference.get_outputs(loader).forward_results
+        num_injections = 0
+
+        def inject_outputs(_, __) -> None:
+            nonlocal num_injections
+            num_injections += 1
+
+        onnx_outputs = onnx_inference.get_outputs(
+            loader,
+            inject_outputs_fn=inject_outputs,
+        ).forward_results
+        self.assertEqual(num_injections, len(loader))
 
         for k in model_outputs:
             mk_out = model_outputs[k]
             ok_out = onnx_outputs[k]
             np.testing.assert_array_almost_equal(mk_out, ok_out)
+
+        empty_loader = data.build_loader(x[:0], y[:0])
+        self.assertIsNotNone(onnx_inference.onnx)
+        with patch.object(
+            onnx_inference.onnx,
+            "predict",
+            wraps=onnx_inference.onnx.predict,
+        ) as predict:
+            empty_outputs = onnx_inference.get_outputs(empty_loader)
+        predict.assert_not_called()
+        self.assertDictEqual(empty_outputs.forward_results, {})
+        self.assertDictEqual(empty_outputs.labels, {})
+        self.assertIsNone(empty_outputs.metric_outputs)
+        self.assertIsNone(empty_outputs.loss_items)
 
 
 if __name__ == "__main__":

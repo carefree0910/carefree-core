@@ -12,11 +12,10 @@ from torch import Tensor
 from typing import Tuple
 from typing import Optional
 from accelerate import Accelerator
+from contextlib import ExitStack
 from rich.progress import Progress
 from unittest.mock import patch
-from unittest.mock import Mock
-from unittest.mock import MagicMock
-from unittest.mock import PropertyMock
+from torch.utils.data import DataLoader as TorchDataLoader
 from core.learn.schema import DataLoader
 from core.toolkit.types import np_dict_type
 
@@ -81,6 +80,7 @@ class TestInference(unittest.TestCase):
 
         accumulator = cflearn.MetricAccumulator()
         stream = cflearn.StreamMSE()
+        accelerator = Accelerator(cpu=True)
         stream.reset()
         self.assertIs(
             learn_inference._merge_metrics(None, accumulator, [stream]),
@@ -95,7 +95,7 @@ class TestInference(unittest.TestCase):
             ],
         ) as gather:
             merged = learn_inference._merge_metrics(
-                MagicMock(),
+                accelerator,
                 accumulator,
                 [stream],
             )
@@ -107,7 +107,7 @@ class TestInference(unittest.TestCase):
             "_gather_objects",
             return_value=[(accumulator, [None])],
         ):
-            learn_inference._merge_metrics(MagicMock(), accumulator, [stream])
+            learn_inference._merge_metrics(accelerator, accumulator, [stream])
         self.assertEqual(stream.finalize(), 3.0)
 
     def test_successful_native_inference_is_single_pass(self) -> None:
@@ -125,27 +125,48 @@ class TestInference(unittest.TestCase):
         )
         model = cflearn.IModel.from_config(config)
         inference = cflearn.Inference(model=model)
+        original_loader_iter = TorchDataLoader.__iter__
 
         for should_stop_progress in [True, False]:
             with self.subTest(should_stop_progress=should_stop_progress):
-                yielded_batches = []
+                loader = TorchDataLoader(batches, batch_size=None)
+                progress = Progress(auto_refresh=False, disable=True)
+                num_injections = 0
 
-                def iterate():
-                    for i, batch in enumerate(batches):
-                        yielded_batches.append(i)
-                        yield batch
+                def inject_outputs(_, __) -> None:
+                    nonlocal num_injections
+                    num_injections += 1
 
-                loader = MagicMock()
-                loader.__len__.return_value = len(batches)
-                loader.__iter__.side_effect = iterate
-                progress = MagicMock()
-                progress_task = 7
-                progress.add_task.return_value = progress_task
-                inject_outputs = Mock()
-
-                with patch.object(model, "step", wraps=model.step) as model_step:
+                with ExitStack() as stack:
+                    loader_iter = stack.enter_context(
+                        patch.object(
+                            TorchDataLoader,
+                            "__iter__",
+                            autospec=True,
+                            side_effect=original_loader_iter,
+                        )
+                    )
+                    model_step = stack.enter_context(
+                        patch.object(model, "step", wraps=model.step)
+                    )
+                    add_task = stack.enter_context(
+                        patch.object(progress, "add_task", wraps=progress.add_task)
+                    )
+                    advance_progress = stack.enter_context(
+                        patch.object(progress, "advance", wraps=progress.advance)
+                    )
+                    remove_task = stack.enter_context(
+                        patch.object(
+                            progress,
+                            "remove_task",
+                            wraps=progress.remove_task,
+                        )
+                    )
+                    stop_progress = stack.enter_context(
+                        patch.object(progress, "stop", wraps=progress.stop)
+                    )
                     outputs = inference.get_outputs(
-                        loader,
+                        loader,  # type: ignore
                         recover_labels=False,
                         recover_predictions=False,
                         inject_outputs_fn=inject_outputs,
@@ -153,19 +174,22 @@ class TestInference(unittest.TestCase):
                         should_stop_progress=should_stop_progress,
                     )
 
-                self.assertListEqual(yielded_batches, list(range(len(batches))))
-                self.assertEqual(loader.__iter__.call_count, 1)
+                loader_iter.assert_called_once_with(loader)
                 self.assertEqual(model_step.call_count, len(batches))
-                self.assertEqual(inject_outputs.call_count, len(batches))
-                self.assertEqual(progress.advance.call_count, len(batches))
-                for advance_call in progress.advance.call_args_list:
-                    self.assertTupleEqual(advance_call.args, (progress_task,))
-                progress.add_task.assert_called_once()
-                progress.remove_task.assert_called_once_with(progress_task)
-                if should_stop_progress:
-                    progress.stop.assert_called_once_with()
-                else:
-                    progress.stop.assert_not_called()
+                self.assertEqual(num_injections, len(batches))
+                add_task.assert_called_once()
+                self.assertEqual(add_task.call_args.kwargs["total"], len(batches))
+                remove_task.assert_called_once()
+                progress_task = remove_task.call_args.args[0]
+                self.assertListEqual(
+                    [call.args for call in advance_progress.call_args_list],
+                    [(progress_task,)] * len(batches),
+                )
+                self.assertEqual(
+                    stop_progress.call_count,
+                    int(should_stop_progress),
+                )
+                self.assertListEqual(progress.tasks, [])
                 self.assertTupleEqual(
                     outputs.forward_results[cflearn.PREDICTIONS_KEY].shape,
                     (len(batches) * batch_size, output_dim),
@@ -184,45 +208,66 @@ class TestInference(unittest.TestCase):
         inference = cflearn.Inference(model=original)
         inference.model = replacement
 
-        with patch.object(original, "step", wraps=original.step) as original_step:
-            with patch.object(
-                replacement,
-                "step",
-                wraps=replacement.step,
-            ) as replacement_step:
-                inference.get_outputs(
-                    loader,
-                    target_outputs=[cflearn.PREDICTIONS_KEY],
-                    target_labels=[cflearn.LABEL_KEY],
-                    recover_labels=False,
-                    recover_predictions=False,
-                )
+        original_forwards = []
+        replacement_forwards = []
+        handles = [
+            original.m.register_forward_hook(lambda *_: original_forwards.append(None)),
+            replacement.m.register_forward_hook(
+                lambda *_: replacement_forwards.append(None)
+            ),
+        ]
+        try:
+            inference.get_outputs(
+                loader,
+                target_outputs=[cflearn.PREDICTIONS_KEY],
+                target_labels=[cflearn.LABEL_KEY],
+                recover_labels=False,
+                recover_predictions=False,
+            )
+        finally:
+            for handle in handles:
+                handle.remove()
 
-        original_step.assert_not_called()
-        self.assertEqual(replacement_step.call_count, len(loader))
+        self.assertListEqual(original_forwards, [])
+        self.assertEqual(len(replacement_forwards), len(loader))
 
     def test_empty_loader(self) -> None:
-        loader = MagicMock()
-        loader.__len__.return_value = 0
-        loader.__iter__.return_value = iter([])
-        progress = MagicMock()
-        progress.add_task.return_value = 7
-        onnx = Mock()
+        loader = TorchDataLoader([], batch_size=None)
+        progress = Progress(auto_refresh=False, disable=True)
+        _, model = _make_loss_model()
 
-        outputs = cflearn.Inference(onnx=onnx).get_outputs(
-            loader,
-            progress=progress,
-        )
+        with ExitStack() as stack:
+            model_step = stack.enter_context(
+                patch.object(model, "step", wraps=model.step)
+            )
+            add_task = stack.enter_context(
+                patch.object(progress, "add_task", wraps=progress.add_task)
+            )
+            advance_progress = stack.enter_context(
+                patch.object(progress, "advance", wraps=progress.advance)
+            )
+            remove_task = stack.enter_context(
+                patch.object(progress, "remove_task", wraps=progress.remove_task)
+            )
+            stop_progress = stack.enter_context(
+                patch.object(progress, "stop", wraps=progress.stop)
+            )
+            outputs = cflearn.Inference(model=model).get_outputs(
+                loader,  # type: ignore
+                progress=progress,
+            )
 
+        model_step.assert_not_called()
         self.assertDictEqual(outputs.forward_results, {})
         self.assertDictEqual(outputs.labels, {})
         self.assertIsNone(outputs.metric_outputs)
         self.assertIsNone(outputs.loss_items)
-        onnx.predict.assert_not_called()
-        self.assertEqual(progress.add_task.call_args.kwargs["total"], 0)
-        progress.advance.assert_not_called()
-        progress.stop.assert_called_once_with()
-        progress.remove_task.assert_called_once_with(7)
+        add_task.assert_called_once()
+        self.assertEqual(add_task.call_args.kwargs["total"], 0)
+        advance_progress.assert_not_called()
+        stop_progress.assert_called_once_with()
+        remove_task.assert_called_once()
+        self.assertListEqual(progress.tasks, [])
 
     def test_portion_progress_alignment(self) -> None:
         batches = [{cflearn.INPUT_KEY: torch.tensor([[float(i)]])} for i in range(3)]
@@ -233,39 +278,51 @@ class TestInference(unittest.TestCase):
             (2.0, 3),
             (float("nan"), 3),
         ]
+        _, model = _make_loss_model()
+        inference = cflearn.Inference(model=model)
         for portion, expected in cases:
             with self.subTest(portion=portion):
-                yielded = []
+                loader = TorchDataLoader(batches, batch_size=None)
+                progress = Progress(auto_refresh=False, disable=True)
+                with ExitStack() as stack:
+                    model_step = stack.enter_context(
+                        patch.object(model, "step", wraps=model.step)
+                    )
+                    add_task = stack.enter_context(
+                        patch.object(progress, "add_task", wraps=progress.add_task)
+                    )
+                    advance_progress = stack.enter_context(
+                        patch.object(progress, "advance", wraps=progress.advance)
+                    )
+                    remove_task = stack.enter_context(
+                        patch.object(
+                            progress,
+                            "remove_task",
+                            wraps=progress.remove_task,
+                        )
+                    )
+                    stop_progress = stack.enter_context(
+                        patch.object(progress, "stop", wraps=progress.stop)
+                    )
+                    outputs = inference.get_outputs(
+                        loader,  # type: ignore
+                        portion=portion,
+                        recover_labels=False,
+                        recover_predictions=False,
+                        progress=progress,
+                    )
 
-                def iterate():
-                    for i, batch in enumerate(batches):
-                        yielded.append(i)
-                        yield batch
-
-                loader = MagicMock()
-                loader.__len__.return_value = len(batches)
-                loader.__iter__.side_effect = iterate
-                progress = MagicMock()
-                progress.add_task.return_value = 7
-                onnx = Mock()
-                onnx.predict.side_effect = lambda batch: {
-                    cflearn.PREDICTIONS_KEY: batch[cflearn.INPUT_KEY]
-                }
-
-                outputs = cflearn.Inference(onnx=onnx).get_outputs(
-                    loader,
-                    portion=portion,
-                    recover_labels=False,
-                    recover_predictions=False,
-                    progress=progress,
+                self.assertEqual(model_step.call_count, expected)
+                add_task.assert_called_once()
+                self.assertEqual(add_task.call_args.kwargs["total"], expected)
+                remove_task.assert_called_once()
+                progress_task = remove_task.call_args.args[0]
+                self.assertListEqual(
+                    [call.args for call in advance_progress.call_args_list],
+                    [(progress_task,)] * expected,
                 )
-
-                self.assertListEqual(yielded, list(range(expected)))
-                self.assertEqual(onnx.predict.call_count, expected)
-                self.assertEqual(progress.add_task.call_args.kwargs["total"], expected)
-                self.assertEqual(progress.advance.call_count, expected)
-                progress.stop.assert_called_once_with()
-                progress.remove_task.assert_called_once_with(7)
+                stop_progress.assert_called_once_with()
+                self.assertListEqual(progress.tasks, [])
                 if expected == 0:
                     self.assertDictEqual(outputs.forward_results, {})
                 else:
@@ -276,16 +333,12 @@ class TestInference(unittest.TestCase):
                     )
 
     def test_uneven_padded_batches(self) -> None:
+        _, model = _make_loss_model()
+        inference = cflearn.Inference(model=model)
+
         def inference_with(batches, **kwargs):
-            loader = MagicMock()
-            loader.__len__.return_value = len(batches)
-            loader.__iter__.side_effect = lambda: iter(batches)
-            onnx = Mock()
-            onnx.predict.side_effect = lambda batch: {
-                cflearn.PREDICTIONS_KEY: batch[cflearn.INPUT_KEY]
-            }
-            return cflearn.Inference(onnx=onnx).get_outputs(
-                loader,
+            return inference.get_outputs(
+                TorchDataLoader(batches, batch_size=None),  # type: ignore
                 recover_labels=False,
                 recover_predictions=False,
                 **kwargs,
@@ -327,38 +380,26 @@ class TestInference(unittest.TestCase):
             {cflearn.INPUT_KEY: torch.tensor([[1.0]])},
             {cflearn.INPUT_KEY: torch.tensor([[2.0]])},
         ]
-        loader = MagicMock()
-        loader.__len__.return_value = len(batches)
-        loader.__iter__.side_effect = lambda: iter(batches)
-        config = cflearn.Config(
-            module_name="linear",
-            module_config={"input_dim": 1, "output_dim": 1},
-            loss_name="mse",
+        loader = TorchDataLoader(batches, batch_size=None)
+        _, model = _make_loss_model()
+
+        def inject_outputs(tensor_batch, tensor_outputs) -> None:
+            value = tensor_outputs[cflearn.PREDICTIONS_KEY]
+            batch_idx = int(tensor_batch[cflearn.INPUT_KEY].item()) - 1
+            tensor_outputs["tag"] = f"batch-{batch_idx}"
+            tensor_outputs["metadata"] = {
+                "tensor": value + 10.0,
+                "items": [value + 20.0],
+                "pair": (value + 30.0, f"item-{batch_idx}"),
+            }
+
+        outputs = cflearn.Inference(model=model).get_outputs(
+            loader,  # type: ignore
+            target_outputs=[cflearn.PREDICTIONS_KEY, "tag", "metadata"],
+            recover_labels=False,
+            recover_predictions=False,
+            inject_outputs_fn=inject_outputs,
         )
-        model = cflearn.IModel.from_config(config)
-
-        def step(batch_idx, tensor_batch, *args, **kwargs):
-            value = tensor_batch[cflearn.INPUT_KEY]
-            return cflearn.StepOutputs(
-                {
-                    cflearn.PREDICTIONS_KEY: value,
-                    "tag": f"batch-{batch_idx}",
-                    "metadata": {
-                        "tensor": value + 10.0,
-                        "items": [value + 20.0],
-                        "pair": (value + 30.0, f"item-{batch_idx}"),
-                    },
-                },
-                {},
-            )
-
-        with patch.object(model, "step", side_effect=step):
-            outputs = cflearn.Inference(model=model).get_outputs(
-                loader,
-                target_outputs=[cflearn.PREDICTIONS_KEY, "tag", "metadata"],
-                recover_labels=False,
-                recover_predictions=False,
-            )
 
         np.testing.assert_array_equal(
             outputs.forward_results[cflearn.PREDICTIONS_KEY],
@@ -389,16 +430,11 @@ class TestInference(unittest.TestCase):
                 cflearn.LABEL_KEY: torch.tensor([[6.0]]),
             },
         ]
-        loader = MagicMock()
-        loader.__len__.return_value = len(batches)
-        loader.__iter__.side_effect = lambda: iter(batches)
-        onnx = Mock()
-        onnx.predict.side_effect = lambda batch: {
-            cflearn.PREDICTIONS_KEY: batch[cflearn.INPUT_KEY]
-        }
+        loader = TorchDataLoader(batches, batch_size=None)
+        _, model = _make_loss_model()
 
-        outputs = cflearn.Inference(onnx=onnx).get_outputs(
-            loader,
+        outputs = cflearn.Inference(model=model).get_outputs(
+            loader,  # type: ignore
             return_labels=True,
             concat_outputs=False,
             recover_labels=False,
@@ -427,16 +463,12 @@ class TestInference(unittest.TestCase):
                 cflearn.LABEL_KEY: torch.tensor([[0.0]]),
             },
         ]
-        loader = MagicMock()
-        loader.__len__.return_value = len(batches)
-        loader.__iter__.side_effect = lambda: iter(batches)
-        onnx = Mock()
-        onnx.predict.side_effect = lambda batch: {
-            cflearn.PREDICTIONS_KEY: batch[cflearn.INPUT_KEY]
-        }
+        loader = TorchDataLoader(batches, batch_size=None)
+        _, model = _make_loss_model()
+        inference = cflearn.Inference(model=model)
 
-        outputs = cflearn.Inference(onnx=onnx).get_outputs(
-            loader,
+        outputs = inference.get_outputs(
+            loader,  # type: ignore
             metrics=cflearn.IMetric.fuse(["mse", "stream_mse"]),
             recover_labels=False,
             recover_predictions=False,
@@ -456,8 +488,8 @@ class TestInference(unittest.TestCase):
             def not_include_in_score(self) -> bool:
                 return True
 
-        mixed_outputs = cflearn.Inference(onnx=onnx).get_outputs(
-            loader,
+        mixed_outputs = inference.get_outputs(
+            loader,  # type: ignore
             metrics=cflearn.MultipleMetrics(
                 [
                     DiagnosticMSE(),
@@ -537,17 +569,6 @@ class TestInference(unittest.TestCase):
             model_outputs.metric_outputs.metric_values["stream_mse"],
         )
 
-        onnx = Mock()
-        onnx.predict.side_effect = lambda batch: {
-            cflearn.PREDICTIONS_KEY: batch[cflearn.INPUT_KEY][:, :output_dim]
-        }
-        inject_outputs = Mock()
-        cflearn.Inference(onnx=onnx).get_outputs(
-            loader,
-            inject_outputs_fn=inject_outputs,
-        )
-        self.assertEqual(inject_outputs.call_count, len(loader))
-
         @cflearn.IMetric.register("foo", allow_duplicate=True)
         class FooMetric(cflearn.IMetric):
             @property
@@ -618,12 +639,15 @@ class TestInference(unittest.TestCase):
         final_score = model_outputs.metric_outputs.final_score
         self.assertAlmostEqual(final_score, 0.5 * (0.12 - 3.45))
 
-        with patch(
-            "accelerate.Accelerator.is_main_process",
-            new_callable=PropertyMock,
-        ) as mock:
-            mock.return_value = False
-            inference.get_outputs(loader, metrics=metrics, accelerator=Accelerator())
+        accelerator_outputs = inference.get_outputs(
+            loader,
+            metrics=metrics,
+            accelerator=Accelerator(cpu=True),
+        )
+        self.assertAlmostEqual(
+            accelerator_outputs.metric_outputs.final_score,
+            final_score,
+        )
 
         @cflearn.IMetric.register("metadata", allow_duplicate=True)
         class MetadataMetric(cflearn.IMetric):
@@ -659,14 +683,13 @@ class TestInference(unittest.TestCase):
                 "metadata": "second",
             },
         ]
-        metadata_loader = MagicMock()
-        metadata_loader.__len__.return_value = len(batches)
-        metadata_loader.__iter__.side_effect = lambda: iter(batches)
-        metadata_loader.recover_labels.side_effect = lambda key, value: value
+        metadata_loader = TorchDataLoader(batches, batch_size=None)
         metadata_outputs = inference.get_outputs(
-            metadata_loader,
+            metadata_loader,  # type: ignore
             metrics=MetadataMetric(),
             target_inputs=[cflearn.INPUT_KEY, "metadata"],
+            recover_labels=False,
+            recover_predictions=False,
         )
         self.assertEqual(
             metadata_outputs.forward_results["metadata"],
@@ -751,46 +774,13 @@ class TestInference(unittest.TestCase):
             config,
             None,
             cflearn.Inference(model=model),
-            batches,  # type: ignore
+            TorchDataLoader(batches, batch_size=None),  # type: ignore
             recover_labels=False,
             recover_predictions=False,
         )
 
         self.assertIsNotNone(outputs.loss_items)
         self.assertEqual(outputs.loss_items[cflearn.LOSS_KEY], 4.5)
-
-    def test_remainder_aware_loss(self) -> None:
-        batches = [
-            {
-                cflearn.INPUT_KEY: torch.zeros(1, 1),
-                cflearn.LABEL_KEY: torch.zeros(1, 1),
-            },
-            {
-                cflearn.INPUT_KEY: torch.tensor([[3.0]]),
-                cflearn.LABEL_KEY: torch.zeros(1, 1),
-            },
-        ]
-        accelerator = MagicMock()
-        accelerator.gradient_state.remainder = 1
-
-        def gather(losses):
-            self.assertFalse(torch.is_inference_mode_enabled())
-            return [torch.cat([loss, torch.zeros_like(loss)]) for loss in losses]
-
-        accelerator.gather.side_effect = gather
-        config, model = _make_loss_model()
-        outputs = model.evaluate(
-            config,
-            None,
-            cflearn.Inference(model=model),
-            batches,  # type: ignore
-            recover_labels=False,
-            recover_predictions=False,
-            accelerator=accelerator,
-        )
-
-        self.assertIsNotNone(outputs.loss_items)
-        self.assertEqual(outputs.loss_items[cflearn.LOSS_KEY], 3.0)
 
     def test_inference_error_does_not_retry_with_grad(self) -> None:
         run_states = []
@@ -822,22 +812,32 @@ class TestInference(unittest.TestCase):
         model.m.train()
         model.loss.train()
         inference = cflearn.Inference(model=model)
-        progress = MagicMock()
-        progress.add_task.return_value = 1
-        progress.stop.side_effect = RuntimeError("progress cleanup failed")
-        progress.remove_task.side_effect = RuntimeError("task cleanup failed")
+        progress = Progress(auto_refresh=False, disable=True)
 
-        with self.assertRaises(RuntimeError) as context:
-            inference.get_outputs(loader, progress=progress)
+        with patch.object(
+            progress,
+            "stop",
+            side_effect=RuntimeError("progress cleanup failed"),
+        ) as stop_progress:
+            with patch.object(
+                progress,
+                "remove_task",
+                side_effect=RuntimeError("task cleanup failed"),
+            ) as remove_task:
+                with self.assertRaises(RuntimeError) as context:
+                    inference.get_outputs(loader, progress=progress)
 
         self.assertIs(context.exception, inference_error)
         self.assertListEqual(run_states, [(False, False, False, True)])
         self.assertTrue(model.m.training)
         self.assertTrue(model.loss.training)
         self.assertFalse(inference.use_grad_in_predict)
-        progress.add_task.assert_called_once()
-        progress.stop.assert_called_once_with()
-        progress.remove_task.assert_called_once_with(1)
+        stop_progress.assert_called_once_with()
+        self.assertEqual(len(progress.tasks), 1)
+        task_id = progress.tasks[0].id
+        remove_task.assert_called_once_with(task_id)
+        progress.remove_task(task_id)
+        progress.stop()
 
         with self.assertRaises(RuntimeError) as context:
             inference.get_outputs(loader, use_grad=True)

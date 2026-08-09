@@ -31,16 +31,12 @@ class TestMisc(unittest.TestCase):
 
     @patch("core.toolkit.misc.get_ddp_info")
     def test_ddp_info_rank_is_zero(self, mock_get_ddp_info):
-        mock_ddp_info = Mock()
-        mock_ddp_info.rank = 0
-        mock_get_ddp_info.return_value = mock_ddp_info
+        mock_get_ddp_info.return_value = DDPInfo(0, 1, 0)
         self.assertTrue(is_rank_0())
 
     @patch("core.toolkit.misc.get_ddp_info")
     def test_ddp_info_rank_is_not_zero(self, mock_get_ddp_info):
-        mock_ddp_info = Mock()
-        mock_ddp_info.rank = 1
-        mock_get_ddp_info.return_value = mock_ddp_info
+        mock_get_ddp_info.return_value = DDPInfo(1, 2, 1)
         self.assertFalse(is_rank_0())
 
     @patch("core.toolkit.misc.get_ddp_info")
@@ -345,9 +341,7 @@ class TestMisc(unittest.TestCase):
         mock_currentframe.return_value = None
         with self.assertRaises(ValueError):
             get_arguments()
-        f_mock = Mock()
-        mock_currentframe.return_value = f_mock
-        f_mock.f_back = None
+        mock_currentframe.return_value = Mock(f_back=None)
         with self.assertRaises(ValueError):
             get_arguments()
 

@@ -8,13 +8,14 @@ import argparse
 import core.learn as cflearn
 import torch.distributed as dist
 
-from pathlib import Path
 from typing import Tuple
 from typing import Optional
+from pathlib import Path
 from datetime import timedelta
 from accelerate import Accelerator
-from core.toolkit.misc import is_rank_0
+from unittest.mock import patch
 from torch.utils.data import DataLoader
+from core.toolkit.misc import is_rank_0
 from torch.nn.parallel import DistributedDataParallel
 from torch.distributed.elastic.multiprocessing.errors import record
 
@@ -30,6 +31,7 @@ def _parse_args() -> argparse.Namespace:
             "prepared_pipeline",
             "prepared_remainder",
             "uneven_metric_state",
+            "inference_gather",
             "timeout",
         ),
         required=True,
@@ -171,23 +173,59 @@ def _run_prepared_remainder(rank: int) -> None:
             shuffle=False,
         )
     )
-    outputs = model.evaluate(
-        config,
-        None,
-        cflearn.Inference(model=model),
-        loader,
-        return_outputs=False,
-        recover_labels=False,
-        recover_predictions=False,
-        concat_outputs=False,
-        use_inference_mode=False,
-        accelerator=accelerator,
-        verbose=False,
-    )
+    gather_inference_modes = []
+    original_gather = accelerator.gather
+
+    def gather(tensors):
+        gather_inference_modes.append(torch.is_inference_mode_enabled())
+        return original_gather(tensors)
+
+    with patch.object(accelerator, "gather", side_effect=gather):
+        outputs = model.evaluate(
+            config,
+            None,
+            cflearn.Inference(model=model),
+            loader,
+            return_outputs=False,
+            recover_labels=False,
+            recover_predictions=False,
+            concat_outputs=False,
+            accelerator=accelerator,
+            verbose=False,
+        )
 
     assert outputs.loss_items is not None
+    assert accelerator.gradient_state.remainder == 1
+    assert gather_inference_modes == [False]
     assert outputs.loss_items[cflearn.LOSS_KEY] == 3.0
     print(f"rank {rank}: prepared remainder success", flush=True)
+
+
+def _run_inference_gather(rank: int) -> None:
+    _, model = _make_identity_model()
+    accelerator = Accelerator(cpu=True)
+    gathered = cflearn.Inference(model=model).gather(
+        accelerator,
+        {
+            "plain": torch.tensor([float(rank + 1)]),
+            "padded": torch.arange(
+                rank + 1,
+                dtype=torch.float32,
+            )
+            + 10.0 * (rank + 1),
+        },
+        pad_dim={"padded": 0},
+    )
+
+    if rank == 0:
+        assert [tensor.tolist() for tensor in gathered["plain"]] == [[1.0], [2.0]]
+        assert [tensor.tolist() for tensor in gathered["padded"]] == [
+            [10.0, 0.0],
+            [20.0, 21.0],
+        ]
+    else:
+        assert gathered == {"plain": None, "padded": None}
+    print(f"rank {rank}: inference gather success", flush=True)
 
 
 def _run_uneven_metric_state(rank: int) -> None:
@@ -251,6 +289,8 @@ def main() -> None:
             _run_prepared_remainder(rank)
         elif args.scenario == "uneven_metric_state":
             _run_uneven_metric_state(rank)
+        elif args.scenario == "inference_gather":
+            _run_inference_gather(rank)
         else:
             _run_timeout(rank)
     finally:

@@ -10,12 +10,13 @@ import core.learn.schema as learn_schema
 
 from core.learn.schema import *
 from enum import Enum
-from types import SimpleNamespace
 from typing import Any
 from typing import Dict
+from accelerate import Accelerator
 from contextlib import nullcontext
 from unittest.mock import patch
-from unittest.mock import MagicMock
+from unittest.mock import Mock
+from unittest.mock import PropertyMock
 
 
 class TestSchema(unittest.TestCase):
@@ -37,24 +38,41 @@ class TestSchema(unittest.TestCase):
         self.assertEqual(weighted_loss_score(cfg, {"foo": 1.0, "bar": 2.0}), -5)
 
     def test_data_loader(self):
-        class MockArray:
-            def __init__(self, value):
-                self.value = value
-
-            def __len__(self):
-                return 1
-
-            def __getitem__(self, item):
-                return self.value
-
         data = cflearn.testing.linear_data(3)[0]
         x, y = data.bundle.x_train, data.bundle.y_train
         loader = data.build_loader(x, y)
         loader.get_full_batch("cpu")
-        x = dict(a=MockArray(0), b=MockArray([]))
+        x = dict(a=np.array([0]), b=np.empty([1, 0]))
         data = cflearn.ArrayDictData.init().fit(x)
         loader = data.build_loaders()[0]
         loader.get_input_sample()
+
+        class PseudoBatchDataset(IDataset):
+            def __len__(self):
+                return 1
+
+            def __getitems__(self, indices):
+                return {}
+
+            def pseudo_batch(self, device=None):
+                return {
+                    "tensor": torch.arange(2),
+                    "items": [torch.arange(2), "kept"],
+                    "metadata": "kept",
+                }
+
+        sample_loader = DataLoader(
+            PseudoBatchDataset(),
+            batch_size=1,
+        )
+        sample_loader.async_prefetch_factor = 2
+        sample = sample_loader.get_input_sample()
+        torch.testing.assert_close(sample["tensor"], torch.tensor([0]))
+        self.assertListEqual(
+            sample["items"],
+            [torch.tensor([0]), "kept"],
+        )
+        self.assertEqual(sample["metadata"], "kept")
         loader.dataset[0]
         data = cflearn.ArrayDictData.init()
         with self.assertRaises(RuntimeError):
@@ -62,7 +80,7 @@ class TestSchema(unittest.TestCase):
         data.is_ready = True
         with self.assertRaises(RuntimeError):
             data.build_loaders()
-        data.from_npd(dict(x=dict(a=MockArray(0))))
+        data.from_npd(dict(x=dict(a=np.array([0]))))
         data_config = cflearn.DataConfig(valid_loader_configs=dict(num_workers=7))
         data = cflearn.ArrayDictData.init(data_config).fit(x, x_valid=x)
         loader = data.to_loader(
@@ -75,35 +93,20 @@ class TestSchema(unittest.TestCase):
         self.assertEqual(loader.num_workers, 7)
 
     def test_prepare_async_dataloader(self):
-        class PreparedLoader:
-            def __iter__(self):
-                return iter(())
+        data, _, _, _ = cflearn.testing.linear_data(n=2, batch_size=1, use_async=True)
+        data.config.loader_seed_sync = False
+        data.config.presend_device = "cpu"
+        data.config.async_prefetch_factor = 2
+        loader = data.build_loaders()[0]
+        prepared = prepare_dataloaders(Accelerator(cpu=True), loader)[0]
+        base = prepared.base_dataloader
 
-        base = SimpleNamespace()
-        prepared = PreparedLoader()
-        prepared.base_dataloader = base
-        prepared.device = "cpu"
-        prepared.rng_types = ["generator"]
-        data = SimpleNamespace(config=SimpleNamespace(loader_seed_sync=False))
-        loader = SimpleNamespace(
-            data=data,
-            for_inference=False,
-            recover_labels=None,
-            presend_device="cpu",
-            async_prefetch=True,
-            async_prefetch_factor=2,
-        )
-        accelerator = MagicMock()
-        accelerator.prepare.return_value = prepared
-
-        prepared_loaders = prepare_dataloaders(accelerator, loader)
-
-        self.assertListEqual(prepared_loaders, [prepared])
         self.assertIsNone(prepared.device)
         self.assertIsNone(prepared.rng_types)
-        self.assertIs(base.presend_device, loader.presend_device)
+        self.assertEqual(base.presend_device, loader.presend_device)
         self.assertTrue(base.async_prefetch)
         self.assertEqual(base.async_prefetch_factor, 2)
+        self.assertEqual(len(list(prepared)), 2)
 
     def test_metric_contracts(self):
         class StreamMetric(IStreamMetric):
@@ -155,27 +158,19 @@ class TestSchema(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "no streaming metrics"):
             metrics.finalize()
 
-    def test_inference_gather(self):
-        class MockInference(IInference):
-            def get_outputs(self, loader, **kwargs):
-                raise NotImplementedError
-
-        class MockAccelerator:
-            def __init__(self, is_main_process):
-                self.device = torch.device("cpu")
-                self.num_processes = 2
-                self.is_main_process = is_main_process
-                self.pad_calls = []
-
-            def pad_across_processes(self, tensors, dim):
-                self.pad_calls.append((tensors, dim))
-                return tensors
-
-        inference = MockInference()
+    def test_local_inference_gather(self):
+        config = cflearn.Config(
+            module_name="linear",
+            module_config=dict(input_dim=1, output_dim=1),
+            loss_name="mse",
+        )
+        inference = cflearn.Inference(model=cflearn.IModel.from_config(config))
         tensors = {"x": torch.tensor([1.0])}
         gathered = inference.gather(None, tensors)
         self.assertEqual(len(gathered["x"]), 1)
         torch.testing.assert_close(gathered["x"][0], tensors["x"])
+
+        accelerator = Accelerator(cpu=True)
 
         def gather(value, gather_list, dst):
             self.assertEqual(dst, 0)
@@ -183,11 +178,28 @@ class TestSchema(unittest.TestCase):
                 for target in gather_list:
                     target.copy_(value)
 
-        accelerator = MockAccelerator(is_main_process=True)
-        with patch.object(learn_schema.dist, "gather", side_effect=gather):
+        with patch.object(
+            type(accelerator),
+            "num_processes",
+            new_callable=PropertyMock,
+            return_value=2,
+        ), patch.object(
+            type(accelerator),
+            "is_main_process",
+            new_callable=PropertyMock,
+            return_value=True,
+        ), patch.object(
+            accelerator,
+            "pad_across_processes",
+            wraps=accelerator.pad_across_processes,
+        ) as pad, patch.object(
+            learn_schema.dist,
+            "gather",
+            side_effect=gather,
+        ):
             gathered = inference.gather(accelerator, tensors, pad_dim=0)
+        pad.assert_called_once_with(tensors, dim=0)
         self.assertEqual(len(gathered["x"]), 2)
-        self.assertEqual(accelerator.pad_calls, [(tensors, 0)])
         for tensor in gathered["x"]:
             torch.testing.assert_close(tensor, tensors["x"])
 
@@ -195,63 +207,60 @@ class TestSchema(unittest.TestCase):
             "plain": torch.tensor([1.0]),
             "padded": torch.tensor([2.0]),
         }
-        accelerator = MockAccelerator(is_main_process=False)
-        with patch.object(learn_schema.dist, "gather") as gather_mock:
-            gathered = inference.gather(
-                accelerator,
-                tensors,
-                pad_dim={"padded": 0},
-            )
+        with patch.object(
+            type(accelerator),
+            "is_main_process",
+            new_callable=PropertyMock,
+            return_value=False,
+        ), patch.object(
+            accelerator,
+            "pad_across_processes",
+            wraps=accelerator.pad_across_processes,
+        ) as pad, patch.object(
+            learn_schema.dist, "gather"
+        ) as gather_mock:
+            gathered = inference.gather(accelerator, tensors, pad_dim={"padded": 0})
         self.assertDictEqual(gathered, {"plain": None, "padded": None})
-        self.assertEqual(accelerator.pad_calls, [(tensors["padded"], 0)])
+        pad.assert_called_once_with(tensors["padded"], dim=0)
         self.assertEqual(gather_mock.call_count, 2)
         for call in gather_mock.call_args_list:
             self.assertIsNone(call.kwargs["gather_list"])
 
     def test_optimizer_hooks(self):
-        class OptimizerHooks:
-            def __init__(self):
-                self.backward_args = None
-                self.skip_args = None
-
-            def get_backward_loss(self, state, loss_res, update):
-                self.backward_args = state, loss_res, update
-                return loss_res.loss * 2.0
-
-            def will_skip_backward(self, state, update):
-                self.skip_args = state, update
-                return True
-
-        class HookProxy:
-            def __init__(self, hooks):
-                self.hooks = hooks
-
-            def __getattr__(self, name):
-                return getattr(self.hooks, name)
-
-        state = SimpleNamespace(step=1)
+        state = TrainerState(
+            num_epoch=1,
+            batch_size=1,
+            loader_length=1,
+        )
+        state.step = 1
         loss_res = TrainStepLoss(
             torch.tensor(2.0),
             {cflearn.LOSS_KEY: torch.tensor(2.0)},
         )
-        hooks = OptimizerHooks()
-        optimizers = [
-            hooks,
-            SimpleNamespace(optimizer=hooks),
-            SimpleNamespace(optimizer=HookProxy(hooks)),
-        ]
-        for optimizer in optimizers:
-            backward_loss = get_backward_loss(optimizer, state, loss_res, True)
-            torch.testing.assert_close(backward_loss, torch.tensor(4.0))
-            self.assertEqual(hooks.backward_args, (state, loss_res, True))
-            self.assertTrue(will_skip_backward(optimizer, state, False))
-            self.assertEqual(hooks.skip_args, (state, False))
+        parameter = torch.nn.Parameter(torch.tensor(1.0))
+        optimizer = torch.optim.SGD([parameter], lr=0.1)
+        backward_hook = Mock(return_value=loss_res.loss * 2.0)
+        skip_hook = Mock(return_value=True)
+        optimizer.get_backward_loss = backward_hook
+        optimizer.will_skip_backward = skip_hook
+        wrapped_optimizer = Accelerator(cpu=True).prepare(optimizer)
+        self.assertIsNot(wrapped_optimizer, optimizer)
+        self.assertIs(wrapped_optimizer.optimizer, optimizer)
 
-        optimizer = SimpleNamespace()
+        for prepared_optimizer in [optimizer, wrapped_optimizer]:
+            backward_loss = get_backward_loss(prepared_optimizer, state, loss_res, True)
+            torch.testing.assert_close(backward_loss, torch.tensor(4.0))
+            backward_hook.assert_called_with(state, loss_res, True)
+            self.assertTrue(will_skip_backward(prepared_optimizer, state, False))
+            skip_hook.assert_called_with(state, False)
+
+        plain_parameter = torch.nn.Parameter(torch.tensor(1.0))
+        plain_optimizer = torch.optim.SGD([plain_parameter], lr=0.1)
         self.assertIs(
-            get_backward_loss(optimizer, state, loss_res, True), loss_res.loss
+            get_backward_loss(plain_optimizer, state, loss_res, True),
+            loss_res.loss,
         )
-        self.assertFalse(will_skip_backward(optimizer, state, False))
+        self.assertFalse(will_skip_backward(plain_optimizer, state, False))
 
     def test_model_runtime_paths(self):
         config = cflearn.Config(
@@ -262,20 +271,25 @@ class TestSchema(unittest.TestCase):
         model = cflearn.IModel.from_config(config)
         batch = {cflearn.INPUT_KEY: torch.ones(2, 3)}
 
-        def checkpoint(function, *args, **kwargs):
-            self.assertFalse(kwargs.pop("use_reentrant"))
-            return function(*args, **kwargs)
-
-        with patch.object(
-            learn_schema,
-            "checkpoint",
-            side_effect=checkpoint,
-        ) as checkpoint_mock:
+        forward_calls = []
+        handle = model.m.register_forward_pre_hook(
+            lambda *args: forward_calls.append(None)
+        )
+        try:
             forward = model(0, batch, use_checkpoint=True)
-        self.assertEqual(forward.shape, (2, 2))
-        checkpoint_mock.assert_called_once()
+            self.assertEqual(forward.shape, (2, 2))
+            self.assertEqual(len(forward_calls), 1)
+            forward.sum().backward()
+            self.assertEqual(len(forward_calls), 2)
+        finally:
+            handle.remove()
 
         first_parameter = next(model.m.parameters())
+        self.assertIsNotNone(first_parameter.grad)
+        torch.testing.assert_close(
+            first_parameter.grad,
+            torch.full_like(first_parameter, 2.0),
+        )
         first_parameter.requires_grad = False
         expected_names = [
             name
@@ -304,7 +318,7 @@ class TestSchema(unittest.TestCase):
         )
 
     def test_train_forward_grad_and_closure_paths(self):
-        class MockTrainStep(TrainStep):
+        class ConfigurableTrainStep(TrainStep):
             def __init__(
                 self,
                 *,
@@ -324,9 +338,9 @@ class TestSchema(unittest.TestCase):
 
             def loss_fn(self, m, state, batch, forward_results, **kwargs):
                 loss = forward_results[cflearn.PREDICTIONS_KEY].sum()
-                return TrainStepLoss(loss, {cflearn.LOSS_KEY: loss[None]})
+                return TrainStepLoss(loss, {cflearn.LOSS_KEY: loss})
 
-        class MockModel(IModel):
+        class TrainModel(IModel):
             def __init__(self):
                 self.m = torch.nn.Linear(1, 1)
                 self._train_steps = []
@@ -348,18 +362,25 @@ class TestSchema(unittest.TestCase):
                 return {cflearn.PREDICTIONS_KEY: self.m(batch[cflearn.INPUT_KEY])}
 
         def run(steps, skip_backward):
-            model = MockModel()
+            model = TrainModel()
             model._train_steps = steps
-            optimizer = SimpleNamespace()
-            trainer = SimpleNamespace(
-                state=SimpleNamespace(step=1),
-                config=cflearn.TrainerConfig(
+            optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+            trainer = cflearn.Trainer(
+                cflearn.TrainerConfig(
                     grad_accumulate=1,
                     use_closure_pack=True,
-                ),
-                optimizers={"all": optimizer},
-                callbacks=[],
+                )
             )
+            trainer.state = cflearn.TrainerState(
+                num_epoch=1,
+                batch_size=1,
+                loader_length=1,
+            )
+            trainer.state.step = 1
+            trainer.model = model
+            trainer.optimizers = {"all": optimizer}
+            trainer.callbacks = []
+            trainer.accelerator = Accelerator(cpu=True)
             closure_losses = []
 
             def update_fn(batch, forward, loss_fn, loss_res, optimizer, update):
@@ -391,8 +412,8 @@ class TestSchema(unittest.TestCase):
 
         no_grad = run(
             [
-                MockTrainStep(),
-                MockTrainStep(skip=True),
+                ConfigurableTrainStep(),
+                ConfigurableTrainStep(skip=True),
             ],
             [True],
         )
@@ -400,8 +421,8 @@ class TestSchema(unittest.TestCase):
 
         no_grad = run(
             [
-                MockTrainStep(),
-                MockTrainStep(requires_new_forward=True),
+                ConfigurableTrainStep(),
+                ConfigurableTrainStep(requires_new_forward=True),
             ],
             [True, False],
         )
@@ -409,8 +430,8 @@ class TestSchema(unittest.TestCase):
 
         no_grad = run(
             [
-                MockTrainStep(),
-                MockTrainStep(requires_grad_in_forward=True),
+                ConfigurableTrainStep(),
+                ConfigurableTrainStep(requires_grad_in_forward=True),
             ],
             [True, False],
         )

@@ -1,12 +1,12 @@
 import torch
 import unittest
 
-import core.learn as cflearn
 import torch.nn as nn
+import core.learn as cflearn
 
 from torch import Tensor
 from typing import Any
-from unittest.mock import Mock
+from unittest.mock import patch
 
 
 def get_loss(name: str, x: Tensor, y: Tensor, **kwargs: Any) -> Tensor:
@@ -159,29 +159,49 @@ class TestLosses(unittest.TestCase):
             )
 
     def test_evaluate_defines_empty_score_boundary(self) -> None:
+        data, input_dim, output_dim, _ = cflearn.testing.linear_data(
+            2,
+            batch_size=2,
+        )
+        loader = data.build_loaders(for_inference=True)[0]
+        model = cflearn.IModel.from_config(
+            cflearn.Config(
+                module_name="linear",
+                module_config={"input_dim": input_dim, "output_dim": output_dim},
+                loss_name="mse",
+            )
+        )
+        inference = cflearn.Inference(model=model)
         outputs = cflearn.InferenceOutputs({}, {}, None, None)
-        inference = Mock()
-        inference.get_outputs.return_value = outputs
-        with self.assertRaisesRegex(ValueError, "losses or metrics"):
-            cflearn.IModel.evaluate(
-                Mock(),
-                cflearn.TrainerConfig(),
+        config = cflearn.TrainerConfig(use_losses_as_metrics=False)
+        with patch.object(
+            inference,
+            "get_outputs",
+            return_value=outputs,
+        ) as get_outputs:
+            with self.assertRaisesRegex(ValueError, "losses or metrics"):
+                model.evaluate(
+                    config,
+                    None,
+                    inference,
+                    loader,
+                    verbose=False,
+                )
+
+            outputs.loss_items = {}
+            config.use_losses_as_metrics = True
+            result = model.evaluate(
+                config,
                 None,
                 inference,
-                Mock(),
+                loader,
+                verbose=False,
             )
-
-        outputs.loss_items = {}
-        result = cflearn.IModel.evaluate(
-            Mock(),
-            cflearn.TrainerConfig(),
-            None,
-            inference,
-            Mock(),
-        )
+        self.assertDictEqual(result.loss_items, {})
         self.assertIs(result, outputs)
         self.assertIsNotNone(result.metric_outputs)
         self.assertEqual(result.metric_outputs.final_score, 0.0)
+        self.assertEqual(get_outputs.call_count, 2)
 
     def test_train_step_loss_normalization(self) -> None:
         primary = torch.tensor(2.0)
@@ -220,8 +240,15 @@ class TestLosses(unittest.TestCase):
 
         inactive = cflearn.MultiLoss([{"name": "contract_inactive"}])
         self.assertIsNone(inactive({}, {}))
+        model = cflearn.IModel.from_config(
+            cflearn.Config(
+                module_name="linear",
+                module_config={"input_dim": 1, "output_dim": 1},
+                loss_name="mse",
+            )
+        )
         with self.assertRaisesRegex(ValueError, "should not be None"):
-            cflearn.CommonTrainStep(inactive).loss_fn(Mock(), None, {}, {})
+            cflearn.CommonTrainStep(inactive).loss_fn(model, None, {}, {})
 
         @cflearn.register_loss("contract_collision_a", allow_duplicate=True)
         class CollisionA(cflearn.ILoss):
@@ -245,21 +272,28 @@ class TestLosses(unittest.TestCase):
             cflearn.MultiLoss([{"name": "mse", "tag": cflearn.LOSS_KEY}])
 
     def test_evaluate_rejects_loss_metric_key_collisions(self) -> None:
-        outputs = cflearn.InferenceOutputs(
-            {},
-            {},
-            cflearn.MetricsOutputs(1.0, {"shared": 1.0}, {"shared": True}),
-            {"shared": 2.0},
+        data, input_dim, output_dim, _ = cflearn.testing.linear_data(
+            2,
+            batch_size=2,
         )
-        inference = Mock()
-        inference.get_outputs.return_value = outputs
-        with self.assertRaisesRegex(ValueError, "shared"):
-            cflearn.IModel.evaluate(
-                Mock(),
-                cflearn.TrainerConfig(),
-                None,
+        loader = data.build_loaders(for_inference=True)[0]
+        config = cflearn.Config(
+            module_name="linear",
+            module_config={"input_dim": input_dim, "output_dim": output_dim},
+            loss_name="multi_loss",
+            loss_config={"losses": [{"name": "mse", "tag": "mse"}]},
+            use_losses_as_metrics=True,
+        )
+        model = cflearn.IModel.from_config(config)
+        inference = cflearn.Inference(model=model)
+        metrics = cflearn.IMetric.fuse("mse")
+        with self.assertRaisesRegex(ValueError, "mse"):
+            model.evaluate(
+                config,
+                metrics,
                 inference,
-                Mock(),
+                loader,
+                verbose=False,
             )
 
 

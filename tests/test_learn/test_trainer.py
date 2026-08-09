@@ -7,6 +7,7 @@ import core.learn as cflearn
 from pathlib import Path
 from unittest.mock import patch
 from unittest.mock import Mock
+from unittest.mock import PropertyMock
 
 
 class TestTrainer(unittest.TestCase):
@@ -29,6 +30,31 @@ class TestTrainer(unittest.TestCase):
         self.data = data
         self.config = config.to_debug()
 
+    def make_monitor_trainer(self, name):
+        config = self.config.copy()
+        config.workspace = str(self.tmp_path / name)
+        pipeline = cflearn.TrainingPipeline.init(config).fit(
+            self.data,
+            do_summary=False,
+        )
+        trainer = pipeline.training.build_trainer.trainer
+        train_loader, valid_loader = pipeline.data.build_loaders(for_inference=True)
+        self.assertIsNotNone(valid_loader)
+        trainer.state = cflearn.TrainerState(
+            num_epoch=2,
+            batch_size=train_loader.batch_size,
+            loader_length=len(train_loader),
+            snapshot_start_step=0,
+        )
+        trainer.state.step = trainer.state.epoch = 1
+        trainer.callbacks = []
+        return (
+            trainer,
+            train_loader,
+            valid_loader,
+            cflearn.StepOutputs({}, {}),
+        )
+
     def test_functions(self):
         workspace = self.tmp_path / "functions"
         workspace.mkdir()
@@ -42,20 +68,52 @@ class TestTrainer(unittest.TestCase):
         self.assertTrue(cflearn.trainer.is_crashed_workspace(workspace))
 
     def test_metrics_progress_without_callback(self) -> None:
-        trainer = cflearn.Trainer(self.config)
-        expected = cflearn.MetricsOutputs(0.0, {}, {})
-        trainer.state = Mock(is_terminate=False)
-        trainer.model = Mock()
-        trainer.model.evaluate.return_value = Mock(metric_outputs=expected)
-        trainer.metrics = Mock()
-        trainer.inference = Mock()
+        config = self.config.copy()
+        config.workspace = str(self.tmp_path / "metrics_progress")
+        pipeline = cflearn.TrainingPipeline.init(config).fit(
+            self.data,
+            do_summary=False,
+        )
+        trainer = pipeline.training.build_trainer.trainer
+        _, valid_loader = pipeline.data.build_loaders(for_inference=True)
+        self.assertIsNotNone(valid_loader)
+
+        inference_outputs = []
+        inference = trainer.inference
+        get_outputs = inference.get_outputs
+        progresses = []
+        progress_type = cflearn.trainer.Progress
+
+        def capture_outputs(*args, **kwargs):
+            outputs = get_outputs(*args, **kwargs)
+            inference_outputs.append(outputs)
+            return outputs
+
+        def make_progress():
+            progress = progress_type()
+            progresses.append(progress)
+            return progress
+
         trainer.callbacks = []
-        trainer.accelerator = Mock(is_local_main_process=True)
+        trainer.state = cflearn.TrainerState(
+            num_epoch=1,
+            batch_size=1,
+            loader_length=len(valid_loader),
+        )
+        self.assertFalse(trainer.state.is_terminate)
+
         trainer.tqdm_settings.use_tqdm_in_validation = True
-        with patch("core.learn.trainer.Progress") as mock_progress:
-            output = trainer.get_metrics(Mock())
-        self.assertIs(output, expected)
-        mock_progress.assert_called_once_with()
+        with patch.object(
+            inference,
+            "get_outputs",
+            new=capture_outputs,
+        ), patch("core.learn.trainer.Progress", new=make_progress):
+            output = trainer.get_metrics(valid_loader)
+
+        self.assertIsInstance(output, cflearn.MetricsOutputs)
+        self.assertEqual(len(progresses), 1)
+        self.assertIs(output, inference_outputs[0].metric_outputs)
+        self.assertIn(cflearn.LOSS_KEY, output.metric_values)
 
     def test_training(self):
         config = self.config.copy()
@@ -71,10 +129,14 @@ class TestTrainer(unittest.TestCase):
         trainer.save_checkpoint(float("nan"))
         with self.assertRaises(AttributeError):
             trainer.log_with(None)
-        trainer.accelerator = Mock()
-        trainer.accelerator.is_local_main_process = False
-        self.assertFalse(trainer.use_tqdm_in_validation)
-        trainer.log_with(None)
+        with patch.object(
+            type(trainer.accelerator),
+            "is_local_main_process",
+            new_callable=PropertyMock,
+            return_value=False,
+        ):
+            self.assertFalse(trainer.use_tqdm_in_validation)
+            trainer.log_with(None)
 
     def test_scheduler_post_prepare_refresh(self) -> None:
         refresh_calls = []
@@ -116,25 +178,39 @@ class TestTrainer(unittest.TestCase):
         cflearn.TrainingPipeline.init(config).fit(self.data)
 
     def test_callback_success_contract(self) -> None:
-        callback = Mock(spec=cflearn.TrainerCallback)
-
         @cflearn.TrainerCallback.register("success_contract", allow_duplicate=True)
         class SuccessContractCallback(cflearn.TrainerCallback):
-            def __new__(cls):
-                return callback
+            pass
 
+        callback = SuccessContractCallback()
+        callback_calls = Mock()
+        callback_hooks = {
+            name
+            for name, value in vars(cflearn.TrainerCallback).items()
+            if callable(value) and not name.startswith("_")
+        }
+        for name in callback_hooks:
+            hook = Mock(wraps=getattr(callback, name))
+            callback_calls.attach_mock(hook, name)
+            setattr(callback, name, hook)
         config = self.config.copy()
         config.workspace = str(self.tmp_path / "success_contract")
         config.auto_callback = False
         config.callback_names = ["success_contract"]
-        pipeline = cflearn.TrainingPipeline.init(config).fit(
-            self.data,
-            do_summary=False,
-        )
+        with patch.object(
+            SuccessContractCallback,
+            "__new__",
+            return_value=callback,
+        ):
+            pipeline = cflearn.TrainingPipeline.init(config).fit(
+                self.data,
+                do_summary=False,
+            )
         trainer = pipeline.training.build_trainer.trainer
+        self.assertIn(callback, trainer.callbacks)
 
         self.assertListEqual(
-            [record[0] for record in callback.method_calls],
+            [record[0] for record in callback_calls.method_calls],
             [
                 "initialize",
                 "after_workspace_prepared",
@@ -166,6 +242,10 @@ class TestTrainer(unittest.TestCase):
                 "finalize",
             ],
         )
+        self.assertSetEqual(
+            {record[0] for record in callback_calls.method_calls},
+            callback_hooks,
+        )
         callback.finalize.assert_called_once_with(trainer)
         train_loader = callback.before_loop_with_loaders.call_args.args[1]
         self.assertIs(callback.at_epoch_start.call_args.args[1], train_loader)
@@ -185,13 +265,20 @@ class TestTrainer(unittest.TestCase):
             monitored.metric_outputs,
         )
 
-        callback.reset_mock()
-        trainer.accelerator = Mock(
-            is_local_main_process=False,
-            is_main_process=False,
-        )
-        trainer.log_with(trainer.final_results)
-        self.assertListEqual(callback.method_calls, [])
+        callback_calls.reset_mock()
+        with patch.object(
+            type(trainer.accelerator),
+            "is_local_main_process",
+            new_callable=PropertyMock,
+            return_value=False,
+        ), patch.object(
+            type(trainer.accelerator),
+            "is_main_process",
+            new_callable=PropertyMock,
+            return_value=False,
+        ):
+            trainer.log_with(trainer.final_results)
+        self.assertListEqual(callback_calls.method_calls, [])
 
     def test_callback_cleanup_before_loop_failure(self) -> None:
         events = []
@@ -773,88 +860,111 @@ class TestTrainer(unittest.TestCase):
     def test_monitor_evaluates_every_decision(self) -> None:
         events = []
 
-        class RecordingMonitor(cflearn.TrainerMonitor):
-            def __init__(
-                self,
-                name: str,
-                snapshot: bool,
-                terminate: bool,
-            ) -> None:
-                self.name = name
-                self.snapshot = snapshot
-                self.terminate = terminate
+        def make_decision(name, kind, result):
+            def decision(score):
+                events.append((name, kind, score))
+                return result
 
-            def should_snapshot(self, new_score: float) -> bool:
-                events.append((self.name, "snapshot", new_score))
-                return self.snapshot
+            return decision
 
-            def should_terminate(self, new_score: float) -> bool:
-                events.append((self.name, "terminate", new_score))
-                return self.terminate
-
-        metrics = cflearn.MetricsOutputs(1.0, {}, {})
-        trainer = cflearn.Trainer(self.config)
-        trainer.state = Mock(
-            should_extend_epoch=False,
-            should_monitor=True,
-            should_start_snapshot=True,
-            can_snapshot=True,
+        first = Mock(spec=cflearn.TrainerMonitor)
+        first.should_snapshot.side_effect = make_decision("first", "snapshot", True)
+        first.should_terminate.side_effect = make_decision("first", "terminate", True)
+        second = Mock(spec=cflearn.TrainerMonitor)
+        second.should_snapshot.side_effect = make_decision(
+            "second",
+            "snapshot",
+            False,
         )
-        trainer.monitors = [
-            RecordingMonitor("first", True, True),
-            RecordingMonitor("second", False, False),
-        ]
-        trainer.callbacks = []
-        trainer.get_metrics = Mock(return_value=metrics)
-        trainer.log_with = Mock()
-        step_outputs = cflearn.StepOutputs({}, {})
+        second.should_terminate.side_effect = make_decision(
+            "second",
+            "terminate",
+            False,
+        )
+        trainer, train_loader, valid_loader, step_outputs = self.make_monitor_trainer(
+            "monitor_decisions"
+        )
+        trainer.monitors = [first, second]
+        with patch(
+            "core.learn.trainer.is_ddp",
+            return_value=False,
+        ), patch.object(
+            trainer,
+            "get_metrics",
+            wraps=trainer.get_metrics,
+        ) as get_metrics, patch.object(
+            trainer,
+            "log_with",
+            wraps=trainer.log_with,
+        ) as log_with, patch.object(
+            trainer.state,
+            "update_snapshot_epoch",
+            wraps=trainer.state.update_snapshot_epoch,
+        ) as update_snapshot_epoch:
+            monitored = trainer.monitor(train_loader, valid_loader, step_outputs)
 
-        with patch("core.learn.trainer.is_ddp", return_value=False):
-            monitored = trainer.monitor(Mock(), Mock(), step_outputs)
-
+        self.assertIsNotNone(monitored.metric_outputs)
+        score = monitored.metric_outputs.final_score
         self.assertEqual(
             events,
             [
-                ("first", "snapshot", 1.0),
-                ("second", "snapshot", 1.0),
-                ("first", "terminate", 1.0),
-                ("second", "terminate", 1.0),
+                ("first", "snapshot", score),
+                ("second", "snapshot", score),
+                ("first", "terminate", score),
+                ("second", "terminate", score),
             ],
         )
         self.assertTrue(monitored.save_checkpoint)
         self.assertTrue(monitored.terminate)
-        self.assertIs(monitored.metric_outputs, metrics)
-        trainer.state.update_snapshot_epoch.assert_called_once_with()
+        self.assertIs(monitored.metric_outputs, trainer.intermediate)
+        update_snapshot_epoch.assert_called_once_with()
+        get_metrics.assert_called_once_with(
+            valid_loader,
+            trainer.config.valid_portion,
+        )
+        log_with.assert_called_once_with(monitored.metric_outputs)
 
         events.clear()
-        trainer.state.update_snapshot_epoch.reset_mock()
-        with patch("core.learn.trainer.is_ddp", return_value=True):
-            monitored = trainer.monitor(Mock(), Mock(), step_outputs)
+        with patch(
+            "core.learn.trainer.is_ddp",
+            return_value=True,
+        ), patch.object(
+            trainer,
+            "get_metrics",
+            wraps=trainer.get_metrics,
+        ) as get_metrics, patch.object(
+            trainer,
+            "log_with",
+            wraps=trainer.log_with,
+        ) as log_with, patch.object(
+            trainer.state,
+            "update_snapshot_epoch",
+            wraps=trainer.state.update_snapshot_epoch,
+        ) as update_snapshot_epoch:
+            monitored = trainer.monitor(train_loader, valid_loader, step_outputs)
 
+        self.assertIsNotNone(monitored.metric_outputs)
+        score = monitored.metric_outputs.final_score
         self.assertEqual(
             events,
             [
-                ("first", "snapshot", 1.0),
-                ("second", "snapshot", 1.0),
+                ("first", "snapshot", score),
+                ("second", "snapshot", score),
             ],
         )
         self.assertTrue(monitored.save_checkpoint)
         self.assertFalse(monitored.terminate)
-        trainer.state.update_snapshot_epoch.assert_called_once_with()
+        update_snapshot_epoch.assert_called_once_with()
+        get_metrics.assert_called_once_with(
+            valid_loader,
+            trainer.config.valid_portion,
+        )
+        log_with.assert_called_once_with(monitored.metric_outputs)
 
     def test_monitor_updates_state_regardless_of_order(self) -> None:
-        metrics = cflearn.MetricsOutputs(1.0, {}, {})
-        trainer = cflearn.Trainer(self.config)
-        trainer.state = Mock(
-            should_extend_epoch=False,
-            should_monitor=True,
-            should_start_snapshot=True,
-            can_snapshot=True,
+        trainer, train_loader, valid_loader, step_outputs = self.make_monitor_trainer(
+            "monitor_order"
         )
-        trainer.callbacks = []
-        trainer.get_metrics = Mock(return_value=metrics)
-        trainer.log_with = Mock()
-        step_outputs = cflearn.StepOutputs({}, {})
 
         for stateful_first in [False, True]:
             with self.subTest(stateful_first=stateful_first):
@@ -867,11 +977,15 @@ class TestTrainer(unittest.TestCase):
                     trainer.monitors = [conservative, mean_std, plateau]
 
                 with patch("core.learn.trainer.is_ddp", return_value=False):
-                    monitored = trainer.monitor(Mock(), Mock(), step_outputs)
+                    monitored = trainer.monitor(
+                        train_loader, valid_loader, step_outputs
+                    )
 
-                self.assertListEqual(mean_std.history, [1.0])
+                self.assertIsNotNone(monitored.metric_outputs)
+                score = monitored.metric_outputs.final_score
+                self.assertListEqual(mean_std.history, [score])
                 self.assertEqual(mean_std._incrementer.num_record, 1)
-                self.assertListEqual(plateau.history, [1.0])
+                self.assertListEqual(plateau.history, [score])
                 self.assertEqual(plateau._incrementer.num_record, 1)
                 self.assertTrue(monitored.save_checkpoint)
 

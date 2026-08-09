@@ -5,7 +5,8 @@ from typing import Any
 from typing import Type
 from pathlib import Path
 from zipfile import ZipFile
-from unittest.mock import Mock
+from dataclasses import dataclass
+from core.toolkit.misc import ISerializableDataClass
 from core.toolkit.pipeline import get_folder
 from core.toolkit.pipeline import check_requirement
 from core.toolkit.pipeline import IBlock
@@ -14,6 +15,13 @@ from core.toolkit.pipeline import IPipeline
 
 class TestPipeline(unittest.TestCase):
     def test_iblock(self):
+        @dataclass
+        class TestConfig(ISerializableDataClass["TestConfig"]):
+            value: str = "test"
+
+        TestConfig.d = {}
+        TestConfig.register("test_config")(TestConfig)
+
         @IBlock.register("test_block")
         class TestBlock(IBlock):
             def build(self, config: Any) -> None:
@@ -33,14 +41,13 @@ class TestPipeline(unittest.TestCase):
 
             @property
             def config_base(self) -> Type:
-                return Mock()
+                return TestConfig
 
             @property
             def block_base(self) -> Type:
                 return TestBlock
 
-        config = Mock()
-        config.to_pack.return_value.asdict.return_value = {"type": "test"}
+        config = TestConfig()
         p = TestPipeline.init(config)
         first = TestBlock()
         second = TestBlock2()
@@ -52,7 +59,8 @@ class TestPipeline(unittest.TestCase):
             p.get_block("missing")
 
         info = p.to_info()
-        restored = TestPipeline.init(Mock()).from_info(info)
+        restored = TestPipeline.init(TestConfig("placeholder")).from_info(info)
+        self.assertEqual(restored.config, config)
         self.assertEqual(len(restored.blocks), 2)
 
 
@@ -92,27 +100,50 @@ class TestGetFolder(unittest.TestCase):
 
 class TestCheckRequirement(unittest.TestCase):
     def setUp(self):
-        req1 = Mock()
-        req2 = Mock()
-        req1.__identifier__ = "req1"
-        req2.__identifier__ = "req2"
+        class Requirement1(IBlock):
+            __identifier__ = "req1"
 
-        self.block_with_requirements = Mock()
-        self.block_with_requirements.__identifier__ = "block_with_requirements"
-        self.block_with_requirements.requirements = [req1, req2]
+            def build(self, config: Any) -> None:
+                pass
 
-        self.block_without_requirements = Mock()
-        self.block_without_requirements.__identifier__ = "block_without_requirements"
-        self.block_without_requirements.requirements = []
+        class Requirement2(IBlock):
+            __identifier__ = "req2"
 
-        self.previous_blocks = {"req1": Mock(), "req2": Mock()}
+            def build(self, config: Any) -> None:
+                pass
+
+        class BlockWithRequirements(IBlock):
+            __identifier__ = "block_with_requirements"
+
+            @property
+            def requirements(self):
+                return [Requirement1, Requirement2]
+
+            def build(self, config: Any) -> None:
+                pass
+
+        class BlockWithoutRequirements(IBlock):
+            __identifier__ = "block_without_requirements"
+
+            def build(self, config: Any) -> None:
+                pass
+
+        self.block_with_requirements = BlockWithRequirements()
+        self.block_without_requirements = BlockWithoutRequirements()
+        self.previous_blocks = {
+            "req1": Requirement1(),
+            "req2": Requirement2(),
+        }
 
     def test_requirements_met(self):
         check_requirement(self.block_with_requirements, self.previous_blocks)
 
     def test_requirements_not_met(self):
         with self.assertRaises(ValueError):
-            check_requirement(self.block_with_requirements, {"req1": Mock()})
+            check_requirement(
+                self.block_with_requirements,
+                {"req1": self.previous_blocks["req1"]},
+            )
 
     def test_no_requirements(self):
         check_requirement(self.block_without_requirements, {})

@@ -66,6 +66,15 @@ def test_cpu_ddp_preserves_prepared_loader_remainder(
     assert "rank 1: prepared remainder success" in result.rank_logs[1]
 
 
+def test_cpu_ddp_gathers_inference_tensors_only_to_main(
+    cpu_ddp: CPUDistributedHarness,
+) -> None:
+    result = cpu_ddp.run("inference_gather")
+
+    assert "rank 0: inference gather success" in result.rank_logs[0]
+    assert "rank 1: inference gather success" in result.rank_logs[1]
+
+
 def test_cpu_ddp_merges_uneven_metric_state(
     cpu_ddp: CPUDistributedHarness,
 ) -> None:

@@ -4,7 +4,7 @@ import unittest
 import core.learn as cflearn
 
 from tempfile import TemporaryDirectory
-from unittest.mock import Mock
+from core.learn.pipeline.blocks.basic import StateInfo
 
 
 class TestSchedulers(unittest.TestCase):
@@ -13,12 +13,15 @@ class TestSchedulers(unittest.TestCase):
         optimizer,
         scheduler_config=None,
     ):
-        state_info = Mock(
+        state_info = StateInfo(
+            batch_size=1,
             num_batches=1,
+            num_samples=1,
             snapshot_start_step=1,
             num_step_per_snapshot=1,
         )
-        extract_state_info = Mock(state_info=state_info)
+        extract_state_info = cflearn.ExtractStateInfoBlock()
+        extract_state_info.state_info = state_info
         block = cflearn.BuildOptimizersBlock()
         block.previous = {
             cflearn.ExtractStateInfoBlock.__identifier__: extract_state_info,
@@ -51,16 +54,11 @@ class TestSchedulers(unittest.TestCase):
 
     @staticmethod
     def _make_serialize_optimizer_block(optimizer, scheduler):
-        build_optimizers = Mock(
-            optimizers={"all": optimizer},
-            schedulers={"all": scheduler},
-        )
-        build_trainer = Mock(
-            trainer=Mock(
-                accelerator=None,
-                state=None,
-            ),
-        )
+        build_optimizers = cflearn.BuildOptimizersBlock()
+        build_optimizers.optimizers = {"all": optimizer}
+        build_optimizers.schedulers = {"all": scheduler}
+        build_trainer = cflearn.BuildTrainerBlock()
+        build_trainer.trainer = cflearn.Trainer(cflearn.Config())
         block = cflearn.SerializeOptimizerBlock()
         block.previous = {
             cflearn.BuildOptimizersBlock.__identifier__: build_optimizers,

@@ -4,23 +4,22 @@ import torch
 import pytest
 import subprocess
 
-from types import SimpleNamespace
 from typing import Any
 from typing import Dict
 from typing import List
 from typing import Iterator
 from pathlib import Path
-from core.learn.schema import prepare_dataloaders
-
-from torch.utils.data import Dataset
-from core.learn.schema import DataLoader
 from accelerate import Accelerator
+from accelerate import DataLoaderConfiguration
+from torch.utils.data import Dataset
+from core.learn.schema import prepare_dataloaders
+from core.learn.schema import DataConfig
+from core.learn.schema import DataLoader
 from core.learn.schema import IAsyncDataset
-from accelerate.data_loader import DataLoaderShard
 from core.learn.schema import AsyncIterManager
 from core.learn.schema import AsyncDataLoaderIter
+from accelerate.data_loader import DataLoaderShard
 from accelerate.data_loader import DataLoaderDispatcher
-from accelerate import DataLoaderConfiguration
 
 _MISSING = object()
 _ACCELERATE_LOADER_STATES = []
@@ -85,7 +84,7 @@ class _TrackingAsyncDataset(IAsyncDataset):
 
 
 class _TrackingData:
-    config = SimpleNamespace(loader_seed_sync=True)
+    config = DataConfig(loader_seed_sync=True)
 
     process_flags: List[bool]
     num_processed: int

@@ -7,7 +7,6 @@ from typing import List
 from typing import Type
 from typing import Optional
 from unittest.mock import patch
-from unittest.mock import Mock
 
 
 class TestModel(unittest.TestCase):
@@ -64,14 +63,29 @@ class TestModel(unittest.TestCase):
         self.assertIs(ensemble.runtime_state, runtime_state)
         with self.assertRaises(ValueError):
             models[0].postprocess(0, batch, "foo")
-        with patch("core.learn.schema.is_fsdp") as mock:
-            mock.return_value = True
-            m_mock = Mock()
-            models[0].m = m_mock
-            models[0].state_dict()
-            m_mock.state_dict.assert_called_once()
-            models[0].load_state_dict({})
-            m_mock.load_state_dict.assert_called_once()
+
+        with patch("core.learn.schema.is_fsdp", return_value=True):
+            module = torch.nn.Linear(1, 1)
+            states = {
+                key: value.detach().clone()
+                for key, value in module.state_dict().items()
+            }
+            models[0].m = module
+            with patch.object(
+                module,
+                "state_dict",
+                wraps=module.state_dict,
+            ) as state_dict:
+                actual_states = models[0].state_dict()
+            state_dict.assert_called_once_with()
+            torch.testing.assert_close(actual_states, states)
+            with patch.object(
+                module,
+                "load_state_dict",
+                wraps=module.load_state_dict,
+            ) as load_state_dict:
+                models[0].load_state_dict(states)
+            load_state_dict.assert_called_once_with(states, True)
 
     def test_train_steps(self):
         class FooTrainStep(cflearn.CommonTrainStep):

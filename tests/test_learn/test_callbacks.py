@@ -1,3 +1,4 @@
+import os
 import torch
 import tempfile
 import unittest
@@ -6,11 +7,23 @@ import numpy as np
 import torch.nn as nn
 import core.learn as cflearn
 
+from accelerate import Accelerator
 from rich.table import Table
 from unittest.mock import patch
-from unittest.mock import MagicMock
 from core.learn.schema import losses_type
 from core.learn.callbacks.loggers import AutoWrapLine
+
+
+def make_callback_trainer(
+    config: cflearn.Config,
+    module: nn.Module,
+) -> cflearn.Trainer:
+    trainer = cflearn.Trainer(config)
+    model = cflearn.IModel.from_config(config)
+    model.m = module
+    trainer.model = model
+    trainer.accelerator = Accelerator(cpu=True)
+    return trainer
 
 
 class TestCallbacks(unittest.TestCase):
@@ -83,16 +96,19 @@ class TestCallbacks(unittest.TestCase):
         cflearn.TrainingPipeline.init(config).fit(data)
 
     def test_nan_detector_warning(self) -> None:
-        trainer = MagicMock()
-        trainer.model.m = nn.Linear(1, 1)
-        trainer.accelerator.process_index = 0
-        step_outputs = cflearn.StepOutputs(
-            {},
-            {cflearn.LOSS_KEY: torch.tensor(float("nan"))},
-        )
         batch = {"object": np.array([object()], dtype=object)}
         with tempfile.TemporaryDirectory() as workspace:
-            trainer.workspace = workspace
+            config = cflearn.Config(
+                workspace=workspace,
+                module_name="linear",
+                module_config=dict(input_dim=1, output_dim=1),
+                loss_name="mse",
+            )
+            trainer = make_callback_trainer(config, nn.Linear(1, 1))
+            step_outputs = cflearn.StepOutputs(
+                {},
+                {cflearn.LOSS_KEY: torch.tensor(float("nan"))},
+            )
             with patch(
                 "core.learn.callbacks.detectors.console.warn"
             ) as mock_warn, patch("core.learn.callbacks.detectors.console.error"):
@@ -102,93 +118,165 @@ class TestCallbacks(unittest.TestCase):
                         step_outputs,
                         trainer,
                     )
-        self.assertIn("failed to calculate nan ratio", mock_warn.call_args.args[0])
+            warning_messages = [call.args[0] for call in mock_warn.call_args_list]
+            self.assertTrue(
+                any(
+                    "failed to calculate nan ratio" in message
+                    for message in warning_messages
+                )
+            )
+            checkpoint_folder = os.path.join(
+                workspace,
+                "debugging",
+                f"checkpoints_{trainer.accelerator.process_index}",
+            )
+            self.assertTrue(
+                any(file.endswith(".pt") for file in os.listdir(checkpoint_folder))
+            )
 
     def test_update_artifacts_individually(self) -> None:
-        trainer = MagicMock()
-        trainer.config.save_pipeline_in_realtime = True
-        trainer.config.save_realtime_pipeline_individually = True
-        trainer.state.step = 7
-        with patch("core.learn.pipeline.PipelineSerializer.save") as mock_save:
+        with tempfile.TemporaryDirectory() as workspace:
+            config = cflearn.Config(
+                workspace=workspace,
+                module_name="linear",
+                module_config=dict(input_dim=1, output_dim=1),
+                loss_name="mse",
+                save_pipeline_in_realtime=True,
+                save_realtime_pipeline_individually=True,
+            )
+            trainer = cflearn.Trainer(config)
+            trainer.pipeline = cflearn.TrainingPipeline.init(config)
+            trainer.state = cflearn.TrainerState(
+                num_epoch=1,
+                batch_size=1,
+                loader_length=1,
+            )
+            trainer.state.step = 7
             cflearn.UpdateArtifactsCallback().before_loop(trainer)
-        self.assertTrue(mock_save.call_args.kwargs["pipeline_folder"].endswith("_7"))
+            pipeline_folder = os.path.join(workspace, "pipeline_7")
+            self.assertTrue(os.path.isdir(pipeline_folder))
+            self.assertTrue(os.path.isfile(os.path.join(pipeline_folder, "id.txt")))
 
     def test_finetune_exclusions_and_ddp_names(self) -> None:
+        def assert_load_state_dict(load_state_dict, expected, strict):
+            load_state_dict.assert_called_once()
+            loaded = load_state_dict.call_args.args[0]
+            self.assertSetEqual(set(loaded), set(expected))
+            for name, value in expected.items():
+                self.assertTrue(torch.equal(loaded[name], value))
+            self.assertIs(
+                load_state_dict.call_args.kwargs["strict"],
+                strict,
+            )
+
         def run(
             finetune_config,
             states,
-            named_parameters=(),
             *,
             ddp=False,
         ):
-            trainer = MagicMock()
-            trainer.config.finetune_config = finetune_config
-            trainer.model.named_parameters.return_value = named_parameters
-            trainer.device = torch.device("cpu")
-            with patch(
-                "core.learn.callbacks.defaults.torch.load",
-                return_value=states,
-            ), patch(
-                "core.learn.callbacks.defaults.is_ddp",
-                return_value=ddp,
-            ), patch(
-                "core.learn.callbacks.defaults.console.warn"
-            ), patch(
-                "core.learn.callbacks.defaults.console.log"
-            ):
-                cflearn.TrainingLoopCallback().before_summary(trainer)
-            return trainer.model
+            with tempfile.TemporaryDirectory() as folder:
+                checkpoint = os.path.join(folder, "checkpoint.pt")
+                torch.save(states, checkpoint)
+                finetune_config = dict(finetune_config)
+                finetune_config["pretrained_ckpt"] = checkpoint
+                config = cflearn.Config(
+                    module_name="linear",
+                    module_config=dict(input_dim=1, output_dim=1),
+                    loss_name="mse",
+                    finetune_config=finetune_config,
+                )
+                linear = nn.Linear(1, 1)
+                nn.init.zeros_(linear.weight)
+                nn.init.zeros_(linear.bias)
+                module = nn.Sequential()
+                module.add_module("module", linear)
+                trainer = make_callback_trainer(config, module)
+                with patch.object(
+                    trainer.model,
+                    "load_state_dict",
+                    wraps=trainer.model.load_state_dict,
+                ) as load_state_dict, patch(
+                    "core.learn.callbacks.defaults.is_ddp",
+                    return_value=ddp,
+                ), patch(
+                    "core.learn.callbacks.defaults.console.warn"
+                ), patch(
+                    "core.learn.callbacks.defaults.console.log"
+                ):
+                    cflearn.TrainingLoopCallback().before_summary(trainer)
+                return trainer.model, load_state_dict
 
         states = {
-            "weight": torch.ones(1),
-            "bias": torch.zeros(1),
+            "module.weight": torch.ones(1, 1),
+            "module.bias": torch.full((1,), 2.0),
         }
-        unmatched = run(
+        unmatched, load_state_dict = run(
             {
                 "pretrained_ckpt": "checkpoint.pt",
                 "exclude": "missing",
             },
             states,
         )
-        unmatched.load_state_dict.assert_called_once_with(states, strict=True)
-
-        matched = run(
+        self.assertTrue(
+            torch.equal(
+                unmatched.state_dict()["module.weight"],
+                states["module.weight"],
+            )
+        )
+        self.assertTrue(
+            torch.equal(unmatched.state_dict()["module.bias"], states["module.bias"])
+        )
+        assert_load_state_dict(load_state_dict, states, True)
+        matched, load_state_dict = run(
             {
                 "pretrained_ckpt": "checkpoint.pt",
-                "exclude": "weight",
+                "exclude": "module.weight",
             },
             states,
         )
-        matched.load_state_dict.assert_called_once_with(
-            {"bias": states["bias"]},
-            strict=False,
+        self.assertTrue(
+            torch.equal(
+                matched.state_dict()["module.weight"],
+                torch.zeros(1, 1),
+            )
         )
-
-        weight = nn.Parameter(torch.ones(1))
-        bias = nn.Parameter(torch.zeros(1))
-        run(
+        self.assertTrue(
+            torch.equal(
+                matched.state_dict()["module.bias"],
+                states["module.bias"],
+            )
+        )
+        assert_load_state_dict(
+            load_state_dict,
+            {"module.bias": states["module.bias"]},
+            False,
+        )
+        frozen, _ = run(
             {
                 "pretrained_ckpt": "checkpoint.pt",
                 "freeze": "weight",
             },
             states,
-            [("module.weight", weight), ("module.bias", bias)],
             ddp=True,
         )
+        frozen_parameters = dict(frozen.named_parameters())
+        weight = frozen_parameters["module.weight"]
+        bias = frozen_parameters["module.bias"]
         self.assertFalse(weight.requires_grad)
         self.assertTrue(bias.requires_grad)
 
-        weight = nn.Parameter(torch.ones(1))
-        bias = nn.Parameter(torch.zeros(1))
-        run(
+        frozen_except, _ = run(
             {
                 "pretrained_ckpt": "checkpoint.pt",
                 "freeze_except": "weight",
             },
             states,
-            [("module.weight", weight), ("module.bias", bias)],
             ddp=True,
         )
+        frozen_except_parameters = dict(frozen_except.named_parameters())
+        weight = frozen_except_parameters["module.weight"]
+        bias = frozen_except_parameters["module.bias"]
         self.assertTrue(weight.requires_grad)
         self.assertFalse(bias.requires_grad)
 
@@ -196,9 +284,13 @@ class TestCallbacks(unittest.TestCase):
         module = nn.Linear(2, 1)
         module.register_buffer("scale", torch.ones(1))
         module(torch.ones(1, 2)).sum().backward()
-        trainer = MagicMock()
-        trainer.model.m = module
-        trainer.workspace = "workspace"
+        config = cflearn.Config(
+            workspace="workspace",
+            module_name="linear",
+            module_config=dict(input_dim=2, output_dim=1),
+            loss_name="mse",
+        )
+        trainer = make_callback_trainer(config, module)
         trainer.state = cflearn.TrainerState(
             num_epoch=1,
             batch_size=1,
@@ -230,6 +322,8 @@ class TestCallbacks(unittest.TestCase):
             {"mse": 1.0},
             {"mse": False},
         )
+        loss = torch.tensor(1.0)
+        loss_res = cflearn.TrainStepLoss(loss, {cflearn.LOSS_KEY: loss})
         with patch(
             "core.learn.schema.is_local_rank_0",
             return_value=True,
@@ -240,14 +334,14 @@ class TestCallbacks(unittest.TestCase):
                 trainer,
                 {},
                 {},
-                MagicMock(),
+                loss_res,
                 True,
             )
             callback.before_gradient_update(
                 trainer,
                 {},
                 {},
-                MagicMock(),
+                loss_res,
                 True,
             )
             callback.log_lr("lr", 1.0e-3, trainer)
@@ -281,7 +375,7 @@ class TestAutoWrapLine(unittest.TestCase):
     @patch("shutil.get_terminal_size")
     def test_get_table(self, mock_get_terminal_size):
         n_cols = 20
-        mock_get_terminal_size.return_value = MagicMock(columns=40)
+        mock_get_terminal_size.return_value = os.terminal_size((40, 24))
 
         for i in range(n_cols):
             self.auto_wrap_line.add_column(f"test_column{i}")

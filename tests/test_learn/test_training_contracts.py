@@ -3,13 +3,12 @@ import pytest
 
 import core.learn as cflearn
 
+from accelerate import Accelerator
 from unittest.mock import patch
-from contextlib import nullcontext
-from unittest.mock import MagicMock
-from types import SimpleNamespace
+from unittest.mock import Mock
 
 
-class _Step(cflearn.TrainStep):
+class Step(cflearn.TrainStep):
     def __init__(
         self,
         scope="all",
@@ -37,7 +36,7 @@ class _Step(cflearn.TrainStep):
         if self.events is not None:
             self.events.append("loss")
         loss = forward_results[cflearn.PREDICTIONS_KEY].sum()
-        loss_res = cflearn.TrainStepLoss(loss, {cflearn.LOSS_KEY: loss[None]})
+        loss_res = cflearn.TrainStepLoss(loss, {cflearn.LOSS_KEY: loss})
         self.loss_calls.append(loss_res)
         return loss_res
 
@@ -47,9 +46,9 @@ class _Step(cflearn.TrainStep):
         self.callback_calls.append(forward_results)
 
 
-class _Model(cflearn.IModel):
+class Model(cflearn.IModel):
     def __init__(self, provider, events=None):
-        self.m = torch.nn.Identity()
+        self.m = torch.nn.Linear(1, 1)
         self.provider = provider
         self.events = events
         self.train_steps_calls = 0
@@ -75,21 +74,25 @@ class _Model(cflearn.IModel):
         return {cflearn.PREDICTIONS_KEY: self.m(batch[cflearn.INPUT_KEY])}
 
 
-def _trainer(optimizers, *, state=None, callbacks=None, closure=False):
-    accelerator = SimpleNamespace(
-        backward=lambda loss: None,
-        no_sync=lambda module: nullcontext(),
-    )
-    return SimpleNamespace(
-        state=state or SimpleNamespace(step=1),
-        config=cflearn.TrainerConfig(
+def make_trainer(optimizers, *, state=None, callbacks=None, closure=False):
+    trainer = cflearn.Trainer(
+        cflearn.TrainerConfig(
             grad_accumulate=1,
             use_closure_pack=closure,
-        ),
-        optimizers=optimizers,
-        callbacks=callbacks or [],
-        accelerator=accelerator,
+        )
     )
+    if state is None:
+        state = cflearn.TrainerState(
+            num_epoch=1,
+            batch_size=1,
+            loader_length=1,
+        )
+        state.step = 1
+    trainer.state = state
+    trainer.optimizers = optimizers
+    trainer.callbacks = callbacks or []
+    trainer.accelerator = Accelerator(cpu=True)
+    return trainer
 
 
 @pytest.mark.xfail(
@@ -101,12 +104,12 @@ def test_model_operations_capture_dynamic_steps_once():
     models = []
     batch = {cflearn.INPUT_KEY: torch.ones(1, 1)}
     for operation in ["step", "train"]:
-        model = _Model(lambda: [_Step()])
+        model = Model(lambda: [Step()])
         if operation == "step":
             model.step(0, batch, get_losses=True)
         else:
-            with patch("core.learn.schema.get_update_fn", return_value=MagicMock()):
-                model.train(0, batch, _trainer({"all": SimpleNamespace()}), {}, {})
+            optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+            model.train(0, batch, make_trainer({"all": optimizer}), {}, {})
         models.append(model)
 
     assert [model.train_steps_calls for model in models] == [1, 1]
@@ -121,17 +124,24 @@ def test_model_operations_capture_dynamic_steps_once():
     reason="P0-06: evaluate should_skip once",
 )
 def test_train_evaluates_stateful_skip_once():
-    step = _Step(skip_fn=lambda num_calls: num_calls > 1)
-    model = _Model(lambda: [step])
-    state = SimpleNamespace(step=1)
-    with patch("core.learn.schema.get_update_fn", return_value=MagicMock()):
-        model.train(
-            0,
-            {cflearn.INPUT_KEY: torch.ones(1, 1)},
-            _trainer({"all": SimpleNamespace()}, state=state),
-            {},
-            {},
-        )
+    step = Step(skip_fn=lambda num_calls: num_calls > 1)
+    model = Model(lambda: [step])
+    state = cflearn.TrainerState(
+        num_epoch=1,
+        batch_size=1,
+        loader_length=1,
+    )
+    state.step = 1
+    model.train(
+        0,
+        {cflearn.INPUT_KEY: torch.ones(1, 1)},
+        make_trainer(
+            {"all": torch.optim.SGD(model.parameters(), lr=0.1)},
+            state=state,
+        ),
+        {},
+        {},
+    )
     assert step.skip_states == [state]
     assert len(step.loss_calls) == 1
 
@@ -142,23 +152,23 @@ def test_train_evaluates_stateful_skip_once():
     reason="P0-06: bind each deferred closure",
 )
 def test_train_binds_deferred_closures_to_steps():
-    steps = [_Step("first"), _Step("second")]
+    steps = [Step("first"), Step("second")]
     packs = []
-    optimizer = lambda: SimpleNamespace(
-        step=lambda pack: packs.append(pack),
-        zero_grad=lambda: None,
-    )
-    trainer = _trainer(
-        {"first": optimizer(), "second": optimizer()},
-        closure=True,
-    )
-    _Model(lambda: steps).train(
-        0,
-        {cflearn.INPUT_KEY: torch.ones(1, 1)},
-        trainer,
-        {},
-        {},
-    )
+    model = Model(lambda: steps)
+    optimizers = {}
+    for scope in ["first", "second"]:
+        optimizer = Mock(spec=["step", "zero_grad"])
+        optimizer.step.side_effect = packs.append
+        optimizers[scope] = optimizer
+    trainer = make_trainer(optimizers, closure=True)
+    with patch.object(trainer.accelerator, "backward"):
+        model.train(
+            0,
+            {cflearn.INPUT_KEY: torch.ones(1, 1)},
+            trainer,
+            {},
+            {},
+        )
     for step in steps:
         step.loss_calls.clear()
     for pack in packs:
@@ -168,44 +178,40 @@ def test_train_binds_deferred_closures_to_steps():
 
 def test_closure_optimizer_hooks_and_callback_identity():
     events = []
-    step = _Step(events=events)
-    model = _Model(lambda: [step], events)
+    step = Step(events=events)
+    model = Model(lambda: [step], events)
     packs = []
-    hooks = SimpleNamespace(
-        will_skip_backward=MagicMock(
-            side_effect=lambda state, update: events.append("will_skip_backward")
-            or False
-        ),
-        get_backward_loss=MagicMock(
-            side_effect=lambda state, loss_res, update: events.append(
-                "get_backward_loss"
-            )
-            or loss_res.loss
-        ),
+    hooks = Mock(spec=["will_skip_backward", "get_backward_loss"])
+    hooks.will_skip_backward.side_effect = (
+        lambda state, update: events.append("will_skip_backward") or False
     )
-
-    def optimizer_step(pack):
-        events.append("optimizer_step")
-        packs.append(pack)
-        pack.loss_fn()
-
-    optimizer = SimpleNamespace(
-        optimizer=hooks,
-        step=optimizer_step,
-        zero_grad=lambda: events.append("zero_grad"),
+    hooks.get_backward_loss.side_effect = (
+        lambda state, loss_res, update: events.append("get_backward_loss")
+        or loss_res.loss
     )
-    before = MagicMock(
-        side_effect=lambda *args: events.append("before_gradient_update")
+    optimizer = Mock(spec=["optimizer", "step", "zero_grad"])
+    optimizer.optimizer = hooks
+    optimizer.step.side_effect = lambda pack: (
+        events.append("optimizer_step"),
+        packs.append(pack),
+        pack.loss_fn(),
     )
-    after = MagicMock(side_effect=lambda *args: events.append("after_gradient_update"))
-    callback = SimpleNamespace(
-        before_gradient_update=before,
-        after_gradient_update=after,
+    optimizer.zero_grad.side_effect = lambda: events.append("zero_grad")
+    callback = Mock(spec=cflearn.TrainerCallback)
+    callback.before_gradient_update.side_effect = lambda *args: events.append(
+        "before_gradient_update"
     )
-    trainer = _trainer({"all": optimizer}, callbacks=[callback], closure=True)
-    trainer.accelerator.backward = lambda loss: events.append("backward")
+    callback.after_gradient_update.side_effect = lambda *args: events.append(
+        "after_gradient_update"
+    )
+    trainer = make_trainer({"all": optimizer}, callbacks=[callback], closure=True)
     batch = {cflearn.INPUT_KEY: torch.ones(1, 1)}
-    outputs = model.train(0, batch, trainer, {}, {})
+    with patch.object(
+        trainer.accelerator,
+        "backward",
+        side_effect=lambda loss: events.append("backward"),
+    ):
+        outputs = model.train(0, batch, trainer, {}, {})
 
     assert events == [
         "will_skip_backward",
@@ -239,26 +245,45 @@ def test_closure_optimizer_hooks_and_callback_identity():
     forward = outputs.forward_results
     expected_before = trainer, batch, forward, pack.loss_res, True
     expected_after = trainer, batch, forward, outputs.loss_tensors, True
-    assert list(map(id, before.call_args.args)) == list(map(id, expected_before))
-    assert list(map(id, after.call_args.args)) == list(map(id, expected_after))
+    assert list(map(id, callback.before_gradient_update.call_args.args)) == list(
+        map(id, expected_before)
+    )
+    assert list(map(id, callback.after_gradient_update.call_args.args)) == list(
+        map(id, expected_after)
+    )
 
 
 def test_train_updates_each_optimizer_scope():
-    steps = [_Step("a"), _Step("b")]
+    steps = [Step("a"), Step("b")]
+    model = Model(lambda: steps)
     optimizers = {
-        step.scope: SimpleNamespace(step=MagicMock(), zero_grad=MagicMock())
-        for step in steps
+        step.scope: torch.optim.SGD(model.parameters(), lr=0.1) for step in steps
     }
-    _Model(lambda: steps).train(
-        0,
-        {cflearn.INPUT_KEY: torch.ones(1, 1)},
-        _trainer(optimizers),
-        {},
-        {},
-    )
-    for optimizer in optimizers.values():
-        optimizer.step.assert_called_once_with(None)
-        optimizer.zero_grad.assert_called_once_with()
+    trainer = make_trainer(optimizers)
+    with patch.object(
+        trainer.accelerator,
+        "backward",
+    ), patch.object(
+        optimizers["a"],
+        "step",
+        wraps=optimizers["a"].step,
+    ) as step_a, patch.object(
+        optimizers["a"],
+        "zero_grad",
+        wraps=optimizers["a"].zero_grad,
+    ) as zero_grad_a, patch.object(
+        optimizers["b"],
+        "step",
+        wraps=optimizers["b"].step,
+    ) as step_b, patch.object(
+        optimizers["b"],
+        "zero_grad",
+        wraps=optimizers["b"].zero_grad,
+    ) as zero_grad_b:
+        model.train(0, {cflearn.INPUT_KEY: torch.ones(1, 1)}, trainer, {}, {})
+    for step, zero_grad in [(step_a, zero_grad_a), (step_b, zero_grad_b)]:
+        step.assert_called_once_with(None)
+        zero_grad.assert_called_once_with()
 
 
 @pytest.mark.xfail(
@@ -267,25 +292,32 @@ def test_train_updates_each_optimizer_scope():
     reason="P0-06: advance only updated schedulers",
 )
 def test_schedulers_follow_updated_optimizer_scopes():
-    steps = [_Step("a"), _Step("b", grad_accumulate=2)]
-    model = _Model(lambda: steps)
-    ema = cflearn.EMA(0.9, [])
-    ema.forward = MagicMock()
+    steps = [Step("a"), Step("b", grad_accumulate=2)]
+    model = Model(lambda: steps)
+    ema = cflearn.EMA(0.9, model.m.named_parameters(), use_num_updates=True)
     model.m.ema = ema
     loop = cflearn.TrainingLoopCallback()
-    loop.get_scheduler_settings = MagicMock(return_value=(False, {}))
-    optimizer = lambda: SimpleNamespace(
-        step=lambda pack: None,
-        zero_grad=lambda: None,
-    )
-    trainer = _trainer(
-        {"a": optimizer(), "b": optimizer()},
+    optimizers = {
+        scope: torch.optim.SGD(model.parameters(), lr=0.1) for scope in ["a", "b"]
+    }
+    trainer = make_trainer(
+        optimizers,
         callbacks=[loop],
     )
     trainer.model = model
-    trainer.schedulers = {"a": MagicMock(), "b": MagicMock()}
-    model.train(0, {cflearn.INPUT_KEY: torch.ones(1, 1)}, trainer, {}, {})
+    trainer.schedulers = {
+        key: torch.optim.lr_scheduler.StepLR(optimizer, step_size=1)
+        for key, optimizer in optimizers.items()
+    }
+    trainer.schedulers_requires_metric = set()
+    trainer.intermediate = None
+    initial_epochs = {
+        key: scheduler.last_epoch for key, scheduler in trainer.schedulers.items()
+    }
+    initial_updates = ema.num_updates.item()
+    with patch.object(trainer.accelerator, "backward"):
+        model.train(0, {cflearn.INPUT_KEY: torch.ones(1, 1)}, trainer, {}, {})
 
-    trainer.schedulers["a"].step.assert_called_once_with()
-    trainer.schedulers["b"].step.assert_not_called()
-    ema.forward.assert_called_once_with()
+    assert trainer.schedulers["a"].last_epoch == initial_epochs["a"] + 1
+    assert trainer.schedulers["b"].last_epoch == initial_epochs["b"]
+    assert ema.num_updates.item() == initial_updates + 1
