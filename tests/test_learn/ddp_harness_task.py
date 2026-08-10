@@ -8,6 +8,7 @@ import argparse
 import core.learn as cflearn
 import torch.distributed as dist
 
+from typing import List
 from typing import Tuple
 from typing import Optional
 from pathlib import Path
@@ -30,6 +31,7 @@ def _parse_args() -> argparse.Namespace:
             "global_main_write",
             "prepared_pipeline",
             "prepared_remainder",
+            "callback_lifecycle",
             "uneven_metric_state",
             "inference_gather",
             "timeout",
@@ -88,6 +90,148 @@ def _run_timeout(rank: int) -> None:
     dist.barrier()
     print(f"rank {rank}: waiting for the parent timeout", flush=True)
     time.sleep(60.0)
+
+
+def _run_callback_lifecycle(rank: int) -> None:
+    @cflearn.IModel.register("$ddp_callback_model")
+    class CallbackModel(cflearn.CommonModel):
+        @property
+        def all_modules(self) -> List[torch.nn.Module]:
+            return [self.m]
+
+    @cflearn.TrainerCallback.register("$ddp_callback_lifecycle")
+    class CallbackLifecycle(cflearn.TrainerCallback):
+        events: List[str]
+
+        def __init__(self) -> None:
+            self.events = []
+
+        def initialize(self) -> None:
+            self.events.append("initialize")
+
+        def after_workspace_prepared(self, trainer: cflearn.ITrainer) -> None:
+            self.events.append("after_workspace_prepared")
+
+        def before_summary(self, trainer: cflearn.ITrainer) -> None:
+            self.events.append("before_summary")
+
+        def before_loop(self, trainer: cflearn.ITrainer) -> None:
+            self.events.append("before_loop")
+
+        def before_loop_with_loaders(
+            self,
+            trainer: cflearn.ITrainer,
+            train_loader: DataLoader,
+            valid_loader: Optional[DataLoader],
+        ) -> None:
+            self.events.append("before_loop_with_loaders")
+
+        def log_lr(self, key: str, lr: float, trainer: cflearn.ITrainer) -> None:
+            self.events.append("log_lr")
+
+        def log_train_step(
+            self,
+            step_outputs: cflearn.StepOutputs,
+            state: cflearn.TrainerState,
+        ) -> None:
+            self.events.append("log_train_step")
+
+        def after_train_step(
+            self,
+            batch: cflearn.tensor_dict_type,
+            step_outputs: cflearn.StepOutputs,
+            trainer: cflearn.ITrainer,
+        ) -> None:
+            self.events.append("after_train_step")
+
+        def log_metrics(
+            self,
+            metric_outputs: cflearn.MetricsOutputs,
+            state: cflearn.TrainerState,
+        ) -> None:
+            self.events.append("log_metrics")
+
+        def after_save_checkpoint(self, trainer: cflearn.ITrainer) -> None:
+            self.events.append("after_save_checkpoint")
+
+        def at_terminate(self, trainer: cflearn.ITrainer) -> None:
+            self.events.append("at_terminate")
+
+        def after_loop(self, trainer: cflearn.ITrainer) -> None:
+            self.events.append("after_loop")
+
+        def finalize(self, trainer: cflearn.ITrainer) -> None:
+            self.events.append("finalize")
+
+    data, in_dim, out_dim = cflearn.testing.arange_data(
+        n=2,
+        dim=2,
+        out_dim=1,
+        batch_size=2,
+    )
+    config = cflearn.Config(
+        workspace=str(Path.cwd() / "callback_lifecycle"),
+        create_sub_workspace=False,
+        model=CallbackModel.__identifier__,
+        module_name="linear",
+        module_config={"input_dim": in_dim, "output_dim": out_dim},
+        loss_name="mse",
+        scheduler_name="warmup",
+        scheduler_config={"warmup_step": 2},
+        monitor_names="basic",
+        callback_names=[CallbackLifecycle.__identifier__],
+        auto_callback=False,
+        num_steps=1,
+        state_config={
+            "max_snapshot_file": 1,
+            "snapshot_start_step": 1,
+            "num_step_per_snapshot": 1,
+        },
+    )
+    pipeline = cflearn.TrainingPipeline.init(config).fit(
+        data,
+        do_summary=False,
+        skip_final_evaluation=True,
+    )
+    assert dist.is_initialized()
+    assert "gloo" in str(dist.get_backend()).lower()
+    callbacks = pipeline.training.build_callbacks.callbacks
+    callback = next(c for c in callbacks if isinstance(c, CallbackLifecycle))
+    trainer = pipeline.training.build_trainer.trainer
+    assert (
+        next(c for c in trainer.callbacks if isinstance(c, CallbackLifecycle))
+        is callback
+    )
+    if rank == 0:
+        expected_events = [
+            "initialize",
+            "after_workspace_prepared",
+            "before_summary",
+            "before_loop",
+            "before_loop_with_loaders",
+            "log_lr",
+            "log_train_step",
+            "after_train_step",
+            "log_metrics",
+            "after_save_checkpoint",
+            "at_terminate",
+            "after_loop",
+            "log_metrics",
+            "finalize",
+        ]
+    else:
+        expected_events = [
+            "initialize",
+            "before_summary",
+            "before_loop",
+            "before_loop_with_loaders",
+            "after_train_step",
+            "at_terminate",
+            "after_loop",
+            "finalize",
+        ]
+    assert callback.events == expected_events, callback.events
+    print(f"rank {rank}: callback lifecycle success", flush=True)
 
 
 def _run_prepared_pipeline(rank: int) -> None:
@@ -269,6 +413,14 @@ def main() -> None:
     assert world_size == 2
     assert os.environ["LOCAL_RANK"] == str(rank)
     assert not torch.cuda.is_available()
+
+    if args.scenario == "callback_lifecycle":
+        try:
+            _run_callback_lifecycle(rank)
+        finally:
+            if dist.is_initialized():
+                dist.destroy_process_group()
+        return
 
     dist.init_process_group(
         backend="gloo",

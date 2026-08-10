@@ -183,13 +183,15 @@ class Trainer(ITrainer):
         p: Optional[profile] = None,
     ) -> "Trainer":
         # accelerator
-        cpu = False
-        if not is_ddp():
-            parsed = get_torch_device(device)
-            if parsed.type == "cpu":
-                cpu = True
-            else:
-                torch.cuda.set_device(parsed)  # pragma: no cover
+        ddp = is_ddp()
+        parsed = get_torch_device(device)
+        cpu = (
+            not torch.cuda.is_available()
+            if ddp and device is None
+            else parsed.type == "cpu"
+        )
+        if not ddp and not cpu:
+            torch.cuda.set_device(parsed)  # pragma: no cover
         self.config.init_process_group(cpu=cpu)
         self.accelerator = Accelerator(
             cpu=cpu,
@@ -563,7 +565,9 @@ class Trainer(ITrainer):
                 continue
             if self.is_local_rank_0:
                 console.debug(f"restoring from '{m_path}'")
-            states = torch.load(m_path, weights_only=False, map_location=self.device)
+            device = self.device
+            map_location = torch.device("cpu") if device.type == "cpu" else device
+            states = torch.load(m_path, weights_only=False, map_location=map_location)
             states = states["states"]
             if state_dict_callback is not None:
                 state_dict_callback(states)

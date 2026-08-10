@@ -66,6 +66,16 @@ def test_cpu_ddp_preserves_prepared_loader_remainder(
     assert "rank 1: prepared remainder success" in result.rank_logs[1]
 
 
+def test_cpu_ddp_trainer_callback_lifecycle_and_rank_gates(
+    cpu_ddp: CPUDistributedHarness,
+) -> None:
+    result = cpu_ddp.run("callback_lifecycle")
+
+    assert set(result.rank_logs) == {0, 1}
+    assert "rank 0: callback lifecycle success" in result.rank_logs[0]
+    assert "rank 1: callback lifecycle success" in result.rank_logs[1]
+
+
 def test_cpu_ddp_gathers_inference_tensors_only_to_main(
     cpu_ddp: CPUDistributedHarness,
 ) -> None:

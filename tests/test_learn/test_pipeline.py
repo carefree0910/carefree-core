@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import torch
 import pytest
 import inspect
@@ -603,24 +604,79 @@ class TestPipeline(unittest.TestCase):
             cflearn.PipelineSerializer.self_ensemble_evaluation(5, workspace)
 
     def test_resume(self):
+        events = []
+
+        @cflearn.TrainerCallback.register("resume_contract", allow_duplicate=True)
+        class ResumeContractCallback(cflearn.TrainerCallback):
+            def before_loop(self, trainer):
+                events.append(("before_loop", trainer.state.step, trainer.state.epoch))
+
+            def at_step_start(self, batch, trainer):
+                events.append(
+                    ("at_step_start", trainer.state.step, trainer.state.epoch)
+                )
+
+            def after_loop(self, trainer):
+                events.append(("after_loop", trainer.state.step, trainer.state.epoch))
+
+            def finalize(self, trainer):
+                events.append(
+                    (
+                        "finalize",
+                        trainer.state.step,
+                        trainer.state.epoch,
+                        trainer.state.last_step,
+                    )
+                )
+
         cflearn.seed_everything(142857)
         resume_workspace = self._workspace("_resume")
-        data, in_dim, out_dim, _ = cflearn.testing.linear_data(use_validation=True)
+        data, in_dim, out_dim, _ = cflearn.testing.linear_data(
+            n=8,
+            batch_size=4,
+            use_validation=True,
+        )
         config = cflearn.Config(
             workspace=resume_workspace,
             module_name="linear",
             module_config=dict(input_dim=in_dim, output_dim=out_dim, bias=False),
             loss_name="mse",
-            num_epoch=10,
+            num_epoch=2,
+            callback_names=["resume_contract"],
             tqdm_settings=cflearn.TqdmSettings(use_tqdm=True),
         )
         config.to_debug()
-        cflearn.TrainingPipeline.init(config).fit(data)
-        config.resume_training_from = (
-            get_latest_workspace(resume_workspace)
-            / cflearn.PipelineSerializer.pipeline_folder
+        cflearn.TrainingPipeline.init(config).fit(data, do_summary=False)
+        latest_workspace = get_latest_workspace(resume_workspace)
+        assert latest_workspace is not None
+        resume_from = latest_workspace / cflearn.PipelineSerializer.pipeline_folder
+        state_path = (
+            resume_from
+            / cflearn.SerializeOptimizerBlock.__identifier__
+            / cflearn.SerializeOptimizerBlock.state_file
         )
-        cflearn.TrainingPipeline.init(config).fit(data)
+        with state_path.open("r") as f:
+            saved_state = json.load(f)
+        self.assertDictEqual(saved_state, {"step": 4, "epoch": 2})
+
+        config.resume_training_from = str(resume_from)
+        config.num_steps = saved_state["step"] + 1
+        events.clear()
+        pipeline = cflearn.TrainingPipeline.init(config).fit(data, do_summary=False)
+
+        saved_step = saved_state["step"]
+        saved_epoch = saved_state["epoch"]
+        self.assertListEqual(
+            events,
+            [
+                ("before_loop", saved_step, saved_epoch),
+                ("at_step_start", saved_step, saved_epoch + 1),
+                ("after_loop", saved_step + 1, saved_epoch + 1),
+                ("finalize", -1, -1, saved_step + 1),
+            ],
+        )
+        trainer = pipeline.training.build_trainer.trainer
+        self.assertEqual(trainer.state.last_step, saved_step + 1)
 
 
 class TestBlocks(unittest.TestCase):
