@@ -287,11 +287,6 @@ class TestToolkit(unittest.TestCase):
         self.assertIsInstance(new_states, dict)
         torch.testing.assert_close(new_states, expected_states)
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="P0-09: do not mutate denormal input states",
-    )
     def test_fix_denormal_states_preserves_inputs(self) -> None:
         states = {
             "a": torch.tensor([1.0, 2.0, 1.0e-33]),
@@ -302,10 +297,11 @@ class TestToolkit(unittest.TestCase):
 
         new_states = fix_denormal_states(states)
 
+        self.assertIsNot(new_states, states)
         self.assertIsNot(new_states["a"], states["a"])
         self.assertIs(new_states["b"], states["b"])
         self.assertIs(new_states["c"], states["c"])
-        torch.testing.assert_close(states, original_states)
+        torch.testing.assert_close(states, original_states, rtol=0.0, atol=0.0)
 
     def test_has_batch_norms_with_batch_norm_layers(self) -> None:
         m = nn.Sequential(nn.Linear(10, 2), nn.BatchNorm1d(2))

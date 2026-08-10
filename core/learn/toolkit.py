@@ -778,7 +778,7 @@ def fix_denormal_states(
         num_denormal = denormal.sum().item()
         num_denormal_total += num_denormal
         if num_denormal > 0:
-            new_states[k][denormal] = v.new_zeros(num_denormal)
+            new_states[k] = v.masked_fill(denormal, 0.0)
     if verbose:
         console.log(f"denormal ratio : {num_denormal_total / num_total:8.6f}")
     return new_states
