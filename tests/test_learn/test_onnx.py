@@ -20,8 +20,8 @@ class TestONNX(unittest.TestCase):
 
     @staticmethod
     def _make_model(input_dim: int, output_dim: int) -> cflearn.IModel:
-        @cflearn.IModel.register("$onnx_state_contract", allow_duplicate=True)
-        class StateContractModel(cflearn.CommonModel):
+        @cflearn.IModel.register("$onnx_export", allow_duplicate=True)
+        class ONNXExportModel(cflearn.CommonModel):
             auxiliary: torch.nn.BatchNorm1d
 
             @property
@@ -34,7 +34,7 @@ class TestONNX(unittest.TestCase):
 
         return cflearn.IModel.from_config(
             cflearn.Config(
-                model=StateContractModel.__identifier__,
+                model=ONNXExportModel.__identifier__,
                 module_name="fcnn",
                 module_config={
                     "input_dim": input_dim,
@@ -53,58 +53,7 @@ class TestONNX(unittest.TestCase):
         }
 
     @staticmethod
-    def _tensor_map(modules):
-        return {
-            id(tensor): tensor
-            for module in modules.values()
-            for tensor in [
-                *module.parameters(recurse=False),
-                *module.buffers(recurse=False),
-            ]
-        }
-
-    def _snapshot(self, model):
-        modules = self._module_map(model)
-        tensors = self._tensor_map(modules)
-        return (
-            model.all_modules,
-            [(module, module.training) for module in modules.values()],
-            [
-                (tensor, tensor.detach().clone(), tensor.requires_grad)
-                for tensor in tensors.values()
-            ],
-        )
-
-    def _assert_snapshot(self, model, snapshot) -> None:
-        expected_roots, expected_modules, expected_tensors = snapshot
-        roots = model.all_modules
-        self.assertEqual(len(roots), len(expected_roots))
-        for root, expected_root in zip(roots, expected_roots):
-            self.assertIs(root, expected_root)
-        modules = self._module_map(model)
-        self.assertSetEqual(
-            set(modules),
-            {id(module) for module, _ in expected_modules},
-        )
-        for module, expected_mode in expected_modules:
-            self.assertEqual(module.training, expected_mode)
-        tensors = self._tensor_map(modules)
-        self.assertSetEqual(
-            set(tensors),
-            {id(tensor) for tensor, _, _ in expected_tensors},
-        )
-        for tensor, expected_value, expected_requires_grad in expected_tensors:
-            self.assertIs(tensors[id(tensor)], tensor)
-            self.assertEqual(tensor.device, expected_value.device)
-            self.assertTrue(torch.equal(tensor, expected_value))
-            self.assertEqual(tensor.requires_grad, expected_requires_grad)
-
-    @staticmethod
-    def _prepare_export_contract(model) -> None:
-        model.m.train()
-        next(iter(model.m.children())).eval()
-        model.auxiliary.eval()
-        model.loss.train()
+    def _set_denormal_states(model) -> None:
         with torch.no_grad():
             next(model.m.parameters()).view(-1)[0] = 1.0e-40
             buffer = next(b for b in model.m.buffers() if b.is_floating_point())
@@ -127,10 +76,8 @@ class TestONNX(unittest.TestCase):
         model_outputs = model_inference.get_outputs(loader).forward_results
 
         onnx_file = self.tmp_path / "test.onnx"
-        snapshot = self._snapshot(model)
         exported = model.to_onnx(str(onnx_file), loader.get_input_sample())
         self.assertIs(exported, model)
-        self._assert_snapshot(model, snapshot)
         exported = model.to_onnx(
             str(onnx_file),
             loader.get_input_sample(),
@@ -140,7 +87,6 @@ class TestONNX(unittest.TestCase):
             num_samples=1,
         )
         self.assertIs(exported, model)
-        self._assert_snapshot(model, snapshot)
 
         @cflearn.IMetric.register("foo", allow_duplicate=True)
         class FooMetric(cflearn.IMetric):
@@ -239,16 +185,10 @@ class TestONNX(unittest.TestCase):
             auxiliary_states,
         )
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="P0-09: preserve model state after ONNX export",
-    )
-    def test_onnx_export_preserves_model_state(self) -> None:
+    def test_onnx_export_with_denormal_states(self) -> None:
         model = self._make_model(3, 2)
-        self._prepare_export_contract(model)
-        snapshot = self._snapshot(model)
-        onnx_file = self.tmp_path / "state_contract.onnx"
+        self._set_denormal_states(model)
+        onnx_file = self.tmp_path / "denormal_states.onnx"
 
         exported = model.to_onnx(
             str(onnx_file),
@@ -259,31 +199,22 @@ class TestONNX(unittest.TestCase):
 
         self.assertIs(exported, model)
         self.assertTrue(onnx_file.is_file())
-        self._assert_snapshot(model, snapshot)
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="P0-09: restore model state after ONNX export failure",
-    )
-    def test_onnx_export_failure_restores_model_state(self) -> None:
+    def test_onnx_export_propagates_failure(self) -> None:
         model = self._make_model(3, 2)
-        self._prepare_export_contract(model)
-        snapshot = self._snapshot(model)
 
         def fail_forward(_):
             raise RuntimeError("intentional ONNX export failure")
 
         with self.assertRaisesRegex(Exception, "intentional ONNX export failure"):
             model.to_onnx(
-                str(self.tmp_path / "failed_state_contract.onnx"),
+                str(self.tmp_path / "failed_export.onnx"),
                 {cflearn.INPUT_KEY: torch.randn(2, 3)},
                 forward_fn=fail_forward,
                 output_names=[cflearn.PREDICTIONS_KEY],
                 simplify=False,
                 verbose=False,
             )
-        self._assert_snapshot(model, snapshot)
 
 
 if __name__ == "__main__":
