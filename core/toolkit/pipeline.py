@@ -17,7 +17,6 @@ from zipfile import ZipFile
 from tempfile import mkdtemp
 
 from .misc import to_path
-from .misc import shallow_copy_dict
 from .misc import WithRegister
 from .misc import ISerializable
 from .misc import ISerializableDataClass
@@ -81,10 +80,7 @@ def check_requirement(block: "IBlock", previous: Mapping[str, "IBlock"]) -> None
 class IBlock(Generic[TBlock], WithRegister["IBlock"], metaclass=ABCMeta):
     d = pipeline_blocks
 
-    """
-    This property should be injected by the `IPipeline`.
-    > In runtime (i.e. executing the `run` method), this property will represent ALL `IBlock`s used in the `IPipeline`.
-    """
+    """Blocks that were built or executed before the current block."""
     previous: Dict[str, TBlock]
 
     @abstractmethod
@@ -201,7 +197,7 @@ class IPipeline(
             planned[identifier] = block
 
         for block in blocks:
-            block.previous = shallow_copy_dict(previous)
+            block.previous = previous.copy()
             self.before_block_build(block)
             block.build(self.config)
             self.after_block_build(block)

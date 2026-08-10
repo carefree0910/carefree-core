@@ -155,6 +155,12 @@ class TestData(unittest.TestCase):
                 ("consumer_transform", ("test_previous_source",)),
             ],
         )
+        self.assertEqual(data.blocks[0].previous, {})
+        self.assertEqual(
+            list(data.blocks[1].previous),
+            ["test_previous_source"],
+        )
+        self.assertIs(data.blocks[1].previous["test_previous_source"], data.blocks[0])
         self.assertEqual(
             data.to_info()["blocks"],
             [

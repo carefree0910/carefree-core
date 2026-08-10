@@ -1126,7 +1126,7 @@ class IData(  # type: ignore
         kw = dict(bundle=bundle.copy(), for_inference=for_inference)
         previous: Dict[str, IDataBlock] = {}
         for block in self.blocks:
-            block.previous = shallow_copy_dict(previous)
+            block.previous = previous.copy()
             kw["bundle"] = safe_execute(getattr(block, fn), kw)
             previous[block.__identifier__] = block
         return kw["bundle"]  # type: ignore

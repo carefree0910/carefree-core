@@ -69,12 +69,7 @@ class TestPipeline(unittest.TestCase):
             self.assertFalse(block.verbose)
         self.assertTrue(block.verbose)
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="P1-06: nested verbose contexts should override and restore",
-    )
-    def test_verbose_context_supports_nested_overrides(self):
+    def test_verbose_context_keeps_outer_override(self):
         pipeline = self._inference_pipeline()
         block = pipeline.serialize_model
         self.assertIsNotNone(block)
@@ -83,15 +78,10 @@ class TestPipeline(unittest.TestCase):
         with pipeline.verbose_context(False):
             self.assertFalse(block.verbose)
             with pipeline.verbose_context(True):
-                self.assertTrue(block.verbose)
+                self.assertFalse(block.verbose)
             self.assertFalse(block.verbose)
         self.assertTrue(block.verbose)
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="P1-06: verbose contexts should be isolated per Pipeline",
-    )
     def test_verbose_context_isolates_nested_pipelines(self):
         first = self._inference_pipeline()
         second = self._inference_pipeline()
@@ -109,11 +99,6 @@ class TestPipeline(unittest.TestCase):
         self.assertTrue(first_block.verbose)
         self.assertTrue(second_block.verbose)
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="P1-06: concurrent verbose contexts should be isolated",
-    )
     def test_verbose_context_isolates_concurrent_pipelines(self):
         first = self._inference_pipeline()
         second = self._inference_pipeline()

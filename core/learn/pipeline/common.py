@@ -72,7 +72,7 @@ class Block(IBlock):
 
 
 class verbose_context:
-    is_in: bool = False
+    is_null: bool
     previous_verboses: Dict[str, bool]
 
     def __init__(self, p: "Pipeline", verbose: bool) -> None:
@@ -81,10 +81,10 @@ class verbose_context:
         self.is_null = False
 
     def __enter__(self) -> None:
-        if verbose_context.is_in:
+        if self.p._verbose_context_active:
             self.is_null = True
             return
-        verbose_context.is_in = True
+        self.p._verbose_context_active = True
         self.previous_verboses = {}
         for block in self.p.blocks:
             b_verbose = getattr(block, "verbose", None)
@@ -95,13 +95,14 @@ class verbose_context:
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         if self.is_null:
             return
-        verbose_context.is_in = False
+        self.p._verbose_context_active = False
         for k, v in self.previous_verboses.items():
             self.p.get_block(k).verbose = v  # type: ignore
 
 
 class Pipeline(Generic[TPipeline], IPipeline[Block, Config, TPipeline]):
     _defaults: OrderedDict
+    _verbose_context_active: bool
 
     data: Optional[IData] = None
     training_workspace: Optional[TPath] = None
@@ -109,6 +110,10 @@ class Pipeline(Generic[TPipeline], IPipeline[Block, Config, TPipeline]):
     config_file = "config.json"
 
     # inheritance
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._verbose_context_active = False
 
     @classmethod
     def init(cls, config: Config) -> TPipeline:
