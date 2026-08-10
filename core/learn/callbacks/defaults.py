@@ -4,6 +4,7 @@ import torch
 
 from torch import Tensor
 from typing import Any
+from typing import Set
 from typing import Dict
 from typing import List
 from typing import Tuple
@@ -53,10 +54,13 @@ class TrainingLoopCallback(TrainerCallback):
     we put them here to make the codes more modular.
     """
 
+    stepped_scopes: Set[str]
+
     def __init__(self) -> None:
         self.gradient_norm: Optional[Tensor] = None
         self.should_log_lr = False
         self.current_scheduler_epoch = -1
+        self.stepped_scopes = set()
 
     def before_summary(self, trainer: ITrainer) -> None:
         model = trainer.model
@@ -186,38 +190,43 @@ class TrainingLoopCallback(TrainerCallback):
         batch: tensor_dict_type,
         forward: tensor_dict_type,
         loss_tensors: tensor_dict_type,
-        any_update: bool,
+        updated_scopes: Set[str],
     ) -> None:
         state = trainer.state
         config = trainer.config
         # ema
-        if any_update:
+        if updated_scopes:
             for module in trainer.model.m.modules():
                 if isinstance(module, EMA):
                     module()
         # scheduler
-        if any_update and not (
-            config.update_scheduler_per_epoch
-            and state.epoch == self.current_scheduler_epoch
-        ):
-            lr_logged = False
-            for k, sch in trainer.schedulers.items():
-                if sch is not None:
-                    should_log_lr, kwargs = self.get_scheduler_settings(k, trainer, sch)
-                    if should_log_lr or config.update_scheduler_per_epoch:
-                        lr_logged = True
-                        if self.is_local_rank_0:
-                            for callback in trainer.callbacks:
-                                callback.log_lr(
-                                    f"lr-{k}",
-                                    sch.get_last_lr()[0],
-                                    trainer,
-                                )
-                    sch.step(**shallow_copy_dict(kwargs))
-            if lr_logged:
-                self.should_log_lr = False
-            if config.update_scheduler_per_epoch:
+        if not updated_scopes:
+            return
+        per_epoch = config.update_scheduler_per_epoch
+        if per_epoch:
+            if state.epoch != self.current_scheduler_epoch:
                 self.current_scheduler_epoch = state.epoch
+                self.stepped_scopes.clear()
+            updated_scopes = updated_scopes - self.stepped_scopes
+        lr_logged = False
+        for k, sch in trainer.schedulers.items():
+            if k not in updated_scopes or sch is None:
+                continue
+            should_log_lr, kwargs = self.get_scheduler_settings(k, trainer, sch)
+            if should_log_lr or per_epoch:
+                lr_logged = True
+                if self.is_local_rank_0:
+                    for callback in trainer.callbacks:
+                        callback.log_lr(
+                            f"lr-{k}",
+                            sch.get_last_lr()[0],
+                            trainer,
+                        )
+            sch.step(**shallow_copy_dict(kwargs))
+            if per_epoch:
+                self.stepped_scopes.add(k)
+        if lr_logged:
+            self.should_log_lr = False
 
     def before_monitor_logging(self, trainer: ITrainer) -> None:
         self.should_log_lr = True

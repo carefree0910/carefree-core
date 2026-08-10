@@ -2166,8 +2166,9 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
 
         Step by step explanation
         ------------------------
-        1. Initialize variables: `forward` (an empty dictionary), `loss_tensors` (an empty dictionary), `any_update`
-        (a bool flag set to `False`), and `update_fn` (a function returned by the `get_update_fn` function defined above).
+        1. Initialize variables: `forward` (an empty dictionary), `loss_tensors` (an empty dictionary),
+        `updated_optimizer_scopes` (an empty set), and `update_fn` (a function returned by the `get_update_fn`
+        function defined above).
         2. Check whether the forward pass should have gradients (`fw_has_grad`) and which training step to use for the
         forward pass (`fw_train_step`). This is done by looping through each training step and checking its
         `requires_new_forward` and `requires_grad_in_forward` attributes.
@@ -2185,7 +2186,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
           6) Update the optimizer if `train_step.grad_accumulate` is a factor of the current `state.step`.
           7) Update the `loss_tensors` with the loss values for this training step.
         5. Loop through each callback in the trainer and call its `after_gradient_update` method with the trainer, batch,
-        forward pass outputs, loss values, and `any_update` flag.
+        forward pass outputs, loss values, and `updated_optimizer_scopes` set.
         6. Loop through each training step and call its callback function with the model, trainer, batch, and forward pass outputs.
         7. Return the `StepOutputs` object containing the forward pass outputs and loss values.
         """
@@ -2217,7 +2218,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         forward: Optional[tensor_dict_type] = None
         loss_tensors = {}
         update_fn = get_update_fn(trainer)
-        any_update = False
+        updated_optimizer_scopes: Set[str] = set()
         get_fw = lambda: self.run(batch_idx, batch, state, **forward_kwargs)
 
         def can_disable_forward_grad(train_step_idx: int) -> bool:
@@ -2234,7 +2235,8 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                 % (train_step.grad_accumulate or trainer.config.grad_accumulate)
                 == 0
             )
-            optimizer = trainer.optimizers[train_step.scope]
+            scope = train_step.scope
+            optimizer = trainer.optimizers[scope]
             skip_backward = will_skip_backward(optimizer, state, update)
             with no_sync_context(update, trainer):
                 if forward is None or train_step.requires_new_forward:
@@ -2257,11 +2259,13 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
                     i_losses = {k: v.detach() for k, v in loss_res.loss_tensors.items()}
                     loss_tensors.update(i_losses)
             if update:
-                any_update = True
+                updated_optimizer_scopes.add(scope)
         if forward is None:
             forward = get_fw()
         for c in trainer.callbacks:
-            c.after_gradient_update(trainer, batch, forward, loss_tensors, any_update)
+            c.after_gradient_update(
+                trainer, batch, forward, loss_tensors, updated_optimizer_scopes
+            )
         # train step callbacks
         for train_step in train_steps:
             train_step.callback(self, trainer, batch, forward)
@@ -2824,7 +2828,7 @@ class TrainerCallback(WithRegister["TrainerCallback"]):
         batch: tensor_dict_type,
         forward: tensor_dict_type,
         loss_tensors: tensor_dict_type,
-        any_update: bool,
+        updated_scopes: Set[str],
     ) -> None:
         pass
 

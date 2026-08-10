@@ -74,6 +74,23 @@ class Model(cflearn.IModel):
         return {cflearn.PREDICTIONS_KEY: self.m(batch[cflearn.INPUT_KEY])}
 
 
+class UpdateCallback(cflearn.TrainerCallback):
+    def __init__(self):
+        self.calls = []
+        self.scopes = []
+
+    def after_gradient_update(
+        self,
+        trainer,
+        batch,
+        forward,
+        loss_tensors,
+        updated_scopes,
+    ):
+        self.calls.append((trainer, batch, forward, loss_tensors, updated_scopes))
+        self.scopes.append(updated_scopes)
+
+
 def make_trainer(optimizers, *, state=None, callbacks=None, closure=False):
     trainer = cflearn.Trainer(
         cflearn.TrainerConfig(
@@ -227,7 +244,7 @@ def test_all_skipped_train_keeps_callback_contract():
     assert callback_args[0] is trainer
     assert callback_args[1] is batch
     assert callback_args[2] is outputs.forward_results
-    assert callback_args[3:] == ({}, False)
+    assert callback_args[3:] == ({}, set())
     assert skipped_step.skip_states == [trainer.state]
     assert skipped_step.loss_calls == []
     assert len(skipped_step.callback_calls) == 1
@@ -238,10 +255,18 @@ def test_accumulating_step_only_runs_backward_and_no_sync():
     train_step = Step(grad_accumulate=2)
     model = Model(lambda: [train_step])
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    ema = cflearn.EMA(0.9, model.m.named_parameters(), use_num_updates=True)
+    model.m.ema = ema
     callback = cflearn.TrainingLoopCallback()
-    trainer = make_trainer({"all": optimizer}, callbacks=[callback])
+    update_callback = UpdateCallback()
+    trainer = make_trainer({"all": optimizer}, callbacks=[callback, update_callback])
     trainer.model = model
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1)
+    trainer.schedulers = {"all": scheduler}
+    trainer.schedulers_requires_metric = set()
     batch = {cflearn.INPUT_KEY: torch.ones(1, 1)}
+    initial_scheduler_epoch = scheduler.last_epoch
+    initial_ema_updates = ema.num_updates.item()
 
     with patch.object(
         trainer.accelerator,
@@ -277,7 +302,10 @@ def test_accumulating_step_only_runs_backward_and_no_sync():
     before_gradient_update.assert_called_once()
     after_gradient_update.assert_called_once()
     assert before_gradient_update.call_args.args[-1] is False
-    assert after_gradient_update.call_args.args[-1] is False
+    assert after_gradient_update.call_args.args[-1] == set()
+    assert scheduler.last_epoch == initial_scheduler_epoch
+    assert ema.num_updates.item() == initial_ema_updates
+    assert update_callback.scopes == [set()]
 
 
 def test_closure_optimizer_hooks_and_callback_identity():
@@ -348,7 +376,9 @@ def test_closure_optimizer_hooks_and_callback_identity():
     assert step.callback_calls[0] is outputs.forward_results
     forward = outputs.forward_results
     expected_before = trainer, batch, forward, pack.loss_res, True
-    expected_after = trainer, batch, forward, outputs.loss_tensors, True
+    updated_scopes = callback.after_gradient_update.call_args.args[-1]
+    assert updated_scopes == {"all"}
+    expected_after = trainer, batch, forward, outputs.loss_tensors, updated_scopes
     assert list(map(id, callback.before_gradient_update.call_args.args)) == list(
         map(id, expected_before)
     )
@@ -390,23 +420,20 @@ def test_train_updates_each_optimizer_scope():
         zero_grad.assert_called_once_with()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="P0-06: advance only updated schedulers",
-)
 def test_schedulers_follow_updated_optimizer_scopes():
     steps = [Step("a"), Step("b", grad_accumulate=2)]
+    steps[1].requires_new_forward = True
     model = Model(lambda: steps)
     ema = cflearn.EMA(0.9, model.m.named_parameters(), use_num_updates=True)
     model.m.ema = ema
     loop = cflearn.TrainingLoopCallback()
+    callback = UpdateCallback()
     optimizers = {
         scope: torch.optim.SGD(model.parameters(), lr=0.1) for scope in ["a", "b"]
     }
     trainer = make_trainer(
         optimizers,
-        callbacks=[loop],
+        callbacks=[loop, callback],
     )
     trainer.model = model
     trainer.schedulers = {
@@ -414,13 +441,162 @@ def test_schedulers_follow_updated_optimizer_scopes():
         for key, optimizer in optimizers.items()
     }
     trainer.schedulers_requires_metric = set()
-    trainer.intermediate = None
     initial_epochs = {
         key: scheduler.last_epoch for key, scheduler in trainer.schedulers.items()
     }
     initial_updates = ema.num_updates.item()
-    with patch.object(trainer.accelerator, "backward"):
-        model.train(0, {cflearn.INPUT_KEY: torch.ones(1, 1)}, trainer, {}, {})
+    batch = {cflearn.INPUT_KEY: torch.ones(1, 1)}
+
+    outputs = model.train(0, batch, trainer, {}, {})
+
+    assert trainer.schedulers["a"].last_epoch == initial_epochs["a"] + 1
+    assert trainer.schedulers["b"].last_epoch == initial_epochs["b"]
+    assert ema.num_updates.item() == initial_updates + 1
+    assert callback.scopes == [{"a"}]
+    expected = (
+        trainer,
+        batch,
+        outputs.forward_results,
+        outputs.loss_tensors,
+        callback.scopes[0],
+    )
+    assert list(map(id, callback.calls[0])) == list(map(id, expected))
+
+    trainer.state.step = 2
+    outputs = model.train(0, batch, trainer, {}, {})
+
+    assert trainer.schedulers["a"].last_epoch == initial_epochs["a"] + 2
+    assert trainer.schedulers["b"].last_epoch == initial_epochs["b"] + 1
+    assert ema.num_updates.item() == initial_updates + 2
+    assert callback.scopes[-1] == {"a", "b"}
+    expected = (
+        trainer,
+        batch,
+        outputs.forward_results,
+        outputs.loss_tensors,
+        callback.scopes[-1],
+    )
+    assert list(map(id, callback.calls[-1])) == list(map(id, expected))
+
+
+def test_repeated_optimizer_scope_updates_scheduler_and_ema_once():
+    steps = [Step(), Step()]
+    steps[1].requires_new_forward = True
+    model = Model(lambda: steps)
+    ema = cflearn.EMA(0.9, model.m.named_parameters(), use_num_updates=True)
+    model.m.ema = ema
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    loop = cflearn.TrainingLoopCallback()
+    callback = UpdateCallback()
+    trainer = make_trainer(
+        {"all": optimizer},
+        callbacks=[loop, callback],
+    )
+    trainer.model = model
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1)
+    trainer.schedulers = {"all": scheduler}
+    trainer.schedulers_requires_metric = set()
+    initial_epoch = scheduler.last_epoch
+    initial_updates = ema.num_updates.item()
+
+    with patch.object(
+        optimizer,
+        "step",
+        wraps=optimizer.step,
+    ) as optimizer_step:
+        model.train(
+            0,
+            {cflearn.INPUT_KEY: torch.ones(1, 1)},
+            trainer,
+            {},
+            {},
+        )
+
+    assert optimizer_step.call_count == 2
+    assert scheduler.last_epoch == initial_epoch + 1
+    assert ema.num_updates.item() == initial_updates + 1
+    assert callback.scopes == [{"all"}]
+
+
+def test_per_epoch_schedulers_follow_staggered_scopes():
+    steps = [Step("a", grad_accumulate=2), Step("b", grad_accumulate=3)]
+    steps[1].requires_new_forward = True
+    model = Model(lambda: steps)
+    loop = cflearn.TrainingLoopCallback()
+    callback = UpdateCallback()
+    optimizers = {
+        scope: torch.optim.SGD(model.parameters(), lr=0.1) for scope in ["a", "b"]
+    }
+    trainer = make_trainer(
+        optimizers,
+        callbacks=[loop, callback],
+    )
+    trainer.model = model
+    trainer.config.update_scheduler_per_epoch = True
+    trainer.state.epoch = 0
+    trainer.schedulers = {
+        key: torch.optim.lr_scheduler.StepLR(optimizer, step_size=1)
+        for key, optimizer in optimizers.items()
+    }
+    trainer.schedulers_requires_metric = set()
+    initial_epochs = {
+        key: scheduler.last_epoch for key, scheduler in trainer.schedulers.items()
+    }
+    batch = {cflearn.INPUT_KEY: torch.ones(1, 1)}
+
+    trainer.state.step = 2
+    model.train(0, batch, trainer, {}, {})
+    assert trainer.schedulers["a"].last_epoch == initial_epochs["a"] + 1
+    assert trainer.schedulers["b"].last_epoch == initial_epochs["b"]
+
+    trainer.state.step = 3
+    model.train(0, batch, trainer, {}, {})
+    assert trainer.schedulers["a"].last_epoch == initial_epochs["a"] + 1
+    assert trainer.schedulers["b"].last_epoch == initial_epochs["b"] + 1
+
+    trainer.state.step = 6
+    model.train(0, batch, trainer, {}, {})
+    assert trainer.schedulers["a"].last_epoch == initial_epochs["a"] + 1
+    assert trainer.schedulers["b"].last_epoch == initial_epochs["b"] + 1
+
+    trainer.state.epoch = 1
+    model.train(0, batch, trainer, {}, {})
+    assert trainer.schedulers["a"].last_epoch == initial_epochs["a"] + 2
+    assert trainer.schedulers["b"].last_epoch == initial_epochs["b"] + 2
+    assert callback.scopes == [
+        {"a"},
+        {"b"},
+        {"a", "b"},
+        {"a", "b"},
+    ]
+    assert loop.stepped_scopes == {"a", "b"}
+
+
+def test_training_loop_callback_direct_call_uses_explicit_scopes():
+    model = Model(lambda: [Step()])
+    ema = cflearn.EMA(0.9, model.m.named_parameters(), use_num_updates=True)
+    model.m.ema = ema
+    optimizers = {
+        scope: torch.optim.SGD(model.parameters(), lr=0.1) for scope in ["a", "b"]
+    }
+    loop = cflearn.TrainingLoopCallback()
+    trainer = make_trainer(optimizers, callbacks=[loop])
+    trainer.model = model
+    trainer.schedulers = {
+        key: torch.optim.lr_scheduler.StepLR(optimizer, step_size=1)
+        for key, optimizer in optimizers.items()
+    }
+    for optimizer in optimizers.values():
+        optimizer.step()
+    trainer.schedulers_requires_metric = set()
+    initial_epochs = {
+        key: scheduler.last_epoch for key, scheduler in trainer.schedulers.items()
+    }
+    initial_updates = ema.num_updates.item()
+    batch = {cflearn.INPUT_KEY: torch.ones(1, 1)}
+    forward = model.run(0, batch, trainer.state)
+
+    loop.after_gradient_update(trainer, batch, forward, {}, {"a"})
 
     assert trainer.schedulers["a"].last_epoch == initial_epochs["a"] + 1
     assert trainer.schedulers["b"].last_epoch == initial_epochs["b"]
