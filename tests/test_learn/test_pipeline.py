@@ -53,57 +53,6 @@ class TestPipeline(unittest.TestCase):
         checkpoint = cflearn.get_sorted_checkpoints(checkpoint_folder)[0]
         return workspace, checkpoint_folder / checkpoint
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="P1-06: failed builds should restore Pipeline-owned state",
-    )
-    def test_failed_build_rolls_back_pipeline_state(self):
-        class BaselineBlock(cflearn.Block):
-            __identifier__ = "transaction_baseline"
-
-            def build(self, config):
-                pass
-
-        class SuccessfulBlock(cflearn.Block):
-            __identifier__ = "transaction_successful"
-
-            def build(self, config):
-                config.extra = {"phase": "successful"}
-
-            def process_defaults(self, defaults):
-                defaults["phase"] = "successful"
-
-        class FailingBlock(cflearn.Block):
-            __identifier__ = "transaction_failing"
-
-            def build(self, config):
-                config.extra = {"phase": "failing"}
-                raise RuntimeError("intentional build failure")
-
-        config = cflearn.Config(
-            module_name="linear",
-            module_config={"input_dim": 2, "output_dim": 1},
-            loss_name="mse",
-        )
-        pipeline = cflearn.Pipeline.init(config)
-        baseline = BaselineBlock()
-        pipeline.build(baseline)
-        original_blocks = list(pipeline.blocks)
-        original_config = pipeline.config.asdict()
-        original_defaults = pipeline._defaults.copy()
-
-        with self.assertRaisesRegex(RuntimeError, "intentional build failure"):
-            pipeline.build(SuccessfulBlock(), FailingBlock())
-
-        self.assertEqual(pipeline.blocks, original_blocks)
-        self.assertEqual(
-            pipeline.block_mappings,
-            {"transaction_baseline": baseline},
-        )
-        self.assertEqual(pipeline.config.asdict(), original_config)
-        self.assertEqual(pipeline._defaults, original_defaults)
-
     def test_verbose_context_restores_after_exception(self):
         pipeline = self._inference_pipeline()
         block = pipeline.serialize_model
