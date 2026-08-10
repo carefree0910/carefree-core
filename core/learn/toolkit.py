@@ -1408,6 +1408,14 @@ class mode_context:
     use_inference : Optional[bool]
         Whether to enable inference mode.
         If None, inference mode is not used.
+    restore_to : Optional[bool]
+        The mode to restore when exiting.
+        If None, the module's current mode is captured when entering.
+
+    Notes
+    -----
+    The module tree is expected to share one training status before entering.
+    That status is restored recursively when the context exits.
 
     Examples
     --------
@@ -1420,6 +1428,10 @@ class mode_context:
 
     """
 
+    _restore_to: Optional[bool]
+    _training: Optional[bool]
+    _stack: Optional[ExitStack]
+
     def __init__(
         self,
         module: nn.Module,
@@ -1427,19 +1439,25 @@ class mode_context:
         to_train: Optional[bool],
         use_grad: Optional[bool],
         use_inference: Optional[bool] = None,
+        restore_to: Optional[bool] = None,
     ):
         self._module = module
         self._to_train = to_train
         self._use_grad = use_grad
         self._use_inference = use_inference
-        self._training: Optional[bool] = None
-        self._stack: Optional[ExitStack] = None
+        self._restore_to = restore_to
+        self._training = None
+        self._stack = None
 
     def __enter__(self) -> None:
         stack = ExitStack()
         try:
             if self._to_train is not None:
-                self._training = self._module.training
+                self._training = (
+                    self._module.training
+                    if self._restore_to is None
+                    else self._restore_to
+                )
                 self._module.train(mode=self._to_train)
             if self._use_grad is None:
                 grad_context: ContextManager = nullcontext()
@@ -1527,6 +1545,9 @@ class eval_context(mode_context):
     use_inference : Optional[bool], optional
         Whether to enable inference mode.
         If None and `use_grad` is not None, inference mode is set to the opposite of `use_grad`.
+    restore_to : Optional[bool], optional
+        The mode to restore when exiting.
+        If None, the module's current mode is captured when entering.
 
     Examples
     --------
@@ -1546,6 +1567,7 @@ class eval_context(mode_context):
         *,
         use_grad: Optional[bool] = False,
         use_inference: Optional[bool] = None,
+        restore_to: Optional[bool] = None,
     ):
         if use_inference is None and use_grad is not None:
             use_inference = not use_grad
@@ -1554,6 +1576,7 @@ class eval_context(mode_context):
             to_train=False,
             use_grad=use_grad,
             use_inference=use_inference,
+            restore_to=restore_to,
         )
 
 

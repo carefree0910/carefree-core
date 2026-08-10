@@ -2365,7 +2365,9 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         return names
 
     def to(self, device: device_type) -> "IModel":
-        self.m.to(get_torch_device(device))
+        torch_device = get_torch_device(device)
+        for module in self.all_modules:
+            module.to(torch_device)
         return self
 
     def state_dict(self, **kwargs: Any) -> tensor_dict_type:
@@ -2397,6 +2399,12 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         return outputs
 
     def eval_context(self, **kwargs: Any) -> ContextManager:
+        """
+        All modules are expected to share the mode passed to `restore_to`,
+        which defaults to the mode reported by `m`.
+        """
+
+        kwargs.setdefault("restore_to", self.m.training)
         return eval_context(nn.ModuleList(self.all_modules), **kwargs)
 
     def to_onnx(

@@ -193,19 +193,51 @@ class TestONNX(unittest.TestCase):
         self.assertIsNone(empty_outputs.metric_outputs)
         self.assertIsNone(empty_outputs.loss_items)
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="P0-09: move every module in all_modules",
-    )
     def test_to_moves_all_modules(self) -> None:
         model = self._make_model(3, 2)
 
-        model.to("meta")
+        self.assertIs(model.to("meta"), model)
+        self.assertEqual(model.device.type, "meta")
 
         for module in model.all_modules:
             for tensor in [*module.parameters(), *module.buffers()]:
                 self.assertEqual(tensor.device.type, "meta")
+
+    def test_eval_context_preserves_unified_mode(self) -> None:
+        model = self._make_model(3, 2)
+        modules = list(self._module_map(model).values())
+
+        for training in [True, False]:
+            for module in model.all_modules:
+                module.train(training)
+            with model.eval_context(use_inference=False):
+                self.assertTrue(all(not module.training for module in modules))
+            self.assertTrue(all(module.training is training for module in modules))
+
+    def test_state_dict_keeps_main_module_payload(self) -> None:
+        model = self._make_model(3, 2)
+        main_states = {
+            key: value.detach().clone() for key, value in model.m.state_dict().items()
+        }
+        auxiliary_states = {
+            key: value.detach().clone()
+            for key, value in model.auxiliary.state_dict().items()
+        }
+
+        states = model.state_dict()
+
+        self.assertListEqual(list(states), list(main_states))
+        torch.testing.assert_close(states, main_states)
+
+        loaded_states = {
+            key: torch.zeros_like(value) for key, value in main_states.items()
+        }
+        self.assertIsNone(model.load_state_dict(loaded_states))
+        torch.testing.assert_close(model.m.state_dict(), loaded_states)
+        torch.testing.assert_close(
+            model.auxiliary.state_dict(),
+            auxiliary_states,
+        )
 
     @pytest.mark.xfail(
         strict=True,
