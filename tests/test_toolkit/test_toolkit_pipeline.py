@@ -1,11 +1,12 @@
 import pytest
 import unittest
 
+from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any
 from typing import Type
 from pathlib import Path
 from zipfile import ZipFile
-from dataclasses import dataclass
 from core.toolkit.misc import ISerializableDataClass
 from core.toolkit.pipeline import get_folder
 from core.toolkit.pipeline import check_requirement
@@ -62,6 +63,224 @@ class TestPipeline(unittest.TestCase):
         restored = TestPipeline.init(TestConfig("placeholder")).from_info(info)
         self.assertEqual(restored.config, config)
         self.assertEqual(len(restored.blocks), 2)
+
+
+class TestBuildContracts(unittest.TestCase):
+    def setUp(self):
+        @dataclass
+        class ContractConfig(ISerializableDataClass["ContractConfig"]):
+            value: str = "initial"
+
+        ContractConfig.d = {}
+        ContractConfig.register("contract_config")(ContractConfig)
+
+        class ContractBlock(IBlock):
+            d = {}
+
+            def build(self, config: Any) -> None:
+                pass
+
+        @ContractBlock.register("contract_first")
+        class FirstBlock(ContractBlock):
+            pass
+
+        @ContractBlock.register("contract_second")
+        class SecondBlock(ContractBlock):
+            pass
+
+        @ContractBlock.register("contract_third")
+        class ThirdBlock(ContractBlock):
+            pass
+
+        class ContractPipeline(IPipeline):
+            @classmethod
+            def init(cls, config: Any) -> "ContractPipeline":
+                self = cls()
+                self.config = config
+                return self
+
+            @property
+            def config_base(self) -> Type:
+                return ContractConfig
+
+            @property
+            def block_base(self) -> Type:
+                return ContractBlock
+
+        self.config_type = ContractConfig
+        self.pipeline_type = ContractPipeline
+        self.first_type = FirstBlock
+        self.second_type = SecondBlock
+        self.third_type = ThirdBlock
+
+    def test_requirement_choices_and_none(self):
+        class Fallback(IBlock):
+            __identifier__ = "fallback"
+
+            def build(self, config: Any) -> None:
+                pass
+
+        class Alternative(IBlock):
+            __identifier__ = "primary | fallback"
+
+            def build(self, config: Any) -> None:
+                pass
+
+        class Optional(IBlock):
+            __identifier__ = "missing | none"
+
+            def build(self, config: Any) -> None:
+                pass
+
+        class Consumer(IBlock):
+            __identifier__ = "consumer"
+
+            @property
+            def requirements(self):
+                return [Alternative, Optional]
+
+            def build(self, config: Any) -> None:
+                pass
+
+        check_requirement(Consumer(), {"fallback": Fallback()})
+        with self.assertRaises(ValueError):
+            check_requirement(Consumer(), {})
+
+    def test_previous_only_contains_prior_blocks(self):
+        pipeline = self.pipeline_type.init(self.config_type())
+        first = self.first_type()
+        second = self.second_type()
+        third = self.third_type()
+
+        pipeline.build(first, second)
+        pipeline.build(third)
+
+        self.assertEqual(first.previous, {})
+        self.assertEqual(list(second.previous), ["contract_first"])
+        self.assertIs(second.previous["contract_first"], first)
+        self.assertEqual(
+            list(third.previous),
+            ["contract_first", "contract_second"],
+        )
+        self.assertIs(third.previous["contract_first"], first)
+        self.assertIs(third.previous["contract_second"], second)
+        self.assertEqual(first.previous, {})
+        self.assertEqual(list(second.previous), ["contract_first"])
+
+    def test_legacy_pipeline_info_roundtrip(self):
+        legacy_info = {
+            "blocks": ["contract_first", "contract_second"],
+            "config": {
+                "type": "contract_config",
+                "info": {"value": "legacy"},
+            },
+        }
+        original_info = deepcopy(legacy_info)
+
+        pipeline = self.pipeline_type.init(self.config_type()).from_info(legacy_info)
+
+        self.assertEqual(legacy_info, original_info)
+        self.assertEqual(pipeline.config.value, "legacy")
+        self.assertIsInstance(pipeline.blocks[0], self.first_type)
+        self.assertIsInstance(pipeline.blocks[1], self.second_type)
+        self.assertIs(
+            pipeline.blocks[1].previous["contract_first"],
+            pipeline.blocks[0],
+        )
+        self.assertEqual(pipeline.to_info(), original_info)
+
+        duplicate_info = {
+            "blocks": ["contract_first", "contract_first"],
+            "config": original_info["config"],
+        }
+        duplicate_pipeline = self.pipeline_type.init(self.config_type()).from_info(
+            duplicate_info
+        )
+        duplicate_first, duplicate_second = duplicate_pipeline.blocks
+        self.assertIsInstance(duplicate_first, self.first_type)
+        self.assertIsInstance(duplicate_second, self.first_type)
+        self.assertIs(
+            duplicate_second.previous["contract_first"],
+            duplicate_first,
+        )
+        self.assertIs(duplicate_pipeline.get_block("contract_first"), duplicate_second)
+        self.assertEqual(duplicate_pipeline.to_info(), duplicate_info)
+
+    @pytest.mark.xfail(
+        strict=True,
+        raises=AssertionError,
+        reason="P1-06: validate all requirements before building candidates",
+    )
+    def test_build_preflights_all_requirements(self):
+        class MutatingBlock(self.first_type):
+            __identifier__ = "contract_mutating"
+            was_built = False
+
+            def build(self, config: Any) -> None:
+                self.was_built = True
+                config.value = "mutated"
+
+        class MissingBlock(self.first_type):
+            __identifier__ = "contract_missing"
+
+        class NeedsMissingBlock(self.first_type):
+            __identifier__ = "contract_needs_missing"
+
+            @property
+            def requirements(self):
+                return [MissingBlock]
+
+        pipeline = self.pipeline_type.init(self.config_type())
+        baseline = self.first_type()
+        pipeline.build(baseline)
+        mutating = MutatingBlock()
+
+        with self.assertRaises(ValueError):
+            pipeline.build(mutating, NeedsMissingBlock())
+
+        self.assertFalse(mutating.was_built)
+        self.assertEqual(pipeline.blocks, [baseline])
+        self.assertEqual(pipeline.config.value, "initial")
+
+    @pytest.mark.xfail(
+        strict=True,
+        raises=AssertionError,
+        reason="P1-06: reject duplicate block identifiers atomically",
+    )
+    def test_build_rejects_duplicate_identifiers(self):
+        class DuplicateBlock(self.first_type):
+            __identifier__ = "contract_duplicate"
+
+        outcomes = []
+
+        pipeline = self.pipeline_type.init(self.config_type())
+        first = DuplicateBlock()
+        original_blocks = list(pipeline.blocks)
+        try:
+            pipeline.build(first, DuplicateBlock())
+        except ValueError:
+            rejected = True
+        else:
+            rejected = False
+        outcomes.append(rejected and pipeline.blocks == original_blocks)
+
+        pipeline = self.pipeline_type.init(self.config_type())
+        original = DuplicateBlock()
+        pipeline.build(original)
+        original_blocks = list(pipeline.blocks)
+        try:
+            pipeline.build(DuplicateBlock())
+        except ValueError:
+            rejected = True
+        else:
+            rejected = False
+        outcomes.append(
+            rejected
+            and pipeline.blocks == original_blocks
+            and pipeline.get_block("contract_duplicate") is original
+        )
+
+        self.assertEqual(outcomes, [True, True])
 
 
 class TestGetFolder(unittest.TestCase):

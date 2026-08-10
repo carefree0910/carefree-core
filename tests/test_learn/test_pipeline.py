@@ -5,6 +5,8 @@ import torch
 import pytest
 import inspect
 import unittest
+import threading
+import concurrent.futures
 
 import numpy as np
 import torch.nn as nn
@@ -29,6 +31,175 @@ class TestPipeline(unittest.TestCase):
 
     def _workspace(self, name: str) -> str:
         return str(self.tmp_path / name)
+
+    def _inference_pipeline(self, config=None):
+        if config is None:
+            config = cflearn.Config(
+                module_name="linear",
+                module_config={"input_dim": 2, "output_dim": 1},
+                loss_name="mse",
+            )
+        return cflearn.InferencePipeline.build_with(config)
+
+    def _save_fusion_workspace(self, name, config=None):
+        workspace = self._workspace(name)
+        pipeline = self._inference_pipeline(config)
+        cflearn.PipelineSerializer.save(pipeline, workspace, verbose=False)
+        checkpoint_folder = (
+            Path(workspace)
+            / cflearn.PipelineSerializer.pipeline_folder
+            / cflearn.SerializeModelBlock.__identifier__
+        )
+        checkpoint = cflearn.get_sorted_checkpoints(checkpoint_folder)[0]
+        return workspace, checkpoint_folder / checkpoint
+
+    @pytest.mark.xfail(
+        strict=True,
+        raises=AssertionError,
+        reason="P1-06: failed builds should restore Pipeline-owned state",
+    )
+    def test_failed_build_rolls_back_pipeline_state(self):
+        class BaselineBlock(cflearn.Block):
+            __identifier__ = "transaction_baseline"
+
+            def build(self, config):
+                pass
+
+        class SuccessfulBlock(cflearn.Block):
+            __identifier__ = "transaction_successful"
+
+            def build(self, config):
+                config.extra = {"phase": "successful"}
+
+            def process_defaults(self, defaults):
+                defaults["phase"] = "successful"
+
+        class FailingBlock(cflearn.Block):
+            __identifier__ = "transaction_failing"
+
+            def build(self, config):
+                config.extra = {"phase": "failing"}
+                raise RuntimeError("intentional build failure")
+
+        config = cflearn.Config(
+            module_name="linear",
+            module_config={"input_dim": 2, "output_dim": 1},
+            loss_name="mse",
+        )
+        pipeline = cflearn.Pipeline.init(config)
+        baseline = BaselineBlock()
+        pipeline.build(baseline)
+        original_blocks = list(pipeline.blocks)
+        original_config = pipeline.config.asdict()
+        original_defaults = pipeline._defaults.copy()
+
+        with self.assertRaisesRegex(RuntimeError, "intentional build failure"):
+            pipeline.build(SuccessfulBlock(), FailingBlock())
+
+        self.assertEqual(pipeline.blocks, original_blocks)
+        self.assertEqual(
+            pipeline.block_mappings,
+            {"transaction_baseline": baseline},
+        )
+        self.assertEqual(pipeline.config.asdict(), original_config)
+        self.assertEqual(pipeline._defaults, original_defaults)
+
+    def test_verbose_context_restores_after_exception(self):
+        pipeline = self._inference_pipeline()
+        block = pipeline.serialize_model
+        self.assertIsNotNone(block)
+        block.verbose = True
+
+        with self.assertRaisesRegex(RuntimeError, "intentional context failure"):
+            with pipeline.verbose_context(False):
+                self.assertFalse(block.verbose)
+                raise RuntimeError("intentional context failure")
+
+        self.assertTrue(block.verbose)
+        with pipeline.verbose_context(False):
+            self.assertFalse(block.verbose)
+        self.assertTrue(block.verbose)
+
+    @pytest.mark.xfail(
+        strict=True,
+        raises=AssertionError,
+        reason="P1-06: nested verbose contexts should override and restore",
+    )
+    def test_verbose_context_supports_nested_overrides(self):
+        pipeline = self._inference_pipeline()
+        block = pipeline.serialize_model
+        self.assertIsNotNone(block)
+        block.verbose = True
+
+        with pipeline.verbose_context(False):
+            self.assertFalse(block.verbose)
+            with pipeline.verbose_context(True):
+                self.assertTrue(block.verbose)
+            self.assertFalse(block.verbose)
+        self.assertTrue(block.verbose)
+
+    @pytest.mark.xfail(
+        strict=True,
+        raises=AssertionError,
+        reason="P1-06: verbose contexts should be isolated per Pipeline",
+    )
+    def test_verbose_context_isolates_nested_pipelines(self):
+        first = self._inference_pipeline()
+        second = self._inference_pipeline()
+        first_block = first.serialize_model
+        second_block = second.serialize_model
+        self.assertIsNotNone(first_block)
+        self.assertIsNotNone(second_block)
+        first_block.verbose = second_block.verbose = True
+
+        with first.verbose_context(False):
+            self.assertFalse(first_block.verbose)
+            with second.verbose_context(False):
+                self.assertFalse(second_block.verbose)
+            self.assertFalse(first_block.verbose)
+        self.assertTrue(first_block.verbose)
+        self.assertTrue(second_block.verbose)
+
+    @pytest.mark.xfail(
+        strict=True,
+        raises=AssertionError,
+        reason="P1-06: concurrent verbose contexts should be isolated",
+    )
+    def test_verbose_context_isolates_concurrent_pipelines(self):
+        first = self._inference_pipeline()
+        second = self._inference_pipeline()
+        first_block = first.serialize_model
+        second_block = second.serialize_model
+        self.assertIsNotNone(first_block)
+        self.assertIsNotNone(second_block)
+        first_block.verbose = second_block.verbose = True
+        first_entered = threading.Event()
+        release_first = threading.Event()
+
+        def run_first():
+            with first.verbose_context(False):
+                first_entered.set()
+                if not release_first.wait(5.0):
+                    raise TimeoutError("second context did not finish")
+                return first_block.verbose
+
+        def run_second():
+            if not first_entered.wait(5.0):
+                raise TimeoutError("first context did not start")
+            try:
+                with second.verbose_context(False):
+                    return second_block.verbose
+            finally:
+                release_first.set()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            first_future = executor.submit(run_first)
+            second_future = executor.submit(run_second)
+            observed = first_future.result(), second_future.result()
+
+        self.assertEqual(observed, (False, False))
+        self.assertTrue(first_block.verbose)
+        self.assertTrue(second_block.verbose)
 
     def test_basics(self):
         def build_pipeline(in_dim, out_dim):
@@ -491,6 +662,139 @@ class TestPipeline(unittest.TestCase):
         self.assertIsInstance(p1.build_model.model.m, torch.jit.ScriptModule)
         r1 = p1.predict(test_loader)[cflearn.PREDICTIONS_KEY]
         np.testing.assert_allclose(r0, r1)
+
+    @pytest.mark.xfail(
+        strict=True,
+        raises=IndexError,
+        reason="P2-04: reject empty fusion sources explicitly",
+    )
+    def test_fuse_rejects_empty_workspaces(self):
+        with self.assertRaisesRegex(ValueError, "at least one"):
+            cflearn.PipelineSerializer.fuse_inference([])
+
+    @pytest.mark.xfail(
+        strict=True,
+        raises=RuntimeError,
+        reason="P2-04: reject num_picked larger than the source count",
+    )
+    def test_fuse_rejects_excessive_num_picked(self):
+        first, _ = self._save_fusion_workspace("fuse_excessive_first")
+        second, _ = self._save_fusion_workspace("fuse_excessive_second")
+
+        with self.assertRaisesRegex(ValueError, "num_picked"):
+            cflearn.PipelineSerializer.fuse_inference(
+                [first, second],
+                num_picked=3,
+            )
+
+    @pytest.mark.xfail(
+        strict=True,
+        raises=AssertionError,
+        reason="P2-04: reject model-building config mismatches before fusion",
+    )
+    def test_fuse_rejects_incompatible_configs(self):
+        common = {
+            "input_dim": 2,
+            "output_dim": 1,
+            "hidden_units": [2],
+        }
+        first, _ = self._save_fusion_workspace(
+            "fuse_config_first",
+            cflearn.Config(
+                module_name="fcnn",
+                module_config={**common, "activation": "ReLU"},
+                loss_name="mse",
+            ),
+        )
+        second, _ = self._save_fusion_workspace(
+            "fuse_config_second",
+            cflearn.Config(
+                module_name="fcnn",
+                module_config={**common, "activation": "Tanh"},
+                loss_name="mse",
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "config"):
+            cflearn.PipelineSerializer.fuse_inference([first, second])
+
+    @pytest.mark.xfail(
+        strict=True,
+        raises=AssertionError,
+        reason="P2-04: prevalidate checkpoint keys, shapes, and dtypes",
+    )
+    def test_fuse_rejects_incompatible_state_signatures(self):
+        deficiencies = []
+        for mismatch in ["keys", "shapes", "dtypes"]:
+            first, _ = self._save_fusion_workspace(f"fuse_{mismatch}_first")
+            second, checkpoint = self._save_fusion_workspace(f"fuse_{mismatch}_second")
+            payload = torch.load(checkpoint, weights_only=False)
+            states = payload["states"]
+            key = next(
+                k
+                for k, value in states.items()
+                if value.is_floating_point() and value.ndim > 0
+            )
+            if mismatch == "keys":
+                states.pop(key)
+            elif mismatch == "shapes":
+                value = states[key]
+                states[key] = value.new_zeros((value.shape[0] + 1, *value.shape[1:]))
+            else:
+                states[key] = states[key].double()
+            torch.save(payload, checkpoint)
+
+            try:
+                with self.assertRaises(ValueError):
+                    cflearn.PipelineSerializer.fuse_inference([first, second])
+            except (AssertionError, RuntimeError):
+                deficiencies.append(mismatch)
+
+        self.assertEqual(deficiencies, [])
+
+    def test_fuse_reports_missing_checkpoint(self):
+        first, _ = self._save_fusion_workspace("fuse_missing_first")
+        second, checkpoint = self._save_fusion_workspace("fuse_missing_second")
+        checkpoint.unlink()
+
+        with self.assertRaises(FileNotFoundError) as context:
+            cflearn.PipelineSerializer.fuse_inference([first, second])
+        self.assertIn(str(checkpoint), str(context.exception))
+
+    def test_fuse_preserves_non_float_buffers_per_member(self):
+        config = cflearn.Config(
+            module_name="fcnn",
+            module_config={
+                "input_dim": 2,
+                "output_dim": 1,
+                "hidden_units": [2],
+                "batch_norm": True,
+            },
+            loss_name="mse",
+        )
+        workspaces = []
+        for name, counter in [("first", 3), ("second", 7)]:
+            workspace, checkpoint = self._save_fusion_workspace(
+                f"fuse_buffer_{name}",
+                config,
+            )
+            payload = torch.load(checkpoint, weights_only=False)
+            states = payload["states"]
+            counter_key = next(
+                key for key in states if key.endswith("num_batches_tracked")
+            )
+            states[counter_key].fill_(counter)
+            torch.save(payload, checkpoint)
+            workspaces.append(workspace)
+
+        fused = cflearn.PipelineSerializer.fuse_inference(workspaces)
+        counters = [
+            value
+            for key, value in fused.build_model.model.state_dict().items()
+            if key.endswith("num_batches_tracked")
+        ]
+        self.assertEqual([counter.item() for counter in counters], [3, 7])
+        self.assertTrue(all(counter.dtype == torch.int64 for counter in counters))
 
     def test_fuse(self):
         data, in_dim, out_dim, _ = cflearn.testing.linear_data()

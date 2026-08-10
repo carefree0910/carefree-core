@@ -86,6 +86,83 @@ class TestData(unittest.TestCase):
         with self.assertRaises(ValueError):
             cflearn.ArrayDictData.init().fit(d, x_valid=x).build_loaders()
 
+    def test_array_data_block_previous_semantics(self) -> None:
+        events = []
+
+        @cflearn.IDataBlock.register("test_previous_source", allow_duplicate=True)
+        class SourceDataBlock(cflearn.IDataBlock):
+            def to_info(self) -> dict:
+                return {}
+
+            def transform(
+                self,
+                bundle: cflearn.DataBundle,
+                for_inference: bool,
+            ) -> cflearn.DataBundle:
+                events.append(("source_transform", tuple(self.previous)))
+                bundle.x_train = bundle.x_train + 1
+                return bundle
+
+            def fit_transform(self, bundle: cflearn.DataBundle) -> cflearn.DataBundle:
+                events.append(("source_fit", tuple(self.previous)))
+                bundle.x_train = bundle.x_train + 1
+                return bundle
+
+        @cflearn.IDataBlock.register("test_previous_consumer", allow_duplicate=True)
+        class ConsumerDataBlock(cflearn.IDataBlock):
+            def to_info(self) -> dict:
+                return {}
+
+            @property
+            def requirements(self):
+                return [SourceDataBlock]
+
+            def transform(
+                self,
+                bundle: cflearn.DataBundle,
+                for_inference: bool,
+            ) -> cflearn.DataBundle:
+                events.append(("consumer_transform", tuple(self.previous)))
+                bundle.x_train = 2 * bundle.x_train
+                return bundle
+
+            def fit_transform(self, bundle: cflearn.DataBundle) -> cflearn.DataBundle:
+                events.append(("consumer_fit", tuple(self.previous)))
+                bundle.x_train = 2 * bundle.x_train
+                return bundle
+
+        config = cflearn.DataConfig()
+        config.set_blocks(SourceDataBlock, ConsumerDataBlock)
+        x = np.array([[1.0], [2.0]])
+        data = cflearn.ArrayData.init(config).fit(x)
+
+        np.testing.assert_array_equal(data.bundle.x_train, np.array([[4.0], [6.0]]))
+        self.assertEqual(
+            events,
+            [
+                ("source_fit", ()),
+                ("consumer_fit", ("test_previous_source",)),
+            ],
+        )
+
+        events.clear()
+        transformed = data.transform(x)
+        np.testing.assert_array_equal(transformed.x_train, np.array([[4.0], [6.0]]))
+        self.assertEqual(
+            events,
+            [
+                ("source_transform", ()),
+                ("consumer_transform", ("test_previous_source",)),
+            ],
+        )
+        self.assertEqual(
+            data.to_info()["blocks"],
+            [
+                {"type": "test_previous_source", "info": {}},
+                {"type": "test_previous_consumer", "info": {}},
+            ],
+        )
+
     def test_process_batch(self) -> None:
         @cflearn.IDataBlock.register("foo", allow_duplicate=True)
         class FooBlock(cflearn.IDataBlock):
