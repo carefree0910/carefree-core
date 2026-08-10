@@ -1,5 +1,6 @@
 import torch
 import pytest
+import inspect
 import unittest
 
 import core.learn as cflearn
@@ -54,6 +55,74 @@ class TestTrainer(unittest.TestCase):
             valid_loader,
             cflearn.StepOutputs({}, {}),
         )
+
+    def test_public_fit_signature(self) -> None:
+        signature = inspect.signature(cflearn.Trainer.fit)
+        positional = inspect.Parameter.POSITIONAL_OR_KEYWORD
+        keyword_only = inspect.Parameter.KEYWORD_ONLY
+        empty = inspect.Parameter.empty
+        expected = [
+            ("self", positional, empty),
+            ("data", positional, empty),
+            ("model", positional, empty),
+            ("metrics", positional, empty),
+            ("inference", positional, empty),
+            ("optimizers", positional, empty),
+            ("schedulers", positional, empty),
+            ("monitors", positional, empty),
+            ("callbacks", positional, empty),
+            ("schedulers_requires_metric", positional, empty),
+            ("do_summary", keyword_only, True),
+            ("show_summary", keyword_only, True),
+            ("summary_kwargs", keyword_only, None),
+            ("loaded_state", keyword_only, None),
+            ("skip_final_evaluation", keyword_only, False),
+            ("only_touch", keyword_only, False),
+            ("device", keyword_only, None),
+            ("p", keyword_only, None),
+        ]
+        actual = [
+            (parameter.name, parameter.kind, parameter.default)
+            for parameter in signature.parameters.values()
+        ]
+        self.assertListEqual(actual, expected)
+        self.assertEqual(signature.return_annotation, "Trainer")
+
+    def test_finalize_entry_interrupt_preserves_cleanup(self) -> None:
+        events = []
+        interrupt = KeyboardInterrupt("finalize entry")
+
+        @cflearn.TrainerCallback.register(
+            "finalize_entry_interrupt", allow_duplicate=True
+        )
+        class FinalizeEntryCallback(cflearn.TrainerCallback):
+            def after_loop(self, trainer):
+                events.append("after_loop")
+
+            def finalize(self, trainer):
+                events.append("finalize")
+
+        config = self.config.copy()
+        config.workspace = str(self.tmp_path / "finalize_entry_interrupt")
+        config.num_steps = 0
+        config.auto_callback = False
+        config.callback_names = ["finalize_entry_interrupt"]
+        pipeline = cflearn.TrainingPipeline.init(config)
+        with patch.object(
+            cflearn.Trainer,
+            "_finalize",
+            side_effect=interrupt,
+        ) as finalize:
+            with self.assertRaises(KeyboardInterrupt) as context:
+                pipeline.fit(self.data, do_summary=False)
+
+        self.assertIs(context.exception, interrupt)
+        finalize.assert_called_once()
+        self.assertListEqual(events, ["after_loop", "finalize"])
+        trainer = pipeline.training.build_trainer.trainer
+        self.assertEqual(trainer.state.step, 0)
+        self.assertEqual(trainer.state.epoch, 0)
+        self.assertIsNone(trainer.state._last_step)
 
     def test_functions(self):
         workspace = self.tmp_path / "functions"
