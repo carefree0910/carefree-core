@@ -192,8 +192,15 @@ class IPipeline(
 
     def build(self, *blocks: TBlock) -> None:
         previous: Dict[str, TBlock] = self.block_mappings
+        planned = previous.copy()
         for block in blocks:
-            check_requirement(block, previous)
+            identifier = block.__identifier__
+            if identifier in planned:
+                raise ValueError(f"block identifier '{identifier}' already exists")
+            check_requirement(block, planned)
+            planned[identifier] = block
+
+        for block in blocks:
             block.previous = shallow_copy_dict(previous)
             self.before_block_build(block)
             block.build(self.config)

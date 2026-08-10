@@ -193,24 +193,9 @@ class TestBuildContracts(unittest.TestCase):
             "blocks": ["contract_first", "contract_first"],
             "config": original_info["config"],
         }
-        duplicate_pipeline = self.pipeline_type.init(self.config_type()).from_info(
-            duplicate_info
-        )
-        duplicate_first, duplicate_second = duplicate_pipeline.blocks
-        self.assertIsInstance(duplicate_first, self.first_type)
-        self.assertIsInstance(duplicate_second, self.first_type)
-        self.assertIs(
-            duplicate_second.previous["contract_first"],
-            duplicate_first,
-        )
-        self.assertIs(duplicate_pipeline.get_block("contract_first"), duplicate_second)
-        self.assertEqual(duplicate_pipeline.to_info(), duplicate_info)
+        with self.assertRaises(ValueError):
+            self.pipeline_type.init(self.config_type()).from_info(duplicate_info)
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="P1-06: validate all requirements before building candidates",
-    )
     def test_build_preflights_all_requirements(self):
         class MutatingBlock(self.first_type):
             __identifier__ = "contract_mutating"
@@ -230,57 +215,47 @@ class TestBuildContracts(unittest.TestCase):
             def requirements(self):
                 return [MissingBlock]
 
-        pipeline = self.pipeline_type.init(self.config_type())
+        events = []
+
+        class TrackingPipeline(self.pipeline_type):
+            def before_block_build(self, block: Any) -> None:
+                events.append(("before", block.__identifier__))
+
+            def after_block_build(self, block: Any) -> None:
+                events.append(("after", block.__identifier__))
+
+        pipeline = TrackingPipeline.init(self.config_type())
         baseline = self.first_type()
         pipeline.build(baseline)
+        events.clear()
         mutating = MutatingBlock()
 
         with self.assertRaises(ValueError):
-            pipeline.build(mutating, NeedsMissingBlock())
+            pipeline.build(mutating, NeedsMissingBlock(), MissingBlock())
 
         self.assertFalse(mutating.was_built)
+        self.assertEqual(events, [])
         self.assertEqual(pipeline.blocks, [baseline])
+        self.assertEqual(pipeline.block_mappings, {"contract_first": baseline})
         self.assertEqual(pipeline.config.value, "initial")
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="P1-06: reject duplicate block identifiers atomically",
-    )
     def test_build_rejects_duplicate_identifiers(self):
         class DuplicateBlock(self.first_type):
             __identifier__ = "contract_duplicate"
 
-        outcomes = []
-
         pipeline = self.pipeline_type.init(self.config_type())
-        first = DuplicateBlock()
-        original_blocks = list(pipeline.blocks)
-        try:
-            pipeline.build(first, DuplicateBlock())
-        except ValueError:
-            rejected = True
-        else:
-            rejected = False
-        outcomes.append(rejected and pipeline.blocks == original_blocks)
+        with self.assertRaises(ValueError):
+            pipeline.build(DuplicateBlock(), DuplicateBlock())
+        self.assertEqual(pipeline.blocks, [])
+        self.assertEqual(pipeline.block_mappings, {})
 
         pipeline = self.pipeline_type.init(self.config_type())
         original = DuplicateBlock()
         pipeline.build(original)
-        original_blocks = list(pipeline.blocks)
-        try:
+        with self.assertRaises(ValueError):
             pipeline.build(DuplicateBlock())
-        except ValueError:
-            rejected = True
-        else:
-            rejected = False
-        outcomes.append(
-            rejected
-            and pipeline.blocks == original_blocks
-            and pipeline.get_block("contract_duplicate") is original
-        )
-
-        self.assertEqual(outcomes, [True, True])
+        self.assertEqual(pipeline.blocks, [original])
+        self.assertIs(pipeline.get_block("contract_duplicate"), original)
 
 
 class TestGetFolder(unittest.TestCase):
