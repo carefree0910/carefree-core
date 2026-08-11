@@ -42,6 +42,7 @@ from datetime import timedelta
 from operator import length_hint
 from pydantic import BaseModel
 from pydantic import RootModel
+from functools import wraps
 from functools import reduce
 from threading import Lock
 from contextvars import ContextVar
@@ -109,12 +110,16 @@ def get_ddp_info() -> Optional[DDPInfo]:
 
     """
 
-    if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
-        rank = int(os.environ["RANK"])
-        world_size = int(os.environ["WORLD_SIZE"])
-        local_rank = int(os.environ["LOCAL_RANK"])
-        return DDPInfo(rank, world_size, local_rank)
-    return None
+    keys = ("RANK", "WORLD_SIZE", "LOCAL_RANK")
+    available = tuple(key in os.environ for key in keys)
+    if not any(available):
+        return None
+    if not all(available):
+        raise ValueError("incomplete DDP environment")
+    rank, world_size, local_rank = (int(os.environ[key]) for key in keys)
+    if not 0 <= local_rank <= rank < world_size:
+        raise ValueError("invalid DDP environment")
+    return DDPInfo(rank, world_size, local_rank)
 
 
 def is_ddp() -> bool:
@@ -866,31 +871,74 @@ def to_set(inp: Any) -> Set:
     return {inp}
 
 
+_DistStatus = Tuple[bool, int, str, str]
+
+
+def _sync_dist_status(error: Optional[Exception]) -> Optional[_DistStatus]:
+    import torch.distributed as dist
+
+    rank = dist.get_rank()
+    status: _DistStatus
+    if error is None:
+        status = (True, rank, "", "")
+    else:
+        status = (False, rank, type(error).__name__, str(error))
+    statuses: List[_DistStatus] = [status] * dist.get_world_size()
+    dist.all_gather_object(statuses, status)
+    failures = [item for item in statuses if not item[0]]
+    return None if not failures else min(failures, key=operator.itemgetter(1))
+
+
+def _reject_async_fn(fn: Callable[..., Any], name: str) -> None:
+    if inspect.iscoroutinefunction(fn):
+        raise TypeError(f"{name} does not support coroutine functions")
+
+
 def wait_for_everyone_at_end(fn: FAny) -> FAny:
+    _reject_async_fn(fn, "wait_for_everyone_at_end")
+
+    @wraps(fn)
     def _wrapper(*args: Any, **kwargs: Any) -> Any:
-        result = fn(*args, **kwargs)
-        wait_for_everyone()
+        distributed = is_dist_initialized()
+        try:
+            result = fn(*args, **kwargs)
+        except Exception as error:
+            if distributed:
+                _sync_dist_status(error)
+            raise
+        if distributed:
+            failure = _sync_dist_status(None)
+            if failure is not None:
+                _, rank, error_type, message = failure
+                raise RuntimeError(
+                    f"distributed execution failed on rank {rank} with "
+                    f"{error_type}: {message}"
+                )
         return result
 
     return _wrapper  # type: ignore
 
 
 def only_execute_on_rank0(fn: FNone) -> FNone:
-    @wait_for_everyone_at_end
+    _reject_async_fn(fn, "only_execute_on_rank0")
+
+    @wraps(fn)
     def _wrapper(*args: Any, **kwargs: Any) -> None:
         if is_rank_0():
             fn(*args, **kwargs)
 
-    return _wrapper  # type: ignore
+    return wait_for_everyone_at_end(_wrapper)  # type: ignore
 
 
 def only_execute_on_local_rank0(fn: FNone) -> FNone:
-    @wait_for_everyone_at_end
+    _reject_async_fn(fn, "only_execute_on_local_rank0")
+
+    @wraps(fn)
     def _wrapper(*args: Any, **kwargs: Any) -> None:
         if is_local_rank_0():
             fn(*args, **kwargs)
 
-    return _wrapper  # type: ignore
+    return wait_for_everyone_at_end(_wrapper)  # type: ignore
 
 
 def get_memory_size(obj: Any, seen: Optional[Set] = None) -> int:

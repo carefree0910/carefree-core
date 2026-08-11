@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from torch.optim import Optimizer
 from torch.profiler import profile
 from torch.profiler import schedule
-from accelerate.utils import gather_object
 from torch.optim.lr_scheduler import LRScheduler
 
 from .utils import TryLoadBlock
@@ -62,7 +61,7 @@ from ....toolkit.misc import to_path
 from ....toolkit.misc import filter_kw
 from ....toolkit.misc import update_dict
 from ....toolkit.misc import get_ddp_info
-from ....toolkit.misc import wait_for_everyone
+from ....toolkit.misc import only_execute_on_local_rank0
 from ....toolkit.misc import shallow_copy_dict
 from ....toolkit.misc import sort_dict_by_value
 from ....toolkit.misc import is_dist_initialized
@@ -118,21 +117,27 @@ class SetDefaultsBlock(InjectDefaultsMixin, Block):
 @Block.register("prepare_workspace")
 class PrepareWorkspaceBlock(InjectDefaultsMixin, Block):
     def build(self, config: Config) -> None:
-        if self.training_workspace is None:
+        training_workspace = self.training_workspace
+        if training_workspace is None:
             return
         persistence = config.persistence
-        if self.is_local_rank_0 and persistence.create_sub_workspace:
-            workspace = prepare_workspace_from(self.training_workspace)
+
+        def prepare_local_workspace() -> None:
+            workspace = prepare_workspace_from(training_workspace)
             persistence.workspace = workspace
             self._defaults["workspace"] = workspace
-        # only gather workspaces when under DDP
-        # otherwise, unexpected initialization of `accelerate` states will occur
+
+        if persistence.create_sub_workspace:
+            only_execute_on_local_rank0(prepare_local_workspace)()
+        # the collective is only valid after the process group is initialized
         if is_dist_initialized():
-            wait_for_everyone()
-            workspaces = gather_object([persistence.workspace])
-            if not self.is_local_rank_0:
+            ddp_info = get_ddp_info()
+            assert ddp_info is not None
+            workspaces = [persistence.workspace] * ddp_info.world_size
+            torch.distributed.all_gather_object(workspaces, persistence.workspace)
+            if ddp_info.local_rank != 0:
                 # use the workspace from local rank 0
-                persistence.workspace = workspaces[0]
+                persistence.workspace = workspaces[ddp_info.rank - ddp_info.local_rank]
 
 
 @dataclass

@@ -17,8 +17,20 @@ from accelerate import Accelerator
 from unittest.mock import patch
 from torch.utils.data import DataLoader
 from core.toolkit.misc import is_rank_0
+from core.toolkit.misc import is_local_rank_0
+from core.toolkit.misc import only_execute_on_rank0
+from core.toolkit.misc import only_execute_on_local_rank0
+from core.toolkit.misc import wait_for_everyone_at_end
 from torch.nn.parallel import DistributedDataParallel
 from torch.distributed.elastic.multiprocessing.errors import record
+
+
+class _DistributedGuardFailure(ValueError):
+    pass
+
+
+class _WorkspaceFailure(RuntimeError):
+    pass
 
 
 def _parse_args() -> argparse.Namespace:
@@ -28,6 +40,8 @@ def _parse_args() -> argparse.Namespace:
         choices=(
             "success",
             "rank_failure",
+            "coordinated_decorators",
+            "workspace_failure",
             "global_main_write",
             "prepared_pipeline",
             "prepared_remainder",
@@ -72,6 +86,130 @@ def _run_rank_failure(rank: int) -> None:
         raise RuntimeError("intentional failure from rank 1")
     print("rank 0: waiting for rank 1 failure propagation", flush=True)
     time.sleep(60.0)
+
+
+def _assert_process_group_usable(rank: int) -> None:
+    value = torch.tensor([rank + 1], dtype=torch.int64)
+    dist.all_reduce(value)
+    assert value.item() == 3
+
+
+def _assert_coordinated_failure(
+    rank: int,
+    origin_rank: int,
+    original: Exception,
+    error: Exception,
+) -> None:
+    if rank == origin_rank:
+        assert error is original
+        return
+    assert type(error) is RuntimeError
+    message = str(error)
+    assert f"rank {origin_rank}" in message.lower()
+    assert type(original).__name__ in message
+    assert str(original) in message
+
+
+def _run_coordinated_decorators(rank: int) -> None:
+    assert is_rank_0() is (rank == 0)
+    assert is_local_rank_0() is (rank == 0)
+
+    @wait_for_everyone_at_end
+    def identity(value: int) -> int:
+        return value
+
+    assert identity(rank) == rank
+
+    calls = [0, 0]
+
+    @only_execute_on_rank0
+    def global_main() -> None:
+        calls[0] += 1
+
+    @only_execute_on_local_rank0
+    def local_main() -> None:
+        calls[1] += 1
+
+    global_main()
+    local_main()
+    reduced_calls = torch.tensor(calls, dtype=torch.int64)
+    dist.all_reduce(reduced_calls)
+    assert reduced_calls.tolist() == [1, 1]
+
+    generic_error = _DistributedGuardFailure("generic failure from rank 1")
+
+    @wait_for_everyone_at_end
+    def fail_on_rank_1() -> None:
+        if rank == 1:
+            raise generic_error
+
+    try:
+        fail_on_rank_1()
+    except Exception as error:
+        _assert_coordinated_failure(rank, 1, generic_error, error)
+    else:
+        raise AssertionError("the coordinated rank-1 failure was not propagated")
+    _assert_process_group_usable(rank)
+
+    rank_0_error = _DistributedGuardFailure("rank-0-only failure")
+
+    @only_execute_on_rank0
+    def fail_on_rank_0() -> None:
+        raise rank_0_error
+
+    try:
+        fail_on_rank_0()
+    except Exception as error:
+        _assert_coordinated_failure(rank, 0, rank_0_error, error)
+    else:
+        raise AssertionError("the rank-0 failure was not propagated")
+    _assert_process_group_usable(rank)
+    print(f"rank {rank}: coordinated decorators success", flush=True)
+
+
+def _run_workspace_failure(rank: int) -> None:
+    workspace = Path.cwd() / "workspace_failure"
+    shared_workspace = workspace / "rank_0"
+    success_config = cflearn.Config(
+        workspace=str(workspace),
+        create_sub_workspace=True,
+    )
+    success_block = cflearn.PrepareWorkspaceBlock()
+    success_block.training_workspace = workspace
+
+    def prepare_success(*args, **kwargs):
+        assert rank == 0
+        return shared_workspace
+
+    with patch(
+        "core.learn.pipeline.blocks.basic.prepare_workspace_from",
+        side_effect=prepare_success,
+    ):
+        success_block.build(success_config)
+    assert Path(success_config.persistence.workspace) == shared_workspace
+    _assert_process_group_usable(rank)
+
+    config = cflearn.Config(workspace=str(workspace), create_sub_workspace=True)
+    block = cflearn.PrepareWorkspaceBlock()
+    block.training_workspace = workspace
+    original = _WorkspaceFailure("workspace creation failed on rank 0")
+
+    def fail_prepare(*args, **kwargs):
+        assert rank == 0
+        raise original
+
+    with patch(
+        "core.learn.pipeline.blocks.basic.prepare_workspace_from",
+        side_effect=fail_prepare,
+    ):
+        try:
+            block.build(config)
+        except Exception as error:
+            _assert_coordinated_failure(rank, 0, original, error)
+        else:
+            raise AssertionError("the workspace failure was not propagated")
+    _assert_process_group_usable(rank)
+    print(f"rank {rank}: workspace failure propagated", flush=True)
 
 
 def _run_global_main_write(rank: int, shared_target: Optional[Path]) -> None:
@@ -433,6 +571,10 @@ def main() -> None:
             _run_success(rank)
         elif args.scenario == "rank_failure":
             _run_rank_failure(rank)
+        elif args.scenario == "coordinated_decorators":
+            _run_coordinated_decorators(rank)
+        elif args.scenario == "workspace_failure":
+            _run_workspace_failure(rank)
         elif args.scenario == "global_main_write":
             _run_global_main_write(rank, args.shared_target)
         elif args.scenario == "prepared_pipeline":

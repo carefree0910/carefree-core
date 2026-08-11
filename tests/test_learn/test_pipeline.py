@@ -916,6 +916,91 @@ class TestBlocks(unittest.TestCase):
     def _workspace(self, name: str) -> str:
         return str(self.tmp_path / name)
 
+    def test_prepare_workspace_uses_node_local_main(self):
+        node_workspaces = [
+            self._workspace("node_0"),
+            None,
+            self._workspace("node_1"),
+            None,
+        ]
+        expected_workspaces = [
+            node_workspaces[0],
+            node_workspaces[0],
+            node_workspaces[2],
+            node_workspaces[2],
+        ]
+        local_ranks = [0, 1, 0, 1]
+        for rank, (local_rank, expected) in enumerate(
+            zip(local_ranks, expected_workspaces)
+        ):
+            with self.subTest(rank=rank, local_rank=local_rank):
+                initial_workspace = self._workspace(f"rank_{rank}_initial")
+                config = cflearn.Config(
+                    workspace=initial_workspace,
+                    create_sub_workspace=True,
+                )
+                block = cflearn.PrepareWorkspaceBlock()
+                block.training_workspace = self._workspace("training")
+                ddp_env = {
+                    "RANK": str(rank),
+                    "WORLD_SIZE": "4",
+                    "LOCAL_RANK": str(local_rank),
+                    "LOCAL_WORLD_SIZE": "2",
+                }
+                gathered_workspace = (
+                    node_workspaces[rank] if local_rank == 0 else initial_workspace
+                )
+
+                def gather_workspaces(workspaces, workspace):
+                    self.assertEqual(workspace, gathered_workspace)
+                    workspaces[:] = node_workspaces
+
+                with patch.dict(os.environ, ddp_env), patch(
+                    "core.learn.pipeline.blocks.basic.is_dist_initialized",
+                    return_value=True,
+                ), patch(
+                    "core.learn.pipeline.blocks.basic.prepare_workspace_from",
+                    return_value=node_workspaces[rank],
+                ) as mock_prepare, patch(
+                    "torch.distributed.all_gather_object",
+                    side_effect=gather_workspaces,
+                ) as mock_gather:
+                    block.build(config)
+
+                self.assertEqual(config.persistence.workspace, expected)
+                mock_gather.assert_called_once()
+                if local_rank == 0:
+                    mock_prepare.assert_called_once_with(block.training_workspace)
+                    self.assertEqual(block._defaults["workspace"], expected)
+                else:
+                    mock_prepare.assert_not_called()
+                    self.assertNotIn("workspace", block._defaults)
+
+    def test_prepare_workspace_can_disable_sub_workspace_creation(self):
+        workspace = self._workspace("no_sub_workspace")
+        config = cflearn.Config(workspace=workspace, create_sub_workspace=False)
+        block = cflearn.PrepareWorkspaceBlock()
+        block.training_workspace = workspace
+        ddp_env = {
+            "RANK": "0",
+            "WORLD_SIZE": "1",
+            "LOCAL_RANK": "0",
+            "LOCAL_WORLD_SIZE": "1",
+        }
+        with patch.dict(os.environ, ddp_env), patch(
+            "core.learn.pipeline.blocks.basic.is_dist_initialized",
+            return_value=True,
+        ), patch(
+            "core.learn.pipeline.blocks.basic.prepare_workspace_from"
+        ) as mock_prepare, patch(
+            "torch.distributed.all_gather_object"
+        ):
+            block.build(config)
+
+        mock_prepare.assert_not_called()
+        self.assertEqual(config.persistence.workspace, workspace)
+        self.assertNotIn("workspace", block._defaults)
+
     def test_basics(self):
         data, *_ = cflearn.testing.linear_data()
         config = cflearn.Config(workspace=self._workspace("basics"))
@@ -930,7 +1015,9 @@ class TestBlocks(unittest.TestCase):
         }
         with patch.dict(os.environ, ddp_env):
             self.assertFalse(block.is_local_rank_0)
-        with patch("core.learn.pipeline.blocks.basic.is_dist_initialized") as mock_dist:
+        with patch.dict(os.environ, ddp_env), patch(
+            "core.learn.pipeline.blocks.basic.is_dist_initialized"
+        ) as mock_dist, patch("torch.distributed.all_gather_object"):
             mock_dist.return_value = True
             with patch("core.learn.pipeline.common.is_ddp") as mock_ddp, patch(
                 "core.learn.pipeline.common.get_ddp_info"

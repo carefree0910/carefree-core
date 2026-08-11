@@ -36,6 +36,26 @@ def test_cpu_ddp_rank_failure_is_propagated(
     assert "waiting for rank 1 failure propagation" in diagnostics
 
 
+def test_cpu_ddp_decorators_coordinate_success_and_failure(
+    cpu_ddp: CPUDistributedHarness,
+) -> None:
+    result = cpu_ddp.run("coordinated_decorators")
+
+    assert set(result.rank_logs) == {0, 1}
+    for rank in (0, 1):
+        assert f"rank {rank}: coordinated decorators success" in result.rank_logs[rank]
+
+
+def test_cpu_ddp_workspace_failure_is_propagated(
+    cpu_ddp: CPUDistributedHarness,
+) -> None:
+    result = cpu_ddp.run("workspace_failure")
+
+    assert set(result.rank_logs) == {0, 1}
+    for rank in (0, 1):
+        assert f"rank {rank}: workspace failure propagated" in result.rank_logs[rank]
+
+
 def test_cpu_ddp_only_global_main_writes_shared_target(
     cpu_ddp: CPUDistributedHarness,
     tmp_path: Path,

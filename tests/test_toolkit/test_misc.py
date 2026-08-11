@@ -7,6 +7,7 @@ import unittest
 import threading
 
 import numpy as np
+import core.toolkit.misc as misc
 
 from core.toolkit.misc import *
 from typing import Any
@@ -43,10 +44,20 @@ class TestMisc(unittest.TestCase):
     def test_ddp_state_helpers(self, mock_get_ddp_info):
         mock_get_ddp_info.return_value = None
         self.assertFalse(is_ddp())
+        self.assertTrue(is_rank_0())
+        self.assertTrue(is_local_rank_0())
         self.assertEqual(get_world_size(), 1)
         mock_get_ddp_info.return_value = DDPInfo(0, 2, 0)
         self.assertTrue(is_ddp())
+        self.assertTrue(is_rank_0())
+        self.assertTrue(is_local_rank_0())
         self.assertEqual(get_world_size(), 2)
+        mock_get_ddp_info.return_value = DDPInfo(1, 2, 0)
+        self.assertFalse(is_rank_0())
+        self.assertTrue(is_local_rank_0())
+        mock_get_ddp_info.return_value = DDPInfo(1, 2, 1)
+        self.assertFalse(is_rank_0())
+        self.assertFalse(is_local_rank_0())
 
     @patch("core.toolkit.misc.is_dist_initialized")
     def test_is_fsdp(self, mock_is_dist_initialized):
@@ -617,13 +628,178 @@ class TestMisc(unittest.TestCase):
         self.assertEqual(result, expected_result)
 
     def test_func_decorators(self):
+        calls = []
+
         @only_execute_on_rank0
-        @only_execute_on_local_rank0
         def dummy_function(a, b, c):
-            pass
+            """dummy docstring"""
+
+            calls.append((a, b, c))
+
+        @only_execute_on_local_rank0
+        def local_dummy_function(a, b, c):
+            calls.append((a, b, c))
 
         result = dummy_function(1, 2, 3)
+        local_result = local_dummy_function(1, 2, 3)
         self.assertEqual(result, None)
+        self.assertEqual(local_result, None)
+        self.assertListEqual(calls, [(1, 2, 3), (1, 2, 3)])
+        self.assertEqual(dummy_function.__name__, "dummy_function")
+        self.assertEqual(dummy_function.__doc__, "dummy docstring")
+        self.assertTrue(hasattr(dummy_function, "__wrapped__"))
+
+        marker = object()
+        kw_marker = object()
+
+        def passthrough(value, *, kw_value):
+            """passthrough docstring"""
+
+            self.assertIs(value, marker)
+            self.assertIs(kw_value, kw_marker)
+            return value
+
+        decorated = wait_for_everyone_at_end(passthrough)
+        self.assertIs(decorated(marker, kw_value=kw_marker), marker)
+        self.assertEqual(decorated.__name__, "passthrough")
+        self.assertEqual(decorated.__doc__, "passthrough docstring")
+        self.assertIs(decorated.__wrapped__, passthrough)
+
+    def test_distributed_decorators_reject_coroutine_functions(self):
+        async def coroutine_function():
+            return None
+
+        decorators = [
+            wait_for_everyone_at_end,
+            only_execute_on_rank0,
+            only_execute_on_local_rank0,
+        ]
+        for decorator in decorators:
+            with self.subTest(decorator=decorator.__name__):
+                with self.assertRaisesRegex(TypeError, "coroutine"):
+                    decorator(coroutine_function)
+
+    def test_sync_dist_status(self):
+        def gather_success(statuses, status):
+            self.assertEqual(status, (True, 1, "", ""))
+            statuses[:] = [(True, 0, "", ""), status]
+
+        with patch("torch.distributed.get_rank", return_value=1), patch(
+            "torch.distributed.get_world_size", return_value=2
+        ), patch(
+            "torch.distributed.all_gather_object",
+            side_effect=gather_success,
+        ):
+            self.assertIsNone(misc._sync_dist_status(None))
+
+        original = ValueError("local failure")
+
+        def gather_failure(statuses, status):
+            self.assertEqual(status, (False, 1, "ValueError", "local failure"))
+            statuses[:] = [
+                (False, 0, "RuntimeError", "peer failure"),
+                status,
+            ]
+
+        with patch("torch.distributed.get_rank", return_value=1), patch(
+            "torch.distributed.get_world_size", return_value=2
+        ), patch(
+            "torch.distributed.all_gather_object",
+            side_effect=gather_failure,
+        ):
+            self.assertEqual(
+                misc._sync_dist_status(original),
+                (False, 0, "RuntimeError", "peer failure"),
+            )
+
+    def test_wait_for_everyone_at_end_distributed_outcomes(self):
+        marker = object()
+
+        @wait_for_everyone_at_end
+        def succeed():
+            return marker
+
+        with patch("core.toolkit.misc.is_dist_initialized", return_value=True), patch(
+            "core.toolkit.misc._sync_dist_status",
+            return_value=None,
+        ) as mock_sync:
+            self.assertIs(succeed(), marker)
+        mock_sync.assert_called_once_with(None)
+
+        peer_failure = (False, 1, "ValueError", "peer failure")
+        with patch("core.toolkit.misc.is_dist_initialized", return_value=True), patch(
+            "core.toolkit.misc._sync_dist_status",
+            return_value=peer_failure,
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "rank 1 with ValueError: peer failure",
+            ):
+                succeed()
+
+        original = ValueError("original failure")
+
+        @wait_for_everyone_at_end
+        def fail():
+            raise original
+
+        with patch("core.toolkit.misc.is_dist_initialized", return_value=True), patch(
+            "core.toolkit.misc._sync_dist_status",
+            return_value=peer_failure,
+        ) as mock_sync:
+            with self.assertRaises(ValueError) as error:
+                fail()
+        self.assertIs(error.exception, original)
+        mock_sync.assert_called_once_with(original)
+
+        with patch("core.toolkit.misc.is_dist_initialized", return_value=False), patch(
+            "core.toolkit.misc._sync_dist_status"
+        ) as mock_sync:
+            with self.assertRaises(ValueError) as error:
+                fail()
+        self.assertIs(error.exception, original)
+        mock_sync.assert_not_called()
+
+        abort = BaseException("abort")
+
+        @wait_for_everyone_at_end
+        def abort_execution():
+            raise abort
+
+        with patch("core.toolkit.misc.is_dist_initialized", return_value=True), patch(
+            "core.toolkit.misc._sync_dist_status"
+        ) as mock_sync:
+            with self.assertRaises(BaseException) as error:
+                abort_execution()
+        self.assertIs(error.exception, abort)
+        mock_sync.assert_not_called()
+
+    @patch("core.toolkit.misc.is_dist_initialized", return_value=False)
+    @patch("core.toolkit.misc.get_ddp_info")
+    def test_rank_decorators_skip_non_main_ranks(
+        self,
+        mock_get_ddp_info,
+        mock_is_dist_initialized,
+    ):
+        calls = []
+
+        @only_execute_on_rank0
+        def global_main():
+            calls.append("global")
+
+        @only_execute_on_local_rank0
+        def local_main():
+            calls.append("local")
+
+        mock_get_ddp_info.return_value = DDPInfo(1, 2, 1)
+        global_main()
+        local_main()
+        self.assertListEqual(calls, [])
+
+        mock_get_ddp_info.return_value = DDPInfo(1, 2, 0)
+        global_main()
+        local_main()
+        self.assertListEqual(calls, ["local"])
 
     def test_get_memory_size_with_int(self):
         result = get_memory_size(1)
@@ -1563,31 +1739,73 @@ class TestBatchManager(unittest.TestCase):
 
 
 class TestGetDDPInfo(unittest.TestCase):
+    _keys = ("RANK", "WORLD_SIZE", "LOCAL_RANK", "LOCAL_WORLD_SIZE")
+
     def setUp(self) -> None:
         self.original_environ = os.environ.copy()
 
     def tearDown(self) -> None:
-        os.environ = self.original_environ
+        os.environ.clear()
+        os.environ.update(self.original_environ)
+
+    def _set_ddp_environment(self, values):
+        for key in self._keys:
+            os.environ.pop(key, None)
+        os.environ.update(values)
 
     def test_get_ddp_info_with_environment_variables_set(self) -> None:
-        os.environ["RANK"] = "1"
-        os.environ["WORLD_SIZE"] = "2"
-        os.environ["LOCAL_RANK"] = "3"
+        self._set_ddp_environment(
+            {
+                "RANK": "1",
+                "WORLD_SIZE": "2",
+                "LOCAL_RANK": "1",
+            }
+        )
         result = get_ddp_info()
         self.assertIsInstance(result, DDPInfo)
         self.assertEqual(result.rank, 1)
         self.assertEqual(result.world_size, 2)
-        self.assertEqual(result.local_rank, 3)
+        self.assertEqual(result.local_rank, 1)
 
     def test_get_ddp_info_with_no_environment_variables_set(self) -> None:
-        if "RANK" in os.environ:
-            del os.environ["RANK"]
-        if "WORLD_SIZE" in os.environ:
-            del os.environ["WORLD_SIZE"]
-        if "LOCAL_RANK" in os.environ:
-            del os.environ["LOCAL_RANK"]
-        result = get_ddp_info()
-        self.assertIsNone(result)
+        self._set_ddp_environment({})
+        self.assertIsNone(get_ddp_info())
+        os.environ["LOCAL_WORLD_SIZE"] = "2"
+        self.assertIsNone(get_ddp_info())
+
+    def test_get_ddp_info_rejects_partial_or_invalid_environment(self) -> None:
+        invalid_environments = [
+            {"RANK": "0"},
+            {"WORLD_SIZE": "1"},
+            {"LOCAL_RANK": "0"},
+            {"RANK": "0", "WORLD_SIZE": "1"},
+            {"RANK": "0", "LOCAL_RANK": "0"},
+            {"WORLD_SIZE": "1", "LOCAL_RANK": "0"},
+            {"RANK": "rank", "WORLD_SIZE": "1", "LOCAL_RANK": "0"},
+            {"RANK": "0", "WORLD_SIZE": "world", "LOCAL_RANK": "0"},
+            {"RANK": "0", "WORLD_SIZE": "1", "LOCAL_RANK": "local"},
+            {"RANK": "0", "WORLD_SIZE": "0", "LOCAL_RANK": "0"},
+            {"RANK": "-1", "WORLD_SIZE": "2", "LOCAL_RANK": "0"},
+            {"RANK": "2", "WORLD_SIZE": "2", "LOCAL_RANK": "0"},
+            {"RANK": "0", "WORLD_SIZE": "2", "LOCAL_RANK": "1"},
+            {"RANK": "0", "WORLD_SIZE": "2", "LOCAL_RANK": "-1"},
+            {"RANK": "0", "WORLD_SIZE": "2", "LOCAL_RANK": "2"},
+        ]
+        for environment in invalid_environments:
+            with self.subTest(environment=environment):
+                self._set_ddp_environment(environment)
+                with self.assertRaises(ValueError):
+                    get_ddp_info()
+
+    def test_get_ddp_info_accepts_valid_multi_node_environment(self) -> None:
+        self._set_ddp_environment(
+            {
+                "RANK": "3",
+                "WORLD_SIZE": "4",
+                "LOCAL_RANK": "1",
+            }
+        )
+        self.assertEqual(get_ddp_info(), DDPInfo(3, 4, 1))
 
 
 if __name__ == "__main__":
