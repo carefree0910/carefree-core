@@ -597,20 +597,10 @@ class TestPipeline(unittest.TestCase):
         r1 = p1.predict(test_loader)[cflearn.PREDICTIONS_KEY]
         np.testing.assert_allclose(r0, r1)
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=IndexError,
-        reason="P2-04: reject empty fusion sources explicitly",
-    )
     def test_fuse_rejects_empty_workspaces(self):
         with self.assertRaisesRegex(ValueError, "at least one"):
             cflearn.PipelineSerializer.fuse_inference([])
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=RuntimeError,
-        reason="P2-04: reject num_picked larger than the source count",
-    )
     def test_fuse_rejects_excessive_num_picked(self):
         first, _ = self._save_fusion_workspace("fuse_excessive_first")
         second, _ = self._save_fusion_workspace("fuse_excessive_second")
@@ -621,11 +611,6 @@ class TestPipeline(unittest.TestCase):
                 num_picked=3,
             )
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="P2-04: reject model-building config mismatches before fusion",
-    )
     def test_fuse_rejects_incompatible_configs(self):
         common = {
             "input_dim": 2,
@@ -652,13 +637,7 @@ class TestPipeline(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "config"):
             cflearn.PipelineSerializer.fuse_inference([first, second])
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="P2-04: prevalidate checkpoint keys, shapes, and dtypes",
-    )
     def test_fuse_rejects_incompatible_state_signatures(self):
-        deficiencies = []
         for mismatch in ["keys", "shapes", "dtypes"]:
             first, _ = self._save_fusion_workspace(f"fuse_{mismatch}_first")
             second, checkpoint = self._save_fusion_workspace(f"fuse_{mismatch}_second")
@@ -678,13 +657,18 @@ class TestPipeline(unittest.TestCase):
                 states[key] = states[key].double()
             torch.save(payload, checkpoint)
 
-            try:
-                with self.assertRaises(ValueError):
+            with self.subTest(mismatch=mismatch):
+                with self.assertRaisesRegex(ValueError, mismatch.rstrip("s")):
                     cflearn.PipelineSerializer.fuse_inference([first, second])
-            except (AssertionError, RuntimeError):
-                deficiencies.append(mismatch)
-
-        self.assertEqual(deficiencies, [])
+                if mismatch == "dtypes":
+                    fused = cflearn.PipelineSerializer.fuse_inference(
+                        [first, second],
+                        states_callback=lambda _, state: {
+                            name: value.float() if value.is_floating_point() else value
+                            for name, value in state.items()
+                        },
+                    )
+                    self.assertEqual(len(fused.build_model.model.m), 2)
 
     def test_fuse_reports_missing_checkpoint(self):
         first, _ = self._save_fusion_workspace("fuse_missing_first")

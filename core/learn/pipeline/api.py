@@ -17,6 +17,7 @@ from typing import Optional
 from pathlib import Path
 from tempfile import mkdtemp
 from tempfile import TemporaryDirectory
+from contextlib import ExitStack
 from accelerate import Accelerator
 from collections import OrderedDict
 from rich.progress import Progress
@@ -765,6 +766,38 @@ class PipelineSerializer:
         p.build(b_serialize_model)
         return p
 
+    @staticmethod
+    def _validate_states(
+        states: Dict[str, Any],
+        expected: Dict[str, Any],
+    ) -> None:
+        state_keys = set(states)
+        expected_keys = set(expected)
+        if state_keys != expected_keys:
+            missing = sorted(expected_keys - state_keys)
+            unexpected = sorted(state_keys - expected_keys)
+            raise ValueError(
+                "incompatible checkpoint keys "
+                f"(missing: {missing}, unexpected: {unexpected})"
+            )
+        for key, expected_value in expected.items():
+            value = states[key]
+            if not isinstance(value, torch.Tensor):
+                raise ValueError(
+                    f"incompatible checkpoint value at '{key}': "
+                    f"expected Tensor, got {type(value).__name__}"
+                )
+            if value.shape != expected_value.shape:
+                raise ValueError(
+                    f"incompatible checkpoint shape at '{key}': "
+                    f"expected {tuple(expected_value.shape)}, got {tuple(value.shape)}"
+                )
+            if value.dtype != expected_value.dtype:
+                raise ValueError(
+                    f"incompatible checkpoint dtype at '{key}': "
+                    f"expected {expected_value.dtype}, got {value.dtype}"
+                )
+
     @classmethod
     def _get_merged_states(
         cls,
@@ -774,16 +807,20 @@ class PipelineSerializer:
         states_callback: states_callback_type = None,
     ) -> OrderedDict:
         merged_states = OrderedDict()
+        map_location = device if states_callback is not None else "cpu"
         for i, ckpt_path in enumerate(track(ckpt_paths, description="merge states")):
-            states = torch.load(ckpt_path, weights_only=False, map_location=device)
-            states = states["states"]
-            current_keys = list(states.keys())
-            for k, v in list(states.items()):
-                states[f"{i}.{k}"] = v
-            for k in current_keys:
-                states.pop(k)
+            states = torch.load(
+                ckpt_path,
+                weights_only=False,
+                map_location=map_location,
+            )["states"]
+            states = OrderedDict((f"{i}.{k}", v) for k, v in states.items())
             if states_callback is not None:
                 states = states_callback(p, states)
+                states = OrderedDict(
+                    (k, v.cpu() if isinstance(v, torch.Tensor) else v)
+                    for k, v in states.items()
+                )
             merged_states.update(states)
         return merged_states
 
@@ -800,6 +837,8 @@ class PipelineSerializer:
     ) -> Union[InferencePipeline, EvaluationPipeline]:
         if pack_type == PackType.TRAINING:
             raise ValueError("should not pack to training pipeline when fusing")
+        if not src_folders:
+            raise ValueError("at least one source folder should be provided")
         device = get_torch_device(device)
         # get num picked
         num_total = num_repeat = len(src_folders)
@@ -810,10 +849,13 @@ class PipelineSerializer:
                 num_picked = round(num_total * num_picked)
             if num_picked < 1:
                 raise ValueError("calculated `num_picked` should be at least 1")
+            if num_picked > num_total:
+                raise ValueError("`num_picked` should not exceed the source count")
             scores = []
-            for i, folder in enumerate(src_folders):
-                ckpt_folder = os.path.join(folder, SerializeModelBlock.__identifier__)
-                folder_scores = get_scores(ckpt_folder)
+            for folder in src_folders:
+                with get_folder(folder) as src_folder:
+                    ckpt_folder = src_folder / SerializeModelBlock.__identifier__
+                    folder_scores = get_scores(ckpt_folder)
                 scores.append(max(folder_scores.values()))
             scores_array = np.array(scores)
             picked_indices = np.argsort(scores)[::-1][:num_picked]
@@ -825,27 +867,70 @@ class PipelineSerializer:
                 f"score: {original_score} -> {picked_score}"
             )
             num_repeat = num_picked
+        # validate model-building configs
+        build_fields = [
+            "model",
+            "model_config",
+            "module_name",
+            "module_config",
+        ]
+        reference_build_config: Optional[Dict[str, Any]] = None
+        for folder in src_folders:
+            with get_folder(folder) as src_folder:
+                info = Serializer.load_info(src_folder)
+            config = Config.from_pack(info["config"])
+            build_config = {
+                field: getattr(config.build, field) for field in build_fields
+            }
+            if reference_build_config is None:
+                reference_build_config = build_config
+                continue
+            different_fields = [
+                field
+                for field in build_fields
+                if build_config[field] != reference_build_config[field]
+            ]
+            if different_fields:
+                raise ValueError(
+                    f"incompatible config in '{folder}': model-building fields "
+                    f"differ: {', '.join(different_fields)}"
+                )
         # get empty pipeline
         with get_folder(src_folders[0], force_new=True) as src_folder:
             p = cls._build_ensemble_pipeline(src_folder, pack_type, num_repeat)
         # merge state dict
-        ckpt_paths = []
-        for folder in src_folders:
-            with get_folder(folder) as i_folder:
+        with ExitStack() as stack:
+            ckpt_paths = []
+            for folder in src_folders:
+                i_folder = stack.enter_context(get_folder(folder))
                 i_ckpt_dir = i_folder / SerializeModelBlock.__identifier__
                 checkpoints = get_sorted_checkpoints(
                     i_ckpt_dir,
                     sort_by=sort_ckpt_by,
                     target_ckpt_step=target_ckpt_step,
                 )
-                ckpt_paths.append(i_ckpt_dir / checkpoints[0])
-        merged_states = cls._get_merged_states(p, device, ckpt_paths, states_callback)
+                if not checkpoints:
+                    raise FileNotFoundError(
+                        f"no checkpoint is found under '{i_ckpt_dir}'"
+                    )
+                ckpt_path = i_ckpt_dir / checkpoints[0]
+                if not ckpt_path.is_file():
+                    raise FileNotFoundError(ckpt_path)
+                ckpt_paths.append(ckpt_path)
+            merged_states = cls._get_merged_states(
+                p,
+                device,
+                ckpt_paths,
+                states_callback,
+            )
         # load state dict
         model = p.build_model.model
         if isinstance(model, EnsembleModel):
             model.rehook_ema()
-        model.to(device)
+        cls._validate_states(merged_states, model.state_dict())
         model.load_state_dict(merged_states)
+        del merged_states
+        model.to(device)
         return p
 
     @classmethod
@@ -886,8 +971,6 @@ class PipelineSerializer:
             if not ensemble_weights:
                 p = cls._build_ensemble_pipeline(p_folder, pack_type, num_ensemble)
                 merged_states = cls._get_merged_states(p, device, ckpts, states_callback)  # type: ignore
-                if isinstance(p.build_model.model, EnsembleModel):
-                    p.build_model.model.rehook_ema()
             else:
                 fn = (
                     cls._load_inference
@@ -896,24 +979,39 @@ class PipelineSerializer:
                 )
                 p = fn(p_folder)
                 merged_states = OrderedDict()
+                expected_states = p.build_model.model.state_dict()
+                map_location = device if states_callback is not None else "cpu"
                 for ckpt in ckpts:
-                    states = torch.load(ckpt, weights_only=False, map_location=device)
-                    states = states["states"]
+                    states = torch.load(
+                        ckpt,
+                        weights_only=False,
+                        map_location=map_location,
+                    )["states"]
                     if states_callback is not None:
                         states = states_callback(p, states)
+                        states = OrderedDict(
+                            (k, v.cpu() if isinstance(v, torch.Tensor) else v)
+                            for k, v in states.items()
+                        )
+                    cls._validate_states(states, expected_states)
                     for k, v in states.items():
                         mv = merged_states.get(k)
                         if mv is None:
                             merged_states[k] = v
                         else:
                             merged_states[k] = mv + v
+                    del states
                 for k, v in merged_states.items():
                     if is_float(v):
                         merged_states[k] /= num_ensemble
         # load state dict
         model = p.build_model.model
-        model.to(device)
+        if isinstance(model, EnsembleModel):
+            model.rehook_ema()
+        cls._validate_states(merged_states, model.state_dict())
         model.load_state_dict(merged_states)
+        del merged_states
+        model.to(device)
         return p
 
 
