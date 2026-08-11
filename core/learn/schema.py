@@ -185,10 +185,40 @@ to be transformed.
 """
 
 
+def _validate_sw(
+    sample_weights: np.ndarray,
+    expected_length: Optional[int] = None,
+) -> None:
+    if sample_weights.ndim != 1:
+        raise ValueError("sample weights should be one-dimensional")
+    if sample_weights.size == 0:
+        raise ValueError("sample weights should not be empty")
+    is_numeric = np.issubdtype(sample_weights.dtype, np.number) or np.issubdtype(
+        sample_weights.dtype, np.bool_
+    )
+    if not is_numeric or np.iscomplexobj(sample_weights):
+        raise ValueError("sample weights should be real numbers")
+    if not np.all(np.isfinite(sample_weights)):
+        raise ValueError("sample weights should be finite")
+    if np.any(sample_weights < 0.0):
+        raise ValueError("sample weights should be non-negative")
+    if expected_length is not None and len(sample_weights) != expected_length:
+        raise ValueError(
+            f"sample weights length should be {expected_length}, "
+            f"but got {len(sample_weights)}"
+        )
+    if not np.any(sample_weights > 0.0):
+        raise ValueError("sample weights should contain a positive value")
+
+
 def norm_sw(sample_weights: Optional[np.ndarray]) -> Optional[np.ndarray]:
     if sample_weights is None:
         return None
-    return sample_weights / sample_weights.sum()
+    _validate_sw(sample_weights)
+    normalized: np.ndarray = sample_weights.astype(np.float64, copy=True)
+    normalized /= normalized.max()
+    normalized /= normalized.sum()
+    return normalized
 
 
 def split_sw(sample_weights: sample_weights_type) -> TSplitSW:
@@ -964,11 +994,13 @@ class IData(  # type: ignore
         sample_weights: Optional[np.ndarray] = None,
         **kwargs: Any,
     ) -> DataLoader:
+        if sample_weights is not None:
+            _validate_sw(sample_weights, len(dataset))
         if sample_weights is None or not shuffle:
             sampler = None
         else:
             shuffle = False
-            sampler = WeightedRandomSampler(sample_weights, len(sample_weights))  # type: ignore
+            sampler = WeightedRandomSampler(sample_weights, len(dataset))  # type: ignore
         loader_configs = shallow_copy_dict(self.config.loader_configs or {})
         if is_validation and self.config.valid_loader_configs is not None:
             valid_loader_configs = shallow_copy_dict(self.config.valid_loader_configs)
@@ -1073,7 +1105,7 @@ class IData(  # type: ignore
             or self.config.valid_batch_size
             or self.config.batch_size,
             for_inference=for_inference,
-            sample_weights=sample_weights,
+            sample_weights=norm_sw(sample_weights),
             **kwargs,
         )
         return loader
@@ -1087,6 +1119,8 @@ class IData(  # type: ignore
             )
         datasets = self.to_datasets(self.bundle, for_inference=for_inference)
         self.train_dataset, self.valid_dataset = datasets  # type: ignore
+        if self.valid_dataset is None and self.valid_weights is not None:
+            raise ValueError("validation sample weights require a validation dataset")
         train_loader = self.to_loader(
             self.train_dataset,
             shuffle=self.config.shuffle_train,

@@ -25,7 +25,7 @@ class TestSchema(unittest.TestCase):
             A = 1
             B = 2
 
-        sws = np.random.random([3, 5]), np.random.random([3, 5])
+        sws = np.random.random(3), np.random.random(5)
         tsw, vsw = split_sw(sws)
         np.testing.assert_allclose(tsw, norm_sw(sws[0]))
         np.testing.assert_allclose(vsw, norm_sw(sws[1]))
@@ -36,6 +36,116 @@ class TestSchema(unittest.TestCase):
         cfg.loss_metrics_weights = dict(foo=1.0, bar=2.0)
         self.assertEqual(weighted_loss_score(cfg, {}), 0.0)
         self.assertEqual(weighted_loss_score(cfg, {"foo": 1.0, "bar": 2.0}), -5)
+
+    def test_sample_weights(self) -> None:
+        weights = np.array([1.0, 2.0, 3.0])
+        original_weights = weights.copy()
+        normalized = norm_sw(weights)
+        self.assertIsNot(normalized, weights)
+        np.testing.assert_array_equal(weights, original_weights)
+        np.testing.assert_allclose(normalized, weights / weights.sum())
+        self.assertEqual(normalized.dtype, weights.dtype)
+        self.assertEqual(norm_sw(weights.astype(np.float32)).dtype, np.float64)
+        many_half_weights = np.ones(100_000, dtype=np.float16)
+        normalized_half = norm_sw(many_half_weights)
+        self.assertEqual(normalized_half.dtype, np.float64)
+        self.assertTrue(np.all(normalized_half > 0.0))
+        np.testing.assert_allclose(normalized_half.sum(), 1.0, rtol=1.0e-6)
+        np.testing.assert_allclose(norm_sw(np.array([True, False])), [1.0, 0.0])
+        largest = np.full(2, np.finfo(np.float64).max)
+        np.testing.assert_allclose(norm_sw(largest), [0.5, 0.5])
+        for invalid in [
+            np.array([]),
+            np.array(1.0),
+            np.ones([2, 2]),
+            np.array([-1.0, 2.0]),
+            np.array([-np.inf, 1.0]),
+            np.array([np.nan, 1.0]),
+            np.array([np.inf, 1.0]),
+            np.array([1.0 + 1.0j]),
+            np.array(["1", "2"]),
+            np.zeros(2),
+        ]:
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    norm_sw(invalid)
+
+        data = cflearn.testing.linear_data(4, use_validation=True)[0]
+        data.config.shuffle_valid = True
+        train_weights = np.arange(1.0, 5.0)
+        valid_weights = train_weights[::-1].copy()
+        data.set_sample_weights((train_weights, valid_weights))
+        train_loader, valid_loader = data.build_loaders()
+        self.assertIsInstance(
+            train_loader.sampler, torch.utils.data.WeightedRandomSampler
+        )
+        self.assertIsNotNone(valid_loader)
+        self.assertIsInstance(
+            valid_loader.sampler, torch.utils.data.WeightedRandomSampler
+        )
+        np.testing.assert_allclose(
+            train_loader.sampler.weights.numpy(),
+            norm_sw(train_weights),
+        )
+        np.testing.assert_allclose(
+            valid_loader.sampler.weights.numpy(),
+            norm_sw(valid_weights),
+        )
+        self.assertTrue(
+            np.shares_memory(
+                train_loader.sampler.weights.numpy(),
+                data.train_weights,
+            )
+        )
+        self.assertTrue(
+            np.shares_memory(
+                valid_loader.sampler.weights.numpy(),
+                data.valid_weights,
+            )
+        )
+
+        data.set_sample_weights((np.ones(3), valid_weights))
+        with self.assertRaisesRegex(ValueError, "length"):
+            data.build_loaders()
+        data.set_sample_weights((train_weights, np.ones(5)))
+        with self.assertRaisesRegex(ValueError, "length"):
+            data.build_loaders()
+
+        train_only = cflearn.testing.linear_data(4)[0]
+        train_only.set_sample_weights((train_weights, valid_weights))
+        with self.assertRaisesRegex(ValueError, "validation"):
+            train_only.build_loaders()
+
+        direct_loader = data.build_loader(
+            data.bundle.x_train,
+            data.bundle.y_train,
+            shuffle=True,
+            for_inference=False,
+            sample_weights=train_weights,
+        )
+        np.testing.assert_allclose(
+            direct_loader.sampler.weights.numpy(),
+            norm_sw(train_weights),
+        )
+        unshuffled_loader = data.build_loader(
+            data.bundle.x_train,
+            data.bundle.y_train,
+            shuffle=False,
+            for_inference=False,
+            sample_weights=train_weights,
+        )
+        self.assertNotIsInstance(
+            unshuffled_loader.sampler,
+            torch.utils.data.WeightedRandomSampler,
+        )
+        with self.assertRaisesRegex(ValueError, "length"):
+            data.build_loader(
+                data.bundle.x_train,
+                data.bundle.y_train,
+                shuffle=False,
+                for_inference=False,
+                sample_weights=np.ones(3),
+            )
 
     def test_data_loader(self):
         data = cflearn.testing.linear_data(3)[0]

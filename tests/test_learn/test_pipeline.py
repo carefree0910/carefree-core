@@ -638,7 +638,7 @@ class TestPipeline(unittest.TestCase):
             cflearn.PipelineSerializer.fuse_inference([first, second])
 
     def test_fuse_rejects_incompatible_state_signatures(self):
-        for mismatch in ["keys", "shapes", "dtypes"]:
+        for mismatch in ["keys", "values", "shapes", "dtypes"]:
             first, _ = self._save_fusion_workspace(f"fuse_{mismatch}_first")
             second, checkpoint = self._save_fusion_workspace(f"fuse_{mismatch}_second")
             payload = torch.load(checkpoint, weights_only=False)
@@ -650,6 +650,8 @@ class TestPipeline(unittest.TestCase):
             )
             if mismatch == "keys":
                 states.pop(key)
+            elif mismatch == "values":
+                states[key] = None
             elif mismatch == "shapes":
                 value = states[key]
                 states[key] = value.new_zeros((value.shape[0] + 1, *value.shape[1:]))
@@ -678,6 +680,11 @@ class TestPipeline(unittest.TestCase):
         with self.assertRaises(FileNotFoundError) as context:
             cflearn.PipelineSerializer.fuse_inference([first, second])
         self.assertIn(str(checkpoint), str(context.exception))
+
+        empty, checkpoint = self._save_fusion_workspace("fuse_empty_scores")
+        (checkpoint.parent / cflearn.SCORES_FILE).unlink()
+        with self.assertRaisesRegex(FileNotFoundError, "no checkpoint"):
+            cflearn.PipelineSerializer.fuse_inference([empty])
 
     def test_fuse_preserves_non_float_buffers_per_member(self):
         config = cflearn.Config(

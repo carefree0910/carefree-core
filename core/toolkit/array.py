@@ -64,6 +64,62 @@ def is_real_numeric(arr: arr_type) -> bool:
     return is_float(arr) or is_int(arr)
 
 
+def _check_not_empty(arr: TArray) -> None:
+    import torch
+    import numpy as np
+
+    if isinstance(arr, np.ndarray):
+        size = arr.size
+    else:
+        size = cast(torch.Tensor, arr).numel()
+    if size == 0:
+        raise ValueError("input array should not be empty")
+
+
+def _safe_denominator(value: Any, eps: float, *, clamp: bool = False) -> Any:
+    import torch
+    import numpy as np
+
+    if not math.isfinite(eps) or eps <= 0.0:
+        raise ValueError("`eps` should be finite and positive")
+    if isinstance(value, torch.Tensor):
+        if torch.is_floating_point(value):
+            eps = float(max(eps, torch.finfo(value.dtype).tiny))
+        if clamp:
+            return value.clamp_min(eps)
+        return value.masked_fill(value == 0, eps)
+    if np.issubdtype(value.dtype, np.floating):
+        eps = max(eps, cast(float, np.finfo(value.dtype).tiny))
+    if clamp:
+        return np.maximum(value, eps)
+    return np.where(value == 0, eps, value)
+
+
+def _to_backend(arr: TArray, value: Any) -> TArray:
+    import torch
+    import numpy as np
+
+    if isinstance(arr, np.ndarray):
+        if isinstance(value, torch.Tensor):
+            value = value.detach().cpu().numpy()
+        dtype = arr.dtype if np.issubdtype(arr.dtype, np.inexact) else np.float64
+        return cast(TArray, np.asarray(value, dtype=dtype))
+    tensor = cast(torch.Tensor, arr)
+    is_inexact = torch.is_floating_point(tensor) or torch.is_complex(tensor)
+    dtype = tensor.dtype if is_inexact else torch.get_default_dtype()
+    return cast(TArray, torch.as_tensor(value, dtype=dtype, device=tensor.device))
+
+
+def _apply_normalization(arr: TArray, offset: TArray, scale: TArray) -> TArray:
+    operand = cast(Any, arr)
+    return cast(TArray, (operand - offset) / scale)
+
+
+def _recover_normalization(arr: TArray, offset: TArray, scale: TArray) -> TArray:
+    operand = cast(Any, arr)
+    return cast(TArray, operand * scale + offset)
+
+
 @no_type_check
 def sigmoid(arr: TArray) -> TArray:
     import torch
@@ -87,12 +143,14 @@ def softmax(arr: TArray, *, axis: int = 1) -> TArray:
 
 
 @no_type_check
-def l2_normalize(arr: TArray) -> TArray:
+def l2_normalize(arr: TArray, *, eps: float = 1.0e-8) -> TArray:
     import numpy as np
 
     if isinstance(arr, np.ndarray):
-        return arr / np.linalg.norm(arr, axis=-1, keepdims=True)
-    return arr / arr.norm(dim=-1, keepdim=True)
+        norm = np.linalg.norm(arr, axis=-1, keepdims=True)
+    else:
+        norm = arr.norm(dim=-1, keepdim=True)
+    return arr / _safe_denominator(norm, eps)
 
 
 @no_type_check
@@ -103,22 +161,26 @@ def normalize(
     return_stats: bool = False,
     eps: float = 1.0e-8,
 ) -> Union[TArray, Tuple[TArray, Dict[str, Any]]]:
-    import torch
     import numpy as np
 
+    _check_not_empty(arr)
     if global_norm:
-        arr_mean, arr_std = arr.mean().item(), arr.std().item()
-        arr_std = max(eps, arr_std)
+        arr_mean = arr.mean()
+        if isinstance(arr, np.ndarray):
+            arr_std = arr.std()
+        else:
+            arr_std = arr.std(correction=0)
+        arr_std = _safe_denominator(arr_std, eps, clamp=True)
         out = (arr - arr_mean) / arr_std
         if not return_stats:
             return out
-        return out, dict(mean=arr_mean, std=arr_std)
+        return out, dict(mean=arr_mean.item(), std=arr_std.item())
     if isinstance(arr, np.ndarray):
         arr_mean, arr_std = arr.mean(axis=0), arr.std(axis=0)
-        std = np.maximum(eps, arr_std)
     else:
-        arr_mean, arr_std = arr.mean(dim=0), arr.std(dim=0)
-        std = torch.clip(arr_std, min=eps)
+        arr_mean = arr.mean(dim=0)
+        arr_std = arr.std(dim=0, correction=0)
+    std = _safe_denominator(arr_std, eps, clamp=True)
     out = (arr - arr_mean) / std
     if not return_stats:
         return out
@@ -126,13 +188,15 @@ def normalize(
 
 
 def normalize_from(arr: TArray, stats: Dict[str, Any]) -> TArray:
-    mean, std = stats["mean"], stats["std"]
-    return (arr - mean) / std
+    mean = _to_backend(arr, stats["mean"])
+    std = _to_backend(arr, stats["std"])
+    return _apply_normalization(arr, mean, std)
 
 
 def recover_normalize_from(arr: TArray, stats: Dict[str, Any]) -> TArray:
-    mean, std = stats["mean"], stats["std"]
-    return arr * std + mean
+    mean = _to_backend(arr, stats["mean"])
+    std = _to_backend(arr, stats["std"])
+    return _recover_normalization(arr, mean, std)
 
 
 @no_type_check
@@ -143,22 +207,21 @@ def min_max_normalize(
     return_stats: bool = False,
     eps: float = 1.0e-8,
 ) -> Union[TArray, Tuple[TArray, Dict[str, Any]]]:
-    import torch
     import numpy as np
 
+    _check_not_empty(arr)
     if global_norm:
-        arr_min, arr_max = arr.min().item(), arr.max().item()
-        diff = max(eps, arr_max - arr_min)
+        arr_min, arr_max = arr.min(), arr.max()
+        diff = _safe_denominator(arr_max - arr_min, eps, clamp=True)
         out = (arr - arr_min) / diff
         if not return_stats:
             return out
-        return out, dict(min=arr_min, diff=diff)
+        return out, dict(min=arr_min.item(), diff=diff.item())
     if isinstance(arr, np.ndarray):
         arr_min, arr_max = arr.min(axis=0), arr.max(axis=0)
-        diff = np.maximum(eps, arr_max - arr_min)
     else:
         arr_min, arr_max = arr.min(dim=0).values, arr.max(dim=0).values
-        diff = torch.clip(arr_max - arr_min, min=eps)
+    diff = _safe_denominator(arr_max - arr_min, eps, clamp=True)
     out = (arr - arr_min) / diff
     if not return_stats:
         return out
@@ -166,13 +229,15 @@ def min_max_normalize(
 
 
 def min_max_normalize_from(arr: TArray, stats: Dict[str, Any]) -> TArray:
-    arr_min, diff = stats["min"], stats["diff"]
-    return (arr - arr_min) / diff
+    arr_min = _to_backend(arr, stats["min"])
+    diff = _to_backend(arr, stats["diff"])
+    return _apply_normalization(arr, arr_min, diff)
 
 
 def recover_min_max_normalize_from(arr: TArray, stats: Dict[str, Any]) -> TArray:
-    arr_min, diff = stats["min"], stats["diff"]
-    return arr * diff + arr_min
+    arr_min = _to_backend(arr, stats["min"])
+    diff = _to_backend(arr, stats["diff"])
+    return _recover_normalization(arr, arr_min, diff)
 
 
 @no_type_check
@@ -187,6 +252,7 @@ def quantile_normalize(
     import torch
     import numpy as np
 
+    _check_not_empty(arr)
     # quantiles
     if isinstance(arr, np.ndarray):
         kw = {"axis": 0}
@@ -201,13 +267,7 @@ def quantile_normalize(
         arr_min = quantile_fn(arr, q, **kw)
         arr_max = quantile_fn(arr, 1.0 - q, **kw)
     # diff
-    if global_norm:
-        diff = max(eps, arr_max - arr_min)
-    else:
-        if isinstance(arr, np.ndarray):
-            diff = np.maximum(eps, arr_max - arr_min)
-        else:
-            diff = torch.clip(arr_max - arr_min, min=eps)
+    diff = _safe_denominator(arr_max - arr_min, eps, clamp=True)
     arr = arr.clip(arr_min, arr_max)
     out = (arr - arr_min) / diff
     if not return_stats:
@@ -222,13 +282,15 @@ def quantile_normalize(
 
 
 def quantile_normalize_from(arr: TArray, stats: Dict[str, Any]) -> TArray:
-    arr_min, diff = stats["min"], stats["diff"]
-    return (arr - arr_min) / diff
+    arr_min = _to_backend(arr, stats["min"])
+    diff = _to_backend(arr, stats["diff"])
+    return _apply_normalization(arr, arr_min, diff)
 
 
 def recover_quantile_normalize_from(arr: TArray, stats: Dict[str, Any]) -> TArray:
-    arr_min, diff = stats["min"], stats["diff"]
-    return arr * diff + arr_min
+    arr_min = _to_backend(arr, stats["min"])
+    diff = _to_backend(arr, stats["diff"])
+    return _recover_normalization(arr, arr_min, diff)
 
 
 def clip_normalize(arr: TArray) -> TArray:
@@ -293,7 +355,7 @@ def to_device(
 
 
 @no_type_check
-def iou(logits: TArray, labels: TArray) -> TArray:
+def iou(logits: TArray, labels: TArray, *, eps: float = 1.0e-8) -> TArray:
     import numpy as np
 
     is_numpy = isinstance(logits, np.ndarray)
@@ -307,7 +369,7 @@ def iou(logits: TArray, labels: TArray) -> TArray:
     intersect = heat_map * labels
     union = heat_map + labels - intersect
     kwargs = {"axis" if is_numpy else "dim": tuple(range(1, len(intersect.shape)))}
-    return intersect.sum(**kwargs) / union.sum(**kwargs)
+    return intersect.sum(**kwargs) / _safe_denominator(union.sum(**kwargs), eps)
 
 
 @no_type_check
@@ -329,11 +391,28 @@ def corr(
     sqrt_fn = np.sqrt if is_numpy else torch.sqrt
     transpose_fn = np.transpose if is_numpy else torch.t
 
-    w_sum = 0.0 if weights is None else weights.sum().item()
+    _check_not_empty(predictions)
+    _check_not_empty(target)
+    if weights is not None:
+        _check_not_empty(weights)
+        finite_fn = np.isfinite if is_numpy else torch.isfinite
+        if not finite_fn(weights).all().item() or weights.min().item() < 0.0:
+            raise ValueError("correlation weights should be finite and non-negative")
+        if is_numpy and weights.dtype == np.float16:
+            weights = weights.astype(np.float32)
+        elif not is_numpy and weights.dtype in {torch.float16, torch.bfloat16}:
+            weights = weights.float()
+        w_max = weights.max().item()
+        if w_max != 0.0:
+            weights = weights / w_max
+            if is_numpy:
+                weights /= weights.sum(dtype=np.float64)
+            else:
+                weights /= weights.sum(dtype=torch.float64)
     if weights is None:
         mean = predictions.mean(0, **keepdim_kw)
     else:
-        mean = (predictions * weights).sum(0, **keepdim_kw) / w_sum
+        mean = (predictions * weights).sum(0, **keepdim_kw)
     vp = predictions - mean
     if weights is None:
         kw = keepdim_kw.copy()
@@ -343,15 +422,16 @@ def corr(
         vp_norm = sqrt_fn((weights * (vp**2)).sum(0, **keepdim_kw))
     if predictions is target:
         vp_norm_t = transpose_fn(vp_norm)
+        denominator = _safe_denominator(vp_norm * vp_norm_t, eps)
         if weights is None:
-            mat = matmul_fn(transpose_fn(vp), vp) / (vp_norm * vp_norm_t)
+            mat = matmul_fn(transpose_fn(vp), vp) / denominator
         else:
-            mat = matmul_fn(transpose_fn(weights * vp), vp) / (vp_norm * vp_norm_t)
+            mat = matmul_fn(transpose_fn(weights * vp), vp) / denominator
     else:
         if weights is None:
             target_mean = target.mean(0, **keepdim_kw)
         else:
-            target_mean = (target * weights).sum(0, **keepdim_kw) / w_sum
+            target_mean = (target * weights).sum(0, **keepdim_kw)
         vt = transpose_fn(target - target_mean)
         if weights is None:
             kw = keepdim_kw.copy()
@@ -359,10 +439,11 @@ def corr(
             vt_norm = norm_fn(vt, 2, **kw)
         else:
             vt_norm = sqrt_fn((transpose_fn(weights) * (vt**2)).sum(1, **keepdim_kw))
+        denominator = _safe_denominator(vp_norm * vt_norm, eps)
         if weights is None:
-            mat = matmul_fn(vt, vp) / (vp_norm * vt_norm + eps)
+            mat = matmul_fn(vt, vp) / denominator
         else:
-            mat = matmul_fn(vt, weights * vp) / (vp_norm * vt_norm + eps)
+            mat = matmul_fn(vt, weights * vp) / denominator
     if not get_diagonal:
         return mat
     if mat.shape[0] != mat.shape[1]:

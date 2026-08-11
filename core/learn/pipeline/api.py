@@ -807,6 +807,7 @@ class PipelineSerializer:
         states_callback: states_callback_type = None,
     ) -> OrderedDict:
         merged_states = OrderedDict()
+        map_location: Union[torch.device, str]
         map_location = device if states_callback is not None else "cpu"
         for i, ckpt_path in enumerate(track(ckpt_paths, description="merge states")):
             states = torch.load(
@@ -980,6 +981,7 @@ class PipelineSerializer:
                 p = fn(p_folder)
                 merged_states = OrderedDict()
                 expected_states = p.build_model.model.state_dict()
+                map_location: Union[torch.device, str]
                 map_location = device if states_callback is not None else "cpu"
                 for ckpt in ckpts:
                     states = torch.load(

@@ -181,6 +181,198 @@ class TestArray(unittest.TestCase):
         make_grid(array)
         make_grid(tensor)
 
+    def test_normalization_backend_contract(self) -> None:
+        array = np.array([[1.0, 2.0], [3.0, 6.0], [5.0, 10.0]])
+        tensor = torch.from_numpy(array.copy())
+        normalization_pairs = [
+            (normalize, normalize_from, recover_normalize_from),
+            (min_max_normalize, min_max_normalize_from, recover_min_max_normalize_from),
+            (
+                quantile_normalize,
+                quantile_normalize_from,
+                recover_quantile_normalize_from,
+            ),
+        ]
+        for global_norm in [False, True]:
+            for normalize_fn, from_fn, recover_fn in normalization_pairs:
+                with self.subTest(
+                    global_norm=global_norm,
+                    normalize_fn=normalize_fn.__name__,
+                ):
+                    normalized_array, array_stats = normalize_fn(
+                        array,
+                        global_norm=global_norm,
+                        return_stats=True,
+                    )
+                    normalized_tensor, tensor_stats = normalize_fn(
+                        tensor,
+                        global_norm=global_norm,
+                        return_stats=True,
+                    )
+                    self.assertEqual(normalized_tensor.dtype, tensor.dtype)
+                    self.assertEqual(normalized_tensor.device, tensor.device)
+                    replayed = from_fn(tensor, tensor_stats)
+                    recovered = recover_fn(replayed, tensor_stats)
+                    torch.testing.assert_close(recovered, tensor)
+                    cross_backend = from_fn(tensor, array_stats)
+                    torch.testing.assert_close(cross_backend, replayed)
+                    tensor_stats = {
+                        key: torch.as_tensor(value, dtype=tensor.dtype)
+                        for key, value in tensor_stats.items()
+                    }
+                    np.testing.assert_allclose(
+                        from_fn(array, tensor_stats),
+                        from_fn(array, array_stats),
+                    )
+                    if normalize_fn is not quantile_normalize:
+                        torch.testing.assert_close(replayed, normalized_tensor)
+                    np.testing.assert_allclose(
+                        normalized_array,
+                        normalized_tensor.numpy(),
+                    )
+        for normalize_fn in [normalize, min_max_normalize, quantile_normalize]:
+            with self.subTest(normalize_fn=normalize_fn.__name__):
+                for constant in [np.ones([1, 2]), np.ones([3, 2])]:
+                    for global_norm in [False, True]:
+                        normalized_array = normalize_fn(
+                            constant,
+                            global_norm=global_norm,
+                        )
+                        normalized_tensor = normalize_fn(
+                            torch.from_numpy(constant.copy()),
+                            global_norm=global_norm,
+                        )
+                        np.testing.assert_allclose(
+                            normalized_array,
+                            np.zeros_like(constant),
+                        )
+                        torch.testing.assert_close(
+                            normalized_tensor,
+                            torch.zeros_like(normalized_tensor),
+                        )
+                with self.assertRaisesRegex(ValueError, "empty"):
+                    normalize_fn(np.empty([0, 2]))
+                with self.assertRaisesRegex(ValueError, "empty"):
+                    normalize_fn(torch.empty([0, 2]))
+
+        integer = np.array([[1, 2], [3, 4]])
+        for normalize_fn, from_fn, _ in normalization_pairs:
+            with self.subTest(integer_normalize_fn=normalize_fn.__name__):
+                normalized, stats = normalize_fn(integer, return_stats=True)
+                replayed = from_fn(integer, stats)
+                self.assertTrue(np.issubdtype(replayed.dtype, np.floating))
+                if normalize_fn is not quantile_normalize:
+                    np.testing.assert_allclose(replayed, normalized)
+
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA is not available")
+    def test_normalization_cuda_replay(self) -> None:
+        tensor = torch.tensor(
+            [[1.0, 2.0], [3.0, 6.0], [5.0, 10.0]],
+            device="cuda",
+        )
+        normalization_pairs = [
+            (normalize, normalize_from),
+            (min_max_normalize, min_max_normalize_from),
+            (quantile_normalize, quantile_normalize_from),
+        ]
+        for normalize_fn, from_fn in normalization_pairs:
+            _, stats = normalize_fn(tensor, return_stats=True)
+            replayed = from_fn(tensor, stats)
+            self.assertEqual(replayed.device, tensor.device)
+            self.assertTrue(torch.isfinite(replayed).all())
+
+    def test_safe_math_boundaries(self) -> None:
+        zeros = np.zeros([2, 3])
+        normalized = l2_normalize(zeros)
+        tensor_normalized = l2_normalize(torch.from_numpy(zeros.copy()))
+        np.testing.assert_allclose(normalized, zeros)
+        torch.testing.assert_close(
+            tensor_normalized, torch.zeros_like(tensor_normalized)
+        )
+        half_zeros = torch.zeros([2, 3], dtype=torch.float16)
+        torch.testing.assert_close(l2_normalize(half_zeros), half_zeros)
+        for eps in [0.0, -1.0, np.nan, np.inf]:
+            with self.subTest(eps=eps):
+                with self.assertRaisesRegex(ValueError, "finite and positive"):
+                    l2_normalize(zeros, eps=eps)
+
+        empty_logits = np.empty([2, 1, 0])
+        empty_labels = np.empty_like(empty_logits)
+        np.testing.assert_allclose(iou(empty_logits, empty_labels), np.zeros(2))
+        tensor_logits = torch.from_numpy(empty_logits)
+        tensor_labels = torch.from_numpy(empty_labels)
+        torch.testing.assert_close(
+            iou(tensor_logits, tensor_labels),
+            torch.zeros(2, dtype=tensor_logits.dtype),
+        )
+
+        constant = np.ones([3, 2])
+        zero_weights = np.zeros([3, 1])
+        np.testing.assert_allclose(corr(constant, constant), np.zeros([2, 2]))
+        np.testing.assert_allclose(
+            corr(constant, constant, zero_weights),
+            np.zeros([2, 2]),
+        )
+        half_weights = zero_weights.astype(np.float16)
+        np.testing.assert_allclose(
+            corr(
+                constant.astype(np.float16), constant.astype(np.float16), half_weights
+            ),
+            np.zeros([2, 2]),
+        )
+        predictions = np.array([[1.0, 2.0], [2.0, 5.0], [4.0, 3.0]])
+        target = np.array([[3.0, 1.0], [2.0, 4.0], [5.0, 2.0]])
+        weights = np.array([[1.0], [2.0], [3.0]])
+        np.testing.assert_allclose(
+            corr(predictions, target, weights),
+            corr(predictions, target, 1.0e-10 * weights),
+        )
+        huge_scale = np.finfo(np.float64).max / 4.0
+        np.testing.assert_allclose(
+            corr(predictions, target, weights),
+            corr(predictions, target, huge_scale * weights),
+        )
+        many_predictions = np.tile(predictions, (23_334, 1))[:70_000]
+        many_target = np.tile(target, (23_334, 1))[:70_000]
+        many_weights = np.ones([70_000, 1], dtype=np.float32)
+        many_half_weights = many_weights.astype(np.float16)
+        expected = corr(many_predictions, many_target, many_weights)
+        np.testing.assert_allclose(
+            corr(many_predictions, many_target, many_half_weights),
+            expected,
+        )
+        torch.testing.assert_close(
+            corr(
+                torch.from_numpy(many_predictions),
+                torch.from_numpy(many_target),
+                torch.from_numpy(many_half_weights),
+            ),
+            torch.from_numpy(expected),
+        )
+        np.testing.assert_allclose(
+            corr(predictions, target),
+            corr(1.0e-10 * predictions, 1.0e-10 * target),
+        )
+        for invalid_weights in [
+            np.array([[-1.0], [1.0], [0.0]]),
+            np.array([[np.nan], [1.0], [0.0]]),
+            np.array([[np.inf], [1.0], [0.0]]),
+        ]:
+            with self.assertRaisesRegex(ValueError, "finite and non-negative"):
+                corr(predictions, target, invalid_weights)
+        tensor_constant = torch.from_numpy(constant.copy())
+        tensor_weights = torch.from_numpy(zero_weights.copy())
+        torch.testing.assert_close(
+            corr(tensor_constant, tensor_constant),
+            torch.zeros([2, 2], dtype=tensor_constant.dtype),
+        )
+        torch.testing.assert_close(
+            corr(tensor_constant, tensor_constant, tensor_weights),
+            torch.zeros([2, 2], dtype=tensor_constant.dtype),
+        )
+        with self.assertRaisesRegex(ValueError, "empty"):
+            corr(np.empty([0, 2]), np.empty([0, 2]))
+
     def test_squeeze(self):
         array = np.arange(5)
         tensor = torch.arange(5)
