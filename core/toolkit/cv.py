@@ -120,7 +120,6 @@ def read_image(
         else:
             image = image.convert("L")
     original_w, original_h = image.size  # type: ignore
-    to_masked = image if to_mask else None
     if max_wh is None:
         w, h = original_w, original_h
     else:
@@ -129,9 +128,12 @@ def read_image(
         w, h = map(get_suitable_size, (w, h), (anchor, anchor))
     if w != original_w or h != original_h:
         if resample == "auto":
-            resample = Image.Resampling.LANCZOS
+            resample = Image.Resampling.NEAREST if to_mask else Image.Resampling.LANCZOS
         image = image.resize((w, h), resample=resample)  # type: ignore
+        if alpha is not None:
+            alpha = image if to_mask else alpha.resize((w, h), resample=resample)
     anchored = image
+    to_masked = image if to_mask else None
     anchored_size = w, h
     image_array = np.array(image)
     if normalize:
@@ -139,7 +141,7 @@ def read_image(
     if alpha is None:
         alpha_array = None
     else:
-        alpha_array = np.array(alpha)[None, None]
+        alpha_array = np.array(alpha)
         if normalize:
             alpha_array = alpha_array.astype(np.float32) / 255.0
     if to_torch_fmt:
@@ -147,6 +149,8 @@ def read_image(
             image_array = image_array[None, None]
         else:
             image_array = image_array[None].transpose(0, 3, 1, 2)
+        if alpha_array is not None:
+            alpha_array = alpha_array[None, None]
     return ReadImageResponse(
         image_array,
         alpha_array,
@@ -185,6 +189,8 @@ def from_base64(base64_string: str) -> "TImage":
 
 @dataclass
 class ImageBox:
+    """An image box with half-open ``[l, r) x [t, b)`` coordinates."""
+
     l: int
     t: int
     r: int
@@ -221,7 +227,7 @@ class ImageBox:
         return ImageBox(*self.tuple)
 
     def crop(self, image: TArray) -> TArray:
-        return image[self.t : self.b + 1, self.l : self.r + 1]  # type: ignore
+        return image[self.t : self.b, self.l : self.r]  # type: ignore
 
     def pad(
         self,
@@ -278,11 +284,19 @@ class ImageBox:
         return ImageBox(l, t, r, b)
 
     @classmethod
+    def from_inclusive(cls, l: int, t: int, r: int, b: int) -> "ImageBox":
+        return cls(l, t, r + 1, b + 1)
+
+    @classmethod
     def from_mask(cls, uint8_mask: "ndarray", threshold: int = 0) -> "ImageBox":
         import numpy as np
 
         ys, xs = np.where(uint8_mask > threshold)
-        ys, xs = np.where(uint8_mask)
         if len(ys) == 0:
             return cls(0, 0, 0, 0)
-        return cls(xs.min().item(), ys.min().item(), xs.max().item(), ys.max().item())
+        return cls(
+            xs.min().item(),
+            ys.min().item(),
+            xs.max().item() + 1,
+            ys.max().item() + 1,
+        )
