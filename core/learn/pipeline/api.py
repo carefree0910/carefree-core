@@ -423,8 +423,8 @@ class PipelineSerializer:
     ) -> None:
         if pipeline_folder is None:
             pipeline_folder = cls.pipeline_folder
-        folder = os.path.join(workspace, pipeline_folder)
-        cls._save(p, folder, compress=compress, verbose=verbose)
+        folder = to_path(workspace) / pipeline_folder
+        cls._publish(p, folder, compress=compress, verbose=verbose)
 
     @classmethod
     def update(
@@ -437,16 +437,14 @@ class PipelineSerializer:
     ) -> None:
         if pipeline_folder is None:
             pipeline_folder = cls.pipeline_folder
-        folder = os.path.join(workspace, pipeline_folder)
-        if os.path.isdir(folder):
+        folder = to_path(workspace) / pipeline_folder
+        if folder.is_dir():
             compress = False
-            shutil.rmtree(folder)
-        elif os.path.isfile(f"{folder}.zip"):
+        elif Path(f"{folder}.zip").is_file():
             compress = True
-            os.remove(f"{folder}.zip")
         else:
             raise ValueError(f"neither `{folder}` nor `{folder}.zip` exists")
-        cls._save(p, folder, compress=compress, verbose=verbose)
+        cls._publish(p, folder, compress=compress, verbose=verbose)
 
     @classmethod
     def pack(
@@ -648,6 +646,52 @@ class PipelineSerializer:
     # internal
 
     @classmethod
+    def _publish(
+        cls,
+        pipeline: Pipeline,
+        folder: Path,
+        *,
+        compress: bool,
+        verbose: bool,
+    ) -> None:
+        folder.parent.mkdir(parents=True, exist_ok=True)
+        if compress:
+            cls._save(pipeline, folder, compress=True, verbose=verbose)
+            return
+        if folder.exists() and not folder.is_dir():
+            raise ValueError(f"`{folder}` is not a directory")
+        tmp_folder = Path(
+            mkdtemp(
+                dir=str(folder.parent),
+                prefix=f".{folder.name}.stage-",
+            )
+        )
+        cleanup = True
+        try:
+            candidate = tmp_folder / "candidate"
+            cls._save(pipeline, candidate, verbose=verbose)
+            backup = tmp_folder / "backup"
+            has_backup = folder.exists()
+            if has_backup:
+                os.replace(folder, backup)
+            try:
+                os.replace(candidate, folder)
+            except Exception:
+                if has_backup:
+                    try:
+                        os.replace(backup, folder)
+                    except Exception as rollback_error:
+                        cleanup = False
+                        raise RuntimeError(
+                            f"failed to restore `{folder}`; "
+                            f"the previous artifact is kept at `{backup}`"
+                        ) from rollback_error
+                raise
+        finally:
+            if cleanup:
+                shutil.rmtree(tmp_folder, ignore_errors=True)
+
+    @classmethod
     def _save(
         cls,
         pipeline: Pipeline,
@@ -657,19 +701,21 @@ class PipelineSerializer:
         verbose: bool = True,
     ) -> None:
         folder = to_path(folder)
-        original_folder = None
         if compress:
-            original_folder = folder
-            folder = Path(mkdtemp())
+            folder.parent.mkdir(parents=True, exist_ok=True)
+            with TemporaryDirectory(
+                dir=str(folder.parent),
+                prefix=f".{folder.name}.stage-",
+            ) as tmp:
+                candidate = Path(tmp) / "candidate"
+                cls._save(pipeline, candidate, verbose=verbose)
+                compress_folder(candidate)
+                os.replace(f"{candidate}.zip", f"{folder}.zip")
+            return
         Serializer.save(folder, pipeline)
         with pipeline.verbose_context(verbose):
             for block in pipeline.blocks:
                 block.save_extra(folder / block.__identifier__)
-        if compress and original_folder is not None:
-            absolute_folder = folder.absolute()
-            absolute_original = original_folder.absolute()
-            compress_folder(absolute_folder)
-            shutil.move(f"{absolute_folder}.zip", f"{absolute_original}.zip")
 
     @classmethod
     def _load(

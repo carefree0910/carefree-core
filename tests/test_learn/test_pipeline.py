@@ -53,6 +53,16 @@ class TestPipeline(unittest.TestCase):
         checkpoint = cflearn.get_sorted_checkpoints(checkpoint_folder)[0]
         return workspace, checkpoint_folder / checkpoint
 
+    @staticmethod
+    def _artifact_bytes(path: Path):
+        if path.is_file():
+            return path.read_bytes()
+        return {
+            str(file.relative_to(path)): file.read_bytes()
+            for file in path.rglob("*")
+            if file.is_file()
+        }
+
     def test_verbose_context_restores_after_exception(self):
         pipeline = self._inference_pipeline()
         block = pipeline.serialize_model
@@ -536,6 +546,175 @@ class TestPipeline(unittest.TestCase):
         np.testing.assert_allclose(r1, r2)
         with self.assertRaises(ValueError):
             cflearn.PipelineSerializer.update(p1, self.tmp_path / "missing")
+
+    def test_serializer_first_save_is_failure_safe(self):
+        pipeline = self._inference_pipeline()
+        block = pipeline.serialize_model
+        assert block is not None
+        for compress in [False, True]:
+            with self.subTest(compress=compress):
+                workspace = self.tmp_path / f"first_save_{compress}"
+                target = workspace / cflearn.PipelineSerializer.pipeline_folder
+                with patch.object(
+                    block,
+                    "save_extra",
+                    side_effect=RuntimeError("save failed"),
+                ):
+                    with self.assertRaisesRegex(RuntimeError, "save failed"):
+                        cflearn.PipelineSerializer.save(
+                            pipeline,
+                            workspace,
+                            compress=compress,
+                            verbose=False,
+                        )
+                self.assertFalse(target.exists())
+                self.assertFalse(Path(f"{target}.zip").exists())
+                if workspace.exists():
+                    self.assertEqual(list(workspace.iterdir()), [])
+
+    def test_serializer_update_is_failure_safe_and_preserves_format(self):
+        pipeline = self._inference_pipeline()
+        block = pipeline.serialize_model
+        assert block is not None
+        for compress in [False, True]:
+            with self.subTest(compress=compress):
+                workspace = self.tmp_path / f"failed_update_{compress}"
+                cflearn.PipelineSerializer.save(
+                    pipeline,
+                    workspace,
+                    compress=compress,
+                    verbose=False,
+                )
+                folder = workspace / cflearn.PipelineSerializer.pipeline_folder
+                archive = Path(f"{folder}.zip")
+                target = archive if compress else folder
+                before_bytes = self._artifact_bytes(target)
+                before_entries = set(workspace.iterdir())
+
+                with patch.object(
+                    block,
+                    "save_extra",
+                    side_effect=RuntimeError("update failed"),
+                ):
+                    with self.assertRaisesRegex(RuntimeError, "update failed"):
+                        cflearn.PipelineSerializer.update(
+                            pipeline,
+                            workspace,
+                            verbose=False,
+                        )
+
+                self.assertEqual(self._artifact_bytes(target), before_bytes)
+                self.assertEqual(set(workspace.iterdir()), before_entries)
+                self.assertIsInstance(
+                    cflearn.PipelineSerializer.load_inference(workspace),
+                    cflearn.InferencePipeline,
+                )
+
+                cflearn.PipelineSerializer.update(
+                    pipeline,
+                    workspace,
+                    verbose=False,
+                )
+                self.assertEqual(folder.is_dir(), not compress)
+                self.assertEqual(archive.is_file(), compress)
+                self.assertIsInstance(
+                    cflearn.PipelineSerializer.load_inference(workspace),
+                    cflearn.InferencePipeline,
+                )
+
+    def test_serializer_publish_failure_rolls_back(self):
+        pipeline = self._inference_pipeline()
+        workspace = self.tmp_path / "publish_failure"
+        cflearn.PipelineSerializer.save(pipeline, workspace, verbose=False)
+        target = workspace / cflearn.PipelineSerializer.pipeline_folder
+        before_bytes = self._artifact_bytes(target)
+        before_entries = set(workspace.iterdir())
+        original_replace = os.replace
+        failed = False
+
+        def fail_publish_once(src, dst):
+            nonlocal failed
+            if not failed and Path(dst) == target:
+                failed = True
+                raise OSError("publish failed")
+            return original_replace(src, dst)
+
+        with patch(
+            "core.learn.pipeline.api.os.replace",
+            side_effect=fail_publish_once,
+        ):
+            with self.assertRaisesRegex(OSError, "publish failed"):
+                cflearn.PipelineSerializer.update(
+                    pipeline,
+                    workspace,
+                    verbose=False,
+                )
+
+        self.assertTrue(failed)
+        self.assertEqual(self._artifact_bytes(target), before_bytes)
+        self.assertEqual(set(workspace.iterdir()), before_entries)
+        self.assertIsInstance(
+            cflearn.PipelineSerializer.load_inference(workspace),
+            cflearn.InferencePipeline,
+        )
+
+        def fail_target_replace(src, dst):
+            if Path(dst) == target:
+                raise OSError("target unavailable")
+            return original_replace(src, dst)
+
+        with patch(
+            "core.learn.pipeline.api.os.replace",
+            side_effect=fail_target_replace,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "previous artifact is kept"):
+                cflearn.PipelineSerializer.update(
+                    pipeline,
+                    workspace,
+                    verbose=False,
+                )
+
+        stages = list(workspace.glob(f".{target.name}.stage-*"))
+        self.assertEqual(len(stages), 1)
+        self.assertEqual(self._artifact_bytes(stages[0] / "backup"), before_bytes)
+        self.assertFalse(target.exists())
+
+    def test_serializer_rejects_file_target(self):
+        pipeline = self._inference_pipeline()
+        workspace = self.tmp_path / "file_target"
+        workspace.mkdir()
+        target = workspace / cflearn.PipelineSerializer.pipeline_folder
+        target.write_text("keep")
+
+        with self.assertRaises(ValueError):
+            cflearn.PipelineSerializer.save(pipeline, workspace, verbose=False)
+
+        self.assertEqual(target.read_text(), "keep")
+
+    def test_serializer_supports_nested_relative_pipeline_folder(self):
+        pipeline = self._inference_pipeline()
+        workspace = self.tmp_path / "missing" / "nested" / "workspace"
+        pipeline_folder = "artifacts/models/current"
+        target = workspace / pipeline_folder
+
+        cflearn.PipelineSerializer.save(
+            pipeline,
+            workspace,
+            pipeline_folder=pipeline_folder,
+            verbose=False,
+        )
+        self.assertIsInstance(
+            cflearn.PipelineSerializer._load_inference(target),
+            cflearn.InferencePipeline,
+        )
+        cflearn.PipelineSerializer.update(
+            pipeline,
+            workspace,
+            pipeline_folder=pipeline_folder,
+            verbose=False,
+        )
+        self.assertTrue(target.is_dir())
+        self.assertFalse(Path(f"{target}.zip").exists())
 
     def test_scripted_serializer_contract(self):
         pipeline = cflearn.InferencePipeline.build_with(

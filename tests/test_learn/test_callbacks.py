@@ -135,6 +135,11 @@ class TestCallbacks(unittest.TestCase):
             )
 
     def test_update_artifacts_individually(self) -> None:
+        callback = cflearn.UpdateArtifactsCallback()
+        with patch("core.learn.pipeline.PipelineSerializer.save") as mock_save:
+            callback.before_loop(cflearn.Trainer(cflearn.Config()))
+        mock_save.assert_not_called()
+
         with tempfile.TemporaryDirectory() as workspace:
             config = cflearn.Config(
                 workspace=workspace,
@@ -152,7 +157,7 @@ class TestCallbacks(unittest.TestCase):
                 loader_length=1,
             )
             trainer.state.step = 7
-            cflearn.UpdateArtifactsCallback().before_loop(trainer)
+            callback.before_loop(trainer)
             pipeline_folder = os.path.join(workspace, "pipeline_7")
             self.assertTrue(os.path.isdir(pipeline_folder))
             self.assertTrue(os.path.isfile(os.path.join(pipeline_folder, "id.txt")))

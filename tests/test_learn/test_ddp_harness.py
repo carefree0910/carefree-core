@@ -56,6 +56,23 @@ def test_cpu_ddp_workspace_failure_is_propagated(
         assert f"rank {rank}: workspace failure propagated" in result.rank_logs[rank]
 
 
+def test_cpu_ddp_realtime_initial_save_has_one_writer(
+    cpu_ddp: CPUDistributedHarness,
+    tmp_path: Path,
+) -> None:
+    writers = tmp_path / "realtime_writers"
+    result = cpu_ddp.run("realtime_initial_save", shared_target=writers)
+
+    assert {path.name for path in writers.iterdir()} == {
+        "success_rank_0",
+        "failure_rank_0",
+    }
+    for rank in (0, 1):
+        assert (
+            f"rank {rank}: realtime initial save coordinated" in result.rank_logs[rank]
+        )
+
+
 def test_cpu_ddp_only_global_main_writes_shared_target(
     cpu_ddp: CPUDistributedHarness,
     tmp_path: Path,

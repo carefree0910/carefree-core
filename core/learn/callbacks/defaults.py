@@ -20,12 +20,18 @@ from ..modules.common import EMA
 from ...toolkit import console
 from ...toolkit.misc import is_ddp
 from ...toolkit.misc import shallow_copy_dict
+from ...toolkit.misc import only_execute_on_local_rank0
 from ...toolkit.types import tensor_dict_type
 
 
 @TrainerCallback.register("update_artifacts")
 class UpdateArtifactsCallback(TrainerCallback):
     def before_loop(self, trainer: ITrainer) -> None:
+        if trainer.config.save_pipeline_in_realtime:
+            self._save_initial(trainer)
+
+    @only_execute_on_local_rank0
+    def _save_initial(self, trainer: ITrainer) -> None:
         self._save(trainer, update=False)
 
     def after_save_checkpoint(self, trainer: ITrainer) -> None:

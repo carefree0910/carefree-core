@@ -33,6 +33,10 @@ class _WorkspaceFailure(RuntimeError):
     pass
 
 
+class _RealtimeSaveFailure(RuntimeError):
+    pass
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -42,6 +46,7 @@ def _parse_args() -> argparse.Namespace:
             "rank_failure",
             "coordinated_decorators",
             "workspace_failure",
+            "realtime_initial_save",
             "global_main_write",
             "prepared_pipeline",
             "prepared_remainder",
@@ -210,6 +215,52 @@ def _run_workspace_failure(rank: int) -> None:
             raise AssertionError("the workspace failure was not propagated")
     _assert_process_group_usable(rank)
     print(f"rank {rank}: workspace failure propagated", flush=True)
+
+
+def _run_realtime_initial_save(rank: int, shared_target: Optional[Path]) -> None:
+    if shared_target is None:
+        raise ValueError("'--shared-target' is required")
+    shared_target.mkdir(parents=True, exist_ok=True)
+    config = cflearn.Config(
+        workspace=str(Path.cwd()),
+        save_pipeline_in_realtime=True,
+    )
+    trainer = cflearn.Trainer(config)
+    trainer.pipeline = None  # type: ignore
+    callback = cflearn.UpdateArtifactsCallback()
+
+    def record(stage: str) -> None:
+        (shared_target / f"{stage}_rank_{rank}").touch()
+
+    def save(*args: object, **kwargs: object) -> None:
+        record("success")
+
+    with patch("core.learn.pipeline.PipelineSerializer.save", side_effect=save):
+        callback.before_loop(trainer)
+
+    original = _RealtimeSaveFailure("initial pipeline save failed")
+
+    def fail_save(*args: object, **kwargs: object) -> None:
+        record("failure")
+        raise original
+
+    with patch(
+        "core.learn.pipeline.PipelineSerializer.save",
+        side_effect=fail_save,
+    ):
+        try:
+            callback.before_loop(trainer)
+        except Exception as error:
+            _assert_coordinated_failure(rank, 0, original, error)
+        else:
+            raise AssertionError("the initial-save failure was not propagated")
+
+    _assert_process_group_usable(rank)
+    assert {path.name for path in shared_target.iterdir()} == {
+        "success_rank_0",
+        "failure_rank_0",
+    }
+    print(f"rank {rank}: realtime initial save coordinated", flush=True)
 
 
 def _run_global_main_write(rank: int, shared_target: Optional[Path]) -> None:
@@ -575,6 +626,8 @@ def main() -> None:
             _run_coordinated_decorators(rank)
         elif args.scenario == "workspace_failure":
             _run_workspace_failure(rank)
+        elif args.scenario == "realtime_initial_save":
+            _run_realtime_initial_save(rank, args.shared_target)
         elif args.scenario == "global_main_write":
             _run_global_main_write(rank, args.shared_target)
         elif args.scenario == "prepared_pipeline":
