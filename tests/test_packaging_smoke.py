@@ -17,6 +17,7 @@ from typing import Mapping
 from typing import NamedTuple
 from typing import Optional
 
+from packaging.markers import default_environment
 from packaging.requirements import Requirement
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -239,16 +240,35 @@ def _probe_installed_package(
     check_metadata: bool,
 ) -> None:
     probe = """
-import importlib.metadata
+import sys
 import json
+import importlib.metadata
+
 from pathlib import Path
 
+for name in ("onnx", "onnxruntime", "onnxsim", "onnxscript"):
+    sys.modules[name] = None
+
 import core
-import core.learn
+import core.learn as cflearn
+import core.learn.schema as learn_schema
+import core.learn.toolkit as learn_toolkit
+import core.learn.models.common as learn_models
 
 module_dir = Path(core.__file__).resolve().parent
 expected_core = Path({expected_core}).resolve()
 assert module_dir == expected_core, (module_dir, expected_core)
+assert cflearn.IModel is learn_schema.IModel
+assert cflearn.IModel.__module__ == "core.learn.schema"
+assert cflearn.ONNX is learn_toolkit.ONNX
+assert cflearn.ONNX.__module__ == "core.learn.toolkit"
+assert cflearn.CommonModel is learn_models.CommonModel
+assert cflearn.CommonModel.__module__ == "core.learn.models.common"
+assert "linear" in cflearn.module_registry
+assert "loss.mse" in cflearn.module_registry
+assert "adam" in cflearn.optimizer_registry
+assert "cyclic" in cflearn.scheduler_registry
+assert "cosine_warmup" in cflearn.scheduler_op_registry
 if {check_metadata}:
     actual_version = importlib.metadata.version({dist_name})
     assert actual_version == {expected_version}, (actual_version, {expected_version})
@@ -277,6 +297,44 @@ def test_distribution_metadata_and_wheel_contents(
         str(Requirement(requirement))
         for requirement in wheel_metadata.get_all("Requires-Dist") or []
     )
+    assert "onnx" in (wheel_metadata.get_all("Provides-Extra") or [])
+
+    requirements = [
+        Requirement(requirement)
+        for requirement in wheel_metadata.get_all("Requires-Dist") or []
+    ]
+    onnx_names = {"onnx", "onnx-simplifier", "onnxruntime", "onnxscript"}
+    expected_onnx_names = {
+        "3.8": {"onnx", "onnx-simplifier", "onnxruntime"},
+        "3.14": onnx_names,
+    }
+    for python_version, expected_names in expected_onnx_names.items():
+        environment = default_environment()
+        environment["python_version"] = python_version
+        environment["python_full_version"] = f"{python_version}.0"
+        environment["extra"] = ""
+        base_names = {
+            requirement.name
+            for requirement in requirements
+            if requirement.marker is None or requirement.marker.evaluate(environment)
+        }
+        assert base_names.isdisjoint(onnx_names)
+
+        environment["extra"] = "onnx"
+        extra_names = {
+            requirement.name
+            for requirement in requirements
+            if requirement.marker is None or requirement.marker.evaluate(environment)
+        }
+        assert extra_names - base_names == expected_names
+
+        environment["extra"] = "dev"
+        dev_names = {
+            requirement.name
+            for requirement in requirements
+            if requirement.marker is None or requirement.marker.evaluate(environment)
+        }
+        assert (dev_names - base_names) & onnx_names == expected_names
 
     with zipfile.ZipFile(built_distributions.wheel) as archive:
         names = archive.namelist()

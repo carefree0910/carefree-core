@@ -32,6 +32,12 @@ python -m pip install torch==2.3.1 torchvision==0.18.1
 python -m pip install .
 ```
 
+ONNX export and inference dependencies are optional. Install them when needed:
+
+```bash
+python -m pip install ".[onnx]"
+```
+
 For development on the supported Linux x86_64 runtime, use the repository's
 fixed CI constraints. On other platforms, select PyTorch first and treat the
 remaining combinations as best effort:
@@ -44,8 +50,8 @@ python -m pip check
 ```
 
 The Python 3.14 CI lane instead installs current CPU PyTorch/Torchvision wheels,
-Accelerate 1.14.0 through the project dependency marker, and `.[test]` without
-the Python 3.8 constraints.
+Accelerate 1.14.0 through the project dependency marker, and `.[test,onnx]`
+without the Python 3.8 constraints.
 
 ### Copy-in installation
 

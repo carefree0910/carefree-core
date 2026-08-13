@@ -53,7 +53,7 @@ jobs:
               torch torchvision
             python -m pip install \
               -c requirements/constraints-ci.txt \
-              -e ".[test]"
+              -e ".[test,onnx]"
             python -m pip check
           } 2>&1 | tee .artifacts/test/install.log
       - name: Install Python 3.14 dependencies
@@ -65,7 +65,7 @@ jobs:
             python -m pip install \
               --index-url https://download.pytorch.org/whl/cpu \
               torch torchvision
-            python -m pip install -e ".[test]"
+            python -m pip install -e ".[test,onnx]"
             python -m pip check
           } 2>&1 | tee .artifacts/test/install.log
       - name: Test with pytest
