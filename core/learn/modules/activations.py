@@ -158,10 +158,10 @@ class GEGLU(Module):
         return net * F.gelu(gate)
 
 
-@register_activation("diff_relu")
-class DiffReLU(Module):
+@register_activation("ste_relu")
+class STEReLU(Module):
     def forward(self, net: Tensor) -> Tensor:
-        return net + (torch.relu(net) - net).detach()
+        return net + (F.relu(net) - net).detach()
 
 
 __all__ = [

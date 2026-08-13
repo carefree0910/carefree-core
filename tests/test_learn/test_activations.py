@@ -27,7 +27,7 @@ class TestActivations(unittest.TestCase):
         build_activation("h_swish")(x)
         build_activation("quick_gelu")(x)
         build_activation("geglu", in_dim=x.shape[-1], out_dim=11)(x)
-        build_activation("diff_relu")(x)
+        build_activation("ste_relu")(x)
         # utilized torch.nn.functional
         softmax = build_activation("softmax", dim=-1)
         self.assertEqual(str(softmax), "Lambda(softmax)")
