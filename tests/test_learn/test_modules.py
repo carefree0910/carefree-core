@@ -144,10 +144,13 @@ class TestModules(unittest.TestCase):
         for i, p in enumerate([p1, p1.data]):
             p = p.clone()
             ema = cflearn.EMA(decay, [("test", p)])
-            p.data = p2.data
-            ema()
-            p.data = p3.data
-            ema()
+            ema_buffer = ema.test
+            ema_data_ptr = ema_buffer.data_ptr()
+            for updated in [p2, p3]:
+                p.data = updated.data
+                ema()
+                self.assertIs(ema.test, ema_buffer)
+                self.assertEqual(ema.test.data_ptr(), ema_data_ptr)
             ema.eval()
             ema.train()
             ema.eval()

@@ -147,6 +147,7 @@ class EMA(Module):
         else:
             self.register_buffer("num_updates", torch.tensor(0, dtype=torch.int))
 
+    @torch.no_grad()
     def forward(self) -> None:
         if not self.training:
             raise RuntimeError("should not update `EMA` at inference stage")
@@ -159,9 +160,8 @@ class EMA(Module):
         for name, param in self.tgt_params.items():
             if not param.requires_grad:
                 continue
-            ema_attr = getattr(self, name)
-            ema = torch.lerp(param.data, ema_attr, decay)
-            setattr(self, name, ema)
+            ema = getattr(self, name)
+            torch.lerp(param, ema, decay, out=ema)
 
     def train(self, mode: bool = True) -> "EMA":
         super().train(mode)
