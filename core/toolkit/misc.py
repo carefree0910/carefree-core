@@ -265,17 +265,7 @@ def parse_config(config: TConfig) -> Dict[str, Any]:
 
 
 def check_requires(fn: Any, name: str, strict: bool = True) -> bool:
-    if isinstance(fn, type):
-        fn = fn.__init__  # type: ignore
-    signature = inspect.signature(fn)
-    for k, param in signature.parameters.items():
-        if not strict and param.kind is inspect.Parameter.VAR_KEYWORD:
-            return True
-        if k == name:
-            if param.kind is inspect.Parameter.VAR_POSITIONAL:
-                return False
-            return True
-    return False
+    return name in filter_kw(fn, {name: None}, strict=strict)
 
 
 def get_requirements(fn: Any) -> List[str]:
@@ -304,9 +294,20 @@ def filter_kw(
     *,
     strict: bool = False,
 ) -> Dict[str, Any]:
+    if not kwargs:
+        return {}
+    if isinstance(fn, type):
+        fn = fn.__init__  # type: ignore
+    params = inspect.signature(fn).parameters
+    accepts_all = not strict and any(
+        param.kind is inspect.Parameter.VAR_KEYWORD for param in params.values()
+    )
     kw = {}
     for k, v in kwargs.items():
-        if check_requires(fn, k, strict):
+        param = params.get(k)
+        if accepts_all or (
+            param is not None and param.kind is not inspect.Parameter.VAR_POSITIONAL
+        ):
             kw[k] = v
     return kw
 

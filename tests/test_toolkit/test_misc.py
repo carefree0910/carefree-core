@@ -204,7 +204,33 @@ class TestMisc(unittest.TestCase):
         def fn(a, b):
             pass
 
-        self.assertDictEqual(filter_kw(fn, dict(a=1, b=2, c=3)), dict(a=1, b=2))
+        def fn_with_kwargs(a, *args, **kwargs):
+            return kwargs
+
+        def fn_with_args(*args):
+            pass
+
+        kw = dict(a=1, b=2, c=3)
+        self.assertDictEqual(filter_kw(fn, {}), {})
+        self.assertDictEqual(filter_kw(fn, kw), dict(a=1, b=2))
+        variadic_kw = dict(a=1, args=2, other=3)
+        filtered = filter_kw(fn_with_kwargs, variadic_kw)
+        self.assertDictEqual(filtered, variadic_kw)
+        self.assertDictEqual(fn_with_kwargs(**filtered), dict(args=2, other=3))
+        self.assertDictEqual(
+            filter_kw(fn_with_kwargs, variadic_kw, strict=True),
+            dict(a=1),
+        )
+        self.assertDictEqual(filter_kw(fn_with_args, variadic_kw), {})
+
+        many_kw = {f"key_{i}": i for i in range(100)}
+        with mock.patch.object(
+            misc.inspect,
+            "signature",
+            wraps=misc.inspect.signature,
+        ) as signature:
+            self.assertDictEqual(filter_kw(fn_with_kwargs, many_kw), many_kw)
+        signature.assert_called_once_with(fn_with_kwargs)
 
     def test_safe_execute(self):
         def fn(a, b):
