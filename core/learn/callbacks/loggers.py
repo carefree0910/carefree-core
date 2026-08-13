@@ -196,6 +196,8 @@ class AutoWrapLine:
         num_wrapped_rows = 2
         while True:
             num_wrapped_cols = math.ceil(num_total_cols / num_wrapped_rows)
+            if num_wrapped_cols == 1:
+                break
             remainder = num_total_cols % num_wrapped_cols
             padding = num_wrapped_cols - remainder
             padded_cell_widths = np.concatenate([cell_widths, np.zeros(padding)])

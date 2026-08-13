@@ -399,6 +399,24 @@ class TestAutoWrapLine(unittest.TestCase):
             self.assertEqual(table._cells[i].columns[0]._cells[0], f"test_row{i*2-1}")
             self.assertEqual(table._cells[i].columns[1]._cells[0], f"test_row{i*2}")
 
+    @patch("shutil.get_terminal_size")
+    def test_get_table_with_narrow_terminal(self, mock_get_terminal_size):
+        mock_get_terminal_size.return_value = os.terminal_size((1, 24))
+        self.auto_wrap_line.add_column("test_column")
+        self.auto_wrap_line.add_row("test_row")
+
+        with patch(
+            "core.learn.callbacks.loggers.math.ceil",
+            side_effect=[1, AssertionError("wrapping did not terminate")],
+        ) as ceil:
+            table = self.auto_wrap_line.get_table()
+
+        self.assertIsInstance(table, Table)
+        ceil.assert_called_once_with(1.0)
+        wrapped_tables = table.columns[0]._cells
+        self.assertEqual(wrapped_tables[1].columns[0].header, "test_column")
+        self.assertEqual(wrapped_tables[1].columns[0]._cells[0], "test_row")
+
 
 if __name__ == "__main__":
     unittest.main()

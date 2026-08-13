@@ -591,6 +591,7 @@ class BuildOptimizersBlock(InjectDefaultsMixin, Block):
                 parameters = None
         param_group: Dict[str, List[Any]]
         if parameters is not None:
+            parameters = list(parameters)
             d = {p: n for n, p in model.named_parameters()}
             param_group = {"names": [d[p] for p in parameters], "params": parameters}
         else:

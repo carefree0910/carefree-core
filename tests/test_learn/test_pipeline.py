@@ -1553,12 +1553,15 @@ class TestBlocks(unittest.TestCase):
         class _(nn.Linear):
             @property
             def bar_params(self):
-                return [self.weight, self.bias]
+                yield self.weight
+                yield self.bias
 
         config.module_name = "$test_linear"
         config.module_config = dict(in_features=in_dim, out_features=out_dim)
         config.optimizer_settings = {"bar_params": None}
-        cflearn.TrainingPipeline.init(config).fit(data)
+        p = cflearn.TrainingPipeline.init(config).fit(data)
+        optimizer = p.training.build_optimizers.optimizers["bar_params"]
+        self.assertEqual(len(optimizer.param_groups[0]["params"]), 2)
 
         config.scheduler_name = "warmup"
         config.scheduler_config = {"scheduler_afterwards_base": "warmup"}
