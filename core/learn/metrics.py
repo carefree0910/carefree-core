@@ -29,10 +29,10 @@ class Accuracy(IMetric):
         tensor_outputs: tensor_dict_type,
         loader: Optional[DataLoader] = None,
     ) -> float:
-        logits = tensor_outputs[PREDICTIONS_KEY].numpy()
-        labels = tensor_batch[LABEL_KEY].numpy()
+        logits = tensor_outputs[PREDICTIONS_KEY]
+        labels = tensor_batch[LABEL_KEY]
         predictions = to_labels(logits, self.threshold)
-        return (predictions == labels).mean().item()
+        return (predictions == labels).double().mean().item()
 
 
 @IMetric.register("mae")

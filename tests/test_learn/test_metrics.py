@@ -3,9 +3,55 @@ import unittest
 
 import core.learn as cflearn
 import core.learn.schema as learn_schema
+from core.toolkit.array import to_labels
 
 
 class TestMetrics(unittest.TestCase):
+    def test_accuracy_tensor_boundary(self) -> None:
+        cases = [
+            (
+                "binary",
+                torch.tensor([[-2.0], [0.25], [1.0]], requires_grad=True),
+                torch.tensor([[0], [0], [0]]),
+            ),
+            (
+                "multiclass",
+                torch.tensor(
+                    [
+                        [3.0, 1.0, 0.0],
+                        [0.0, 2.0, 1.0],
+                        [0.0, 1.0, 4.0],
+                        [1.0, 3.0, 2.0],
+                    ],
+                    requires_grad=True,
+                ),
+                torch.tensor([[0], [2], [2], [0]]),
+            ),
+        ]
+        if torch.cuda.is_available():
+            _, logits, labels = cases[0]
+            cases.append(
+                (
+                    "binary_cuda",
+                    logits.detach().cuda().requires_grad_(),
+                    labels.cuda(),
+                )
+            )
+        metric = cflearn.Accuracy()
+        for name, logits, labels in cases:
+            numpy_predictions = to_labels(
+                logits.detach().cpu().numpy(),
+                metric.threshold,
+            )
+            expected = (numpy_predictions == labels.cpu().numpy()).mean().item()
+            with self.subTest(name=name):
+                actual = metric.forward(
+                    {cflearn.LABEL_KEY: labels},
+                    {cflearn.PREDICTIONS_KEY: logits},
+                )
+                self.assertIsInstance(actual, float)
+                self.assertEqual(actual, expected)
+
     def test_public_metric_contracts(self) -> None:
         self.assertIs(cflearn.IMetric, learn_schema.IMetric)
         self.assertIs(cflearn.IStreamMetric, learn_schema.IStreamMetric)
