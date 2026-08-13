@@ -1188,18 +1188,19 @@ def summary(
     raw_summary_dict: Dict[str, Any] = OrderedDict()
     hooks: List[Any] = []
 
-    # register hook
-    m.apply(register_hook)
+    try:
+        # register hook
+        m.apply(register_hook)
 
-    # make a forward pass
-    with eval_context(m, use_grad=None):
-        (summary_forward or m)(sample_batch)
-        for param in m.parameters():
-            param.grad = None
-
-    # remove these hooks
-    for h in hooks:
-        h.remove()
+        # make a forward pass
+        with eval_context(m, use_grad=None):
+            (summary_forward or m)(sample_batch)
+            for param in m.parameters():
+                param.grad = None
+    finally:
+        # remove these hooks
+        for h in hooks:
+            h.remove()
 
     # get hierarchy
     hierarchy: Dict[str, Any] = OrderedDict()

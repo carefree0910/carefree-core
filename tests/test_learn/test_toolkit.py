@@ -139,6 +139,36 @@ class TestToolkit(unittest.TestCase):
         self.assertIsInstance(show_or_return(True), np.ndarray)
         plt.close()
 
+    def test_summary_restores_hooks_after_forward_error(self) -> None:
+        model = nn.Sequential(nn.Linear(2, 1))
+        caller_handle = model[0].register_forward_hook(lambda *_: None)
+        expected_hooks = {
+            module: tuple(module._forward_hooks.items()) for module in model.modules()
+        }
+        forward_error = RuntimeError("incompatible input shape")
+
+        def fail_forward(_):
+            raise forward_error
+
+        try:
+            with self.assertRaises(RuntimeError) as context:
+                summary(model, {}, return_only=True, summary_forward=fail_forward)
+            self.assertIs(context.exception, forward_error)
+            for module, expected in expected_hooks.items():
+                self.assertTupleEqual(tuple(module._forward_hooks.items()), expected)
+
+            result = summary(
+                model,
+                {"input": torch.randn(1, 2)},
+                return_only=True,
+                summary_forward=lambda batch: model(batch["input"]),
+            )
+            self.assertIsInstance(result, str)
+            for module, expected in expected_hooks.items():
+                self.assertTupleEqual(tuple(module._forward_hooks.items()), expected)
+        finally:
+            caller_handle.remove()
+
     def test_get_tensors_from_safetensors(self) -> None:
         path = self.tmp_path / "example.safetensors"
         expected_tensors = {
