@@ -4,9 +4,13 @@ import unittest
 import numpy as np
 
 from core.toolkit.geometry import *
+from core.toolkit.geometry import is_close
 
 
 class TestGeometry(unittest.TestCase):
+    def test_is_close(self):
+        self.assertTrue(is_close(-1.0, -1.0000001))
+
     def test_point(self):
         origin = Point.origin()
         id_matrix = Matrix2D.identical()
@@ -20,6 +24,9 @@ class TestGeometry(unittest.TestCase):
         self.assertAlmostEqual(Point(1, 1).theta, 0.25 * math.pi)
         self.assertTrue(Point(0.5, 0.5).inside(id_matrix))
         self.assertFalse(Point(1.5, 1.5).inside(id_matrix))
+        rotated = id_matrix.rotate(math.pi / 3)
+        for corner in rotated.corner_points:
+            self.assertTrue(corner.inside(rotated))
 
     def test_line(self):
         l0 = Line(Point(0, 0), Point(1, 0))
@@ -31,6 +38,10 @@ class TestGeometry(unittest.TestCase):
         self.assertEqual(l1.intersect(l3, extendable=True), Point(1, 1))
         self.assertIsNone(l1.intersect(l3))
         self.assertAlmostEqual(l0.distance_to(l1), 1)
+
+        diagonal = Line(Point(0, 0), Point(1000, 1000))
+        nearly_parallel = Line(Point(0, 1), Point(1000, 1001.0000000001))
+        self.assertIsNone(diagonal.intersect(nearly_parallel, extendable=True))
 
     def test_matrix2d(self):
         id_matrix = Matrix2D.identical()
@@ -121,24 +132,28 @@ class TestGeometry(unittest.TestCase):
         self.assertFalse(HitTest.line_line(l0, l1))
         self.assertTrue(HitTest.line_line(l1, l2))
         self.assertFalse(HitTest.line_line(l1, l3))
+
         id_matrix = Matrix2D.identical()
         self.assertTrue(HitTest.line_box(l0, id_matrix))
         self.assertTrue(HitTest.line_box(l1, id_matrix))
         self.assertTrue(HitTest.line_box(l2, id_matrix))
-        self.assertFalse(HitTest.line_box(l3, id_matrix))
+        self.assertTrue(HitTest.line_box(l3, id_matrix))
+        self.assertTrue(
+            HitTest.line_box(Line(Point(-1, 0.5), Point(2, 0.5)), id_matrix)
+        )
+        self.assertFalse(HitTest.line_box(Line(Point(2, 2), Point(3, 3)), id_matrix))
+
+        displaced = Matrix2D(a=1, b=0, c=0, d=1, e=1.5, f=1.5)
+        overlapping = Matrix2D(a=1, b=0, c=0, d=1, e=0.5, f=-0.5)
         self.assertTrue(HitTest.box_box(id_matrix, id_matrix))
-        self.assertTrue(
-            HitTest.box_box(id_matrix, Matrix2D(a=1, b=0, c=0, d=1, e=0.5, f=0.5))
-        )
-        self.assertTrue(
-            HitTest.box_box(id_matrix, Matrix2D(a=3, b=0, c=0, d=3, e=-1, f=-1))
-        )
-        self.assertTrue(
-            HitTest.box_box(Matrix2D(a=3, b=0, c=0, d=3, e=-1, f=-1), id_matrix)
-        )
-        self.assertFalse(
-            HitTest.box_box(id_matrix, Matrix2D(a=1, b=0, c=0, d=1, e=1.5, f=1.5))
-        )
+        self.assertTrue(HitTest.box_box(id_matrix, overlapping))
+        self.assertFalse(HitTest.box_box(id_matrix, displaced))
+
+    def test_box_box_containment_is_symmetric(self):
+        inner = Matrix2D.identical()
+        outer = Matrix2D(a=4, b=0, c=0, d=4, e=-1.5, f=-1.5)
+        self.assertTrue(HitTest.box_box(inner, outer))
+        self.assertTrue(HitTest.box_box(outer, inner))
 
 
 if __name__ == "__main__":

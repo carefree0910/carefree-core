@@ -55,12 +55,7 @@ mid_pivots: List[PivotType] = edge_pivots + [PivotType.CENTER]
 
 
 def is_close(a: float, b: float, *, atol: float = 1.0e-6, rtol: float = 1.0e-4) -> bool:
-    diff = abs(a - b)
-    a = max(a, 1.0e-8)
-    b = max(b, 1.0e-8)
-    if diff >= atol or abs(diff / a) >= rtol or abs(diff / b) >= rtol:
-        return False
-    return True
+    return math.isclose(a, b, rel_tol=rtol, abs_tol=atol)
 
 
 @dataclass
@@ -99,7 +94,8 @@ class Point:
 
     def inside(self, box: "Matrix2D") -> bool:
         x, y = (box.inverse @ self).tuple
-        return 0 <= x <= 1 and 0 <= y <= 1
+        eps = 1.0e-9
+        return -eps <= x <= 1.0 + eps and -eps <= y <= 1.0 + eps
 
     @classmethod
     def origin(cls) -> "Point":
@@ -603,6 +599,8 @@ class HitTest:
 
     @staticmethod
     def line_box(a: Line, b: Matrix2D) -> bool:
+        if a.start.inside(b) or a.end.inside(b):
+            return True
         edges = b.edges
         for edge in edges:
             if HitTest.line_line(a, edge):
@@ -611,15 +609,11 @@ class HitTest:
 
     @staticmethod
     def box_box(a: Matrix2D, b: Matrix2D) -> bool:
-        b_edges = b.edges
-        for b_edge in b_edges:
-            if HitTest.line_box(b_edge, a):
-                return True
-        if a.position.inside(b):
-            return True
-        if b.position.inside(a):
-            return True
-        return False
+        return (
+            a.position.inside(b)
+            or b.position.inside(a)
+            or any(HitTest.line_box(edge, a) for edge in b.edges)
+        )
 
 
 __all__ = [
