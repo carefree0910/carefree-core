@@ -216,6 +216,29 @@ class TestONNX(unittest.TestCase):
                 verbose=False,
             )
 
+    def test_onnx_export_requires_optional_dependency(self) -> None:
+        model = self._make_model(3, 2)
+        onnx_file = self.tmp_path / "missing_onnx.onnx"
+
+        with patch.dict("sys.modules", {"onnx": None}), patch.object(
+            model,
+            "to",
+            wraps=model.to,
+        ) as move_model:
+            with self.assertRaisesRegex(
+                ImportError,
+                r"pip install 'carefree-core\[onnx\]'",
+            ):
+                model.to_onnx(
+                    str(onnx_file),
+                    {cflearn.INPUT_KEY: torch.randn(2, 3)},
+                    simplify=False,
+                    verbose=False,
+                )
+
+        move_model.assert_not_called()
+        self.assertFalse(onnx_file.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

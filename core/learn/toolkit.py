@@ -1875,7 +1875,10 @@ class ONNX:
 
     def __init__(self, onnx_path: str):
         if InferenceSession is None:  # pragma: no cover
-            msg = "`ONNX` is not available when `onnxruntime` is not installed"
+            msg = (
+                "`onnxruntime` is required to use `ONNX`; install it with "
+                "`pip install 'carefree-core[onnx]'`"
+            )
             raise ValueError(msg)
         self.ort_session = InferenceSession(onnx_path)
         self.output_names = [node.name for node in self.ort_session.get_outputs()]

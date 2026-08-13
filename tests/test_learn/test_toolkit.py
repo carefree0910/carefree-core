@@ -33,6 +33,11 @@ class TestToolkit(unittest.TestCase):
         with patch.dict(sys.modules, {"onnxruntime": None}):
             spec.loader.exec_module(module)
         self.assertIsNone(module.InferenceSession)
+        with self.assertRaisesRegex(
+            ValueError,
+            r"pip install 'carefree-core\[onnx\]'",
+        ):
+            module.ONNX("model.onnx")
 
     def test_env_workspace(self) -> None:
         env_workspace = "env_workspace"

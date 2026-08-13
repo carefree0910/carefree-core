@@ -1,6 +1,5 @@
 import json
 import math
-import onnx
 import time
 import torch
 import traceback
@@ -34,6 +33,7 @@ from typing import Iterator
 from typing import Optional
 from typing import Protocol
 from typing import NamedTuple
+from typing import TYPE_CHECKING
 from typing import ContextManager
 from datetime import timedelta
 from types import MappingProxyType
@@ -94,6 +94,9 @@ from ..toolkit.types import np_dict_type
 from ..toolkit.types import tensor_dict_type
 from ..toolkit.pipeline import IBlock
 from ..toolkit.pipeline import IPipeline
+
+if TYPE_CHECKING:
+    import onnx
 
 # types
 
@@ -1948,12 +1951,24 @@ def no_sync_context(update: bool, trainer: "ITrainer") -> ContextManager:
     return nullcontext() if update else trainer.accelerator.no_sync(trainer.model.m)
 
 
-def get_inputs(model: onnx.ModelProto) -> List[onnx.ValueInfoProto]:
+def _require_onnx() -> Any:
+    try:
+        import onnx
+    except ImportError as err:
+        msg = (
+            "`onnx` is required to export ONNX models; install it with "
+            "`pip install 'carefree-core[onnx]'`"
+        )
+        raise ImportError(msg) from err
+    return onnx
+
+
+def get_inputs(model: "onnx.ModelProto") -> List["onnx.ValueInfoProto"]:
     initializer_names = [x.name for x in model.graph.initializer]
     return [inp for inp in model.graph.input if inp.name not in initializer_names]
 
 
-def get_input_names(model: onnx.ModelProto) -> List[str]:
+def get_input_names(model: "onnx.ModelProto") -> List[str]:
     input_names = [inp.name for inp in get_inputs(model)]
     return input_names
 
@@ -2456,6 +2471,7 @@ class IModel(WithRegister["IModel"], metaclass=ABCMeta):
         **kwargs: Any,
     ) -> "IModel":
         # prepare
+        onnx = _require_onnx()
         device = self.device
         model = self.to("cpu")
         if num_samples is not None:

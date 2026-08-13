@@ -171,7 +171,19 @@ def test_prefix_modules_resolve_registry_aliases() -> None:
 def test_minimal_import_registers_learn_builtins() -> None:
     code = "\n".join(
         [
+            "import sys",
+            "for name in ('onnx', 'onnxruntime', 'onnxsim', 'onnxscript'):",
+            "    sys.modules[name] = None",
             "import core.learn as cflearn",
+            "import core.learn.schema as learn_schema",
+            "import core.learn.toolkit as learn_toolkit",
+            "import core.learn.models.common as learn_models",
+            "assert cflearn.IModel is learn_schema.IModel",
+            "assert cflearn.IModel.__module__ == 'core.learn.schema'",
+            "assert cflearn.ONNX is learn_toolkit.ONNX",
+            "assert cflearn.ONNX.__module__ == 'core.learn.toolkit'",
+            "assert cflearn.CommonModel is learn_models.CommonModel",
+            "assert cflearn.CommonModel.__module__ == 'core.learn.models.common'",
             "assert 'linear' in cflearn.module_registry",
             "assert 'loss.mse' in cflearn.module_registry",
             "assert 'adam' in cflearn.optimizer_registry",
