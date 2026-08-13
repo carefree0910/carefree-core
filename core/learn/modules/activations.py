@@ -81,7 +81,8 @@ class InverseSoftplus(Module):
         self.eps = eps
 
     def forward(self, net: Tensor) -> Tensor:
-        return torch.log(net.clamp_min(self.eps).exp() - 1.0)
+        net = net.clamp_min(self.eps)
+        return net + torch.log(-torch.expm1(-net))
 
 
 @register_activation("sign")

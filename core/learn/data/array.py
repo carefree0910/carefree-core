@@ -87,6 +87,8 @@ class AsyncArrayDataset(IAsyncDataset):
 
 class ArrayDictDataset(IDataset):
     def __init__(self, arrays: Dict[str, arr_type]):
+        if not arrays:
+            raise ValueError("`arrays` cannot be empty")
         self.arrays = arrays
         lengths = [len(a) for a in self.arrays.values()]
         if len(set(lengths)) != 1:

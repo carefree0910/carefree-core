@@ -6,6 +6,20 @@ from core.learn.modules.activations import *
 
 
 class TestActivations(unittest.TestCase):
+    def test_inverse_softplus(self) -> None:
+        activation = build_activation("isoftplus")
+        x = torch.tensor([0.1, 1.0, 5.0])
+        inverse = activation(x)
+        torch.testing.assert_close(inverse, torch.log(x.exp() - 1.0))
+        torch.testing.assert_close(F.softplus(inverse), x)
+
+        for dtype, value in [(torch.float16, 20.0), (torch.float32, 100.0)]:
+            x = torch.tensor([value], dtype=dtype)
+            inverse = activation(x)
+            self.assertEqual(inverse.dtype, dtype)
+            self.assertTrue(torch.isfinite(inverse).all())
+            torch.testing.assert_close(F.softplus(inverse), x)
+
     def test_activations(self) -> None:
         x = torch.randn(3, 5, 7)
         torch.testing.assert_close(x, build_activation(None)(x))

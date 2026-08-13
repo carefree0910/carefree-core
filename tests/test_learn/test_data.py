@@ -69,6 +69,8 @@ class TestData(unittest.TestCase):
         x = np.random.randn(num_samples, input_dim)
         y = np.random.randn(num_samples, output_dim)
         d = dict(a=x, b=y)
+        with self.assertRaisesRegex(ValueError, "cannot be empty"):
+            cflearn.ArrayDictDataset({})
         data = cflearn.ArrayDictData.init().fit(d)
         data.config.batch_size = batch_size
         loader = data.build_loader(d, drop_last=True)
