@@ -16,7 +16,11 @@ There are already some modules in the `toolkit` package and they have covered mo
 - `geometry.py`: implementations related to geometry stuffs (matrices, vectors, etc.).
 - `types.py`: implementations related to type aliases.
 - `web.py`: implementations related to web stuffs (get, post, downloads, etc.).
-- `misc.py`: miscellaneous implementations. If you don't know where to put your functions / classes, you can put them here.
+- `misc.py`: existing general-purpose helpers.
+
+Add new code to the module whose responsibility it matches. If no existing
+module owns it, prefer a small, focused module instead of treating `misc.py` as
+a catch-all.
 
 ### `learn` package
 
@@ -59,7 +63,7 @@ If you want to:
 - **monitor the training process** (e.g., early stop, extend training, etc.), you may inherit the **`TrainerMonitor`** class.
   - I've provided docstrings for it and also implement some examples at `core/learn/monitors.py`.
 - **hook into the training loop**, you may inherit the **`TrainerCallback`** class.
-  - I've provided docstrings for it and also implement an example at `core/learn/callbacks/common.py`.
+  - Its docstrings describe the interface, and examples are implemented in `core/learn/callbacks/defaults.py`, `core/learn/callbacks/detectors.py`, and `core/learn/callbacks/loggers.py`.
 
 ### `flow` package
 
@@ -104,16 +108,10 @@ PyTorch/Torchvision wheels and Accelerate 1.14.0; its exact environment is still
 visible in the GitHub Actions installation log. Tests, static checks, package
 builds, and benchmark smoke checks all run on both Python 3.8 and Python 3.14.
 
-Coverage is collected in branch mode. Two repeat measurements covered all
-statements and produced the following branch-aware totals:
-
-- Python 3.8: 10,958 of 11,129 statement and branch opportunities (98.46%).
-- Python 3.14: 10,267 of 10,436 statement and branch opportunities (98.38%).
-
-The combined threshold is therefore 98%, rounded down from the lower endpoint,
-and may only increase. `scripts/check_coverage.py` separately keeps line
-coverage at 100%, so enabling branch coverage does not loosen the existing line
-coverage gate.
+Coverage is collected in branch mode. `pyproject.toml` enforces at least 98%
+combined statement and branch coverage, while `scripts/check_coverage.py`
+separately requires 100% line coverage. These enforced thresholds may only
+increase.
 
 To verify all supported packaging entry points on the supported Linux runtime:
 

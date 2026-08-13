@@ -126,6 +126,12 @@ class TestToolkit(unittest.TestCase):
         mock_show.assert_called_once_with(block=False)
         self.assertNotIn(current.number, plt.get_fignums())
 
+        current = plt.figure()
+        current_export_path = self.tmp_path / "current_figure.png"
+        show_or_save(str(current_export_path), dpi=72)
+        self.assertTrue(current_export_path.is_file())
+        self.assertNotIn(current.number, plt.get_fignums())
+
         fig = plt.figure()
         unrelated = plt.figure()
         export_path = self.tmp_path / "figure.png"

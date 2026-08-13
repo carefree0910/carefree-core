@@ -81,7 +81,7 @@ This package is meant to hold the common classes / functions that are used acros
 > - `core/flow`
 > - Originates from [`carefree-workflow`](https://github.com/carefree0910/carefree-workflow).
 
-This package is a lightweight package for building arbitray workflows, here are the highlights:
+This package provides lightweight building blocks for arbitrary workflows. Highlights include:
 
 - **Async**: `async` is by design.
 - **Parallel**: nodes can be executed in parallel.
@@ -95,7 +95,7 @@ This package is a lightweight package for building arbitray workflows, here are 
 - **Extensible**: you can easily extend the package with your own nodes.
 - **Serializable**: the workflow can be serialized into / deserialized from a single JSON file.
 - **Human Readable**: the workflow JSON file is human readable and easy to understand.
-- **Lightweight**: the package is lightweight (core implementation is ~500 lines of code in a single file `core/flow/core.py`) and easy to use.
+- **Lightweight**: workflow construction and execution are implemented within this package.
 
 ### `learn` package
 
