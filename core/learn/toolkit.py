@@ -1325,13 +1325,13 @@ class toggle_optimizer:
         self.m = m
         self.optimizer = optimizer
         self.enabled = enabled
-        self.requires_grad: Dict[str, bool] = {}
+        self._states: Tuple[Tuple[nn.Parameter, bool], ...] = ()
 
     def __enter__(self) -> None:
         if not self.enabled:
             return
-        self.requires_grad = {k: p.requires_grad for k, p in self.m.named_parameters()}
-        for p in self.m.parameters():
+        self._states = tuple((p, p.requires_grad) for p in self.m.parameters())
+        for p, _ in self._states:
             p.requires_grad = False
         for group in self.optimizer.param_groups:
             for p in group["params"]:
@@ -1340,10 +1340,8 @@ class toggle_optimizer:
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         if not self.enabled:
             return
-        for k, p in self.m.named_parameters():
-            requires_grad = self.requires_grad.get(k)
-            if requires_grad is not None:
-                p.requires_grad = requires_grad
+        for p, requires_grad in self._states:
+            p.requires_grad = requires_grad
 
 
 class toggle_module:

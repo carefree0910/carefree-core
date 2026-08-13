@@ -412,8 +412,49 @@ class TestToolkit(unittest.TestCase):
         self.assertFalse(m.bias.requires_grad)
 
     def test_toggle_optimizer(self) -> None:
-        with toggle_optimizer(None, None, enabled=False):
+        module = nn.Sequential(nn.Linear(2, 2), nn.Linear(2, 1))
+        params = tuple(module.parameters())
+        original = (False, True, True, False)
+        for param, requires_grad in zip(params, original):
+            param.requires_grad_(requires_grad)
+        get_requires_grad = lambda: tuple(p.requires_grad for p in params)
+
+        optimizer = torch.optim.SGD(params, lr=0.1)
+        context = toggle_optimizer(module, optimizer)
+        inner_optimizer = torch.optim.SGD(params[1:3], lr=0.1)
+        with patch.object(
+            module,
+            "parameters",
+            wraps=module.parameters,
+        ) as parameters, patch.object(
+            module,
+            "named_parameters",
+            wraps=module.named_parameters,
+        ) as named_parameters:
+            with context:
+                self.assertEqual(get_requires_grad(), (True, True, True, True))
+        self.assertEqual(get_requires_grad(), original)
+        parameters.assert_called_once_with()
+        named_parameters.assert_called_once_with(recurse=True)
+
+        optimizer.param_groups[0]["params"] = [params[0], params[3]]
+        with self.assertRaisesRegex(RuntimeError, "body failed"):
+            with context:
+                self.assertEqual(get_requires_grad(), (True, False, False, True))
+                with toggle_optimizer(module, inner_optimizer):
+                    self.assertEqual(
+                        get_requires_grad(),
+                        (False, True, True, False),
+                    )
+                self.assertEqual(get_requires_grad(), (True, False, False, True))
+                raise RuntimeError("body failed")
+        self.assertEqual(get_requires_grad(), original)
+
+    def test_toggle_optimizer_disabled(self) -> None:
+        module = Mock()
+        with toggle_optimizer(module, object(), enabled=False):
             pass
+        self.assertEqual(module.mock_calls, [])
 
     def test_mode_context(self) -> None:
         def get_modes(module):
