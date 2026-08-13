@@ -847,7 +847,7 @@ class PipelineSerializer:
     @classmethod
     def _get_merged_states(
         cls,
-        p: Pipeline,
+        p: Pipeline[Any],
         device: torch.device,
         ckpt_paths: List[TPath],
         states_callback: states_callback_type = None,
@@ -947,7 +947,7 @@ class PipelineSerializer:
             p = cls._build_ensemble_pipeline(src_folder, pack_type, num_repeat)
         # merge state dict
         with ExitStack() as stack:
-            ckpt_paths = []
+            ckpt_paths: List[TPath] = []
             for folder in src_folders:
                 i_folder = stack.enter_context(get_folder(folder))
                 i_ckpt_dir = i_folder / SerializeModelBlock.__identifier__
