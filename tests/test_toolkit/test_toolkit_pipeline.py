@@ -7,6 +7,10 @@ from typing import Any
 from typing import Type
 from pathlib import Path
 from zipfile import ZipFile
+from zipfile import BadZipFile
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+from core.toolkit.misc import compress
 from core.toolkit.misc import ISerializableDataClass
 from core.toolkit.pipeline import get_folder
 from core.toolkit.pipeline import check_requirement
@@ -261,6 +265,7 @@ class TestBuildContracts(unittest.TestCase):
 class TestGetFolder(unittest.TestCase):
     @pytest.fixture(autouse=True)
     def _prepare_folder(self, tmp_path: Path) -> None:
+        self.tmp_path = tmp_path
         self.test_dir = tmp_path / "source"
         self.test_dir.mkdir()
         self.test_file = self.test_dir / "test.txt"
@@ -270,16 +275,35 @@ class TestGetFolder(unittest.TestCase):
         with ZipFile(self.zip_file, "w") as zipf:
             zipf.write(self.test_file, "test.txt")
 
+    def _tracked_temporary_directories(self):
+        directories = []
+
+        def make_temporary_directory(*args, **kwargs):
+            kwargs["dir"] = self.tmp_path
+            temporary_directory = TemporaryDirectory(*args, **kwargs)
+            directories.append(Path(temporary_directory.name))
+            return temporary_directory
+
+        return directories, make_temporary_directory
+
     def test_existing_folder(self):
         with get_folder(self.test_dir) as folder:
             self.assertTrue(folder.is_dir())
             self.assertEqual(folder, self.test_dir)
+        self.assertTrue(self.test_dir.is_dir())
+        self.assertEqual(self.test_file.read_text(), "Hello, World!")
 
     def test_force_new_folder(self):
-        with get_folder(self.test_dir, force_new=True) as folder:
-            self.assertTrue(folder.is_dir())
-            self.assertNotEqual(folder, self.test_dir)
-            self.assertTrue((folder / "test.txt").is_file())
+        with self.assertRaisesRegex(RuntimeError, "body failed"):
+            with get_folder(self.test_dir, force_new=True) as folder:
+                self.assertTrue(folder.is_dir())
+                self.assertNotEqual(folder, self.test_dir)
+                self.assertTrue((folder / "test.txt").is_file())
+                copied_folder = folder
+                (folder / "test.txt").write_text("changed")
+                raise RuntimeError("body failed")
+        self.assertFalse(copied_folder.exists())
+        self.assertEqual(self.test_file.read_text(), "Hello, World!")
 
     def test_non_existent_folder(self):
         with self.assertRaises(ValueError):
@@ -287,9 +311,57 @@ class TestGetFolder(unittest.TestCase):
                 pass
 
     def test_zip_file(self):
-        with get_folder(self.test_dir / "test") as folder:
+        serializer_folder = self.tmp_path / "serializer"
+        serializer_folder.mkdir()
+        (serializer_folder / "info.json").write_text("{}")
+        compress(serializer_folder)
+
+        with get_folder(serializer_folder) as folder:
             self.assertTrue(folder.is_dir())
-            self.assertTrue((folder / "test.txt").is_file())
+            self.assertEqual((folder / "info.json").read_text(), "{}")
+            extracted_folder = folder
+        self.assertFalse(extracted_folder.exists())
+        self.assertTrue(Path(f"{serializer_folder}.zip").is_file())
+
+    def test_owned_temporary_directories_are_cleaned_up_on_failures(self):
+        def assert_cleanup(action, error_type):
+            directories, temporary_directory = self._tracked_temporary_directories()
+            with patch(
+                "core.toolkit.pipeline.TemporaryDirectory",
+                side_effect=temporary_directory,
+            ):
+                with self.assertRaises(error_type):
+                    action()
+            self.assertEqual(len(directories), 1)
+            self.assertFalse(directories[0].exists())
+
+        def copy_failure():
+            with patch(
+                "core.toolkit.pipeline.shutil.copytree",
+                side_effect=RuntimeError("copy failed"),
+            ):
+                with get_folder(self.test_dir, force_new=True):
+                    pass
+
+        malformed = self.tmp_path / "malformed"
+        Path(f"{malformed}.zip").write_bytes(b"not a zip")
+
+        def malformed_failure():
+            with get_folder(malformed):
+                pass
+
+        def extract_failure():
+            with patch.object(
+                ZipFile,
+                "extractall",
+                side_effect=RuntimeError("extract failed"),
+            ):
+                with get_folder(self.test_dir / "test"):
+                    pass
+
+        assert_cleanup(copy_failure, RuntimeError)
+        assert_cleanup(malformed_failure, BadZipFile)
+        assert_cleanup(extract_failure, RuntimeError)
 
 
 class TestCheckRequirement(unittest.TestCase):

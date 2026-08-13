@@ -14,7 +14,7 @@ from typing import Optional
 from typing import ContextManager
 from pathlib import Path
 from zipfile import ZipFile
-from tempfile import mkdtemp
+from tempfile import TemporaryDirectory
 
 from .misc import to_path
 from .misc import WithRegister
@@ -32,32 +32,42 @@ pipelines: Dict[str, Type["IPipeline"]] = {}
 pipeline_blocks: Dict[str, Type["IBlock"]] = {}
 
 
-def get_folder(folder: TPath, *, force_new: bool = False) -> ContextManager:
+def get_folder(folder: TPath, *, force_new: bool = False) -> ContextManager[Path]:
     class _:
-        tmp_folder: Optional[Path]
+        tmp_folder: Optional[TemporaryDirectory]
 
         def __init__(self) -> None:
             self.tmp_folder = None
 
         def __enter__(self) -> Path:
             folder = to_path(folder_input)
-            if folder.is_dir():
-                if not force_new:
-                    return folder
-                self.tmp_folder = Path(mkdtemp())
-                shutil.copytree(folder, self.tmp_folder, dirs_exist_ok=True)
-                return self.tmp_folder
+            is_folder = folder.is_dir()
+            if is_folder and not force_new:
+                return folder
             path = Path(f"{folder}.zip")
-            if not path.is_file():
+            if not is_folder and not path.is_file():
                 raise ValueError(f"neither '{folder}' nor '{path}' exists")
-            self.tmp_folder = Path(mkdtemp())
-            with ZipFile(path, "r") as ref:
-                ref.extractall(self.tmp_folder)
-            return self.tmp_folder
+            tmp_folder = TemporaryDirectory()
+            self.tmp_folder = tmp_folder
+            tmp_path = Path(tmp_folder.name)
+            prepared = False
+            try:
+                if is_folder:
+                    shutil.copytree(folder, tmp_path, dirs_exist_ok=True)
+                else:
+                    with ZipFile(path, "r") as ref:
+                        ref.extractall(tmp_path)
+                prepared = True
+            finally:
+                if not prepared:
+                    tmp_folder.cleanup()
+                    self.tmp_folder = None
+            return tmp_path
 
         def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
             if self.tmp_folder is not None:
-                shutil.rmtree(self.tmp_folder)
+                self.tmp_folder.cleanup()
+                self.tmp_folder = None
 
     folder_input = folder
     return _()
