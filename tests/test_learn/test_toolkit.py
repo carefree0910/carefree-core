@@ -5,6 +5,7 @@ import importlib
 
 from core.learn.toolkit import *
 from pathlib import Path
+from typing import Iterator
 from unittest.mock import patch
 from unittest.mock import Mock
 from core.toolkit.misc import random_hash
@@ -259,22 +260,40 @@ class TestToolkit(unittest.TestCase):
         with self.assertRaises(ValueError):
             get_tensors(1)
 
-    def test_get_dtype(self) -> None:
-        class Foo(nn.Module):
-            def __init__(self) -> None:
+    def test_get_dtype_and_device(self) -> None:
+        class FirstOnlyModule(nn.Module):
+            def __init__(self, with_parameter: bool) -> None:
                 super().__init__()
-                self.p = nn.Parameter(torch.tensor([1.0]))
+                parameter = None
+                if with_parameter:
+                    parameter = nn.Parameter(torch.empty(1, dtype=torch.float64))
+                self.register_parameter("first_parameter", parameter)
+                self.register_buffer(
+                    "first_buffer",
+                    torch.empty(1, dtype=torch.float16, device="meta"),
+                )
 
-        foo = Foo()
-        for dtype in [torch.float16, torch.float32]:
-            foo.p.data = foo.p.data.to(dtype)
-            self.assertEqual(get_dtype(foo), dtype)
+            def parameters(self, recurse: bool = True) -> Iterator[nn.Parameter]:
+                parameter = self.first_parameter
+                if parameter is not None:
+                    yield parameter
+                    raise AssertionError("parameters should stop after the first item")
 
-        class Foo(nn.Module):
-            pass
+            def buffers(self, recurse: bool = True) -> Iterator[torch.Tensor]:
+                yield self.first_buffer
+                raise AssertionError("buffers should stop after the first item")
 
-        foo = Foo()
-        self.assertEqual(get_dtype(foo), torch.float32)
+        parameter_module = FirstOnlyModule(True)
+        self.assertEqual(get_dtype(parameter_module), torch.float64)
+        self.assertEqual(get_device(parameter_module), torch.device("cpu"))
+
+        buffer_module = FirstOnlyModule(False)
+        self.assertEqual(get_dtype(buffer_module), torch.float16)
+        self.assertEqual(get_device(buffer_module), torch.device("meta"))
+
+        empty_module = nn.Module()
+        self.assertEqual(get_dtype(empty_module), torch.float32)
+        self.assertEqual(get_device(empty_module), torch.device("cpu"))
 
     def test_get_clones(self) -> None:
         m = nn.Linear(10, 2)

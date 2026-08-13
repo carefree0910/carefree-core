@@ -447,9 +447,14 @@ def get_tensors(inp: Union[TPath, tensor_dict_type]) -> tensor_dict_type:
     return shallow_copy_dict(inp)  # type: ignore
 
 
+def _get_reference_tensor(m: nn.Module) -> Optional[Tensor]:
+    parameter = next(m.parameters(), None)
+    return next(m.buffers(), None) if parameter is None else parameter
+
+
 def get_dtype(m: nn.Module) -> torch.dtype:
     """
-    Get the data type of the parameters of a module.
+    Get the data type of the first parameter or buffer of a module.
 
     Parameters
     ----------
@@ -459,7 +464,7 @@ def get_dtype(m: nn.Module) -> torch.dtype:
     Returns
     -------
     torch.dtype
-        The data type of the parameters of the module.
+        The data type of the module.
 
     Examples
     --------
@@ -469,13 +474,13 @@ def get_dtype(m: nn.Module) -> torch.dtype:
 
     """
 
-    params = list(m.parameters())
-    return torch.float32 if not params else params[0].dtype
+    tensor = _get_reference_tensor(m)
+    return torch.float32 if tensor is None else tensor.dtype
 
 
 def get_device(m: nn.Module) -> torch.device:
     """
-    Get the device of the parameters of a module.
+    Get the device of the first parameter or buffer of a module.
 
     Parameters
     ----------
@@ -485,7 +490,7 @@ def get_device(m: nn.Module) -> torch.device:
     Returns
     -------
     torch.device
-        The device of the parameters of the module.
+        The device of the module.
 
     Examples
     --------
@@ -495,8 +500,8 @@ def get_device(m: nn.Module) -> torch.device:
 
     """
 
-    params = list(m.parameters())
-    return torch.device("cpu") if not params else params[0].device
+    tensor = _get_reference_tensor(m)
+    return torch.device("cpu") if tensor is None else tensor.device
 
 
 def get_clones(
