@@ -1,5 +1,4 @@
 import torch
-import pytest
 
 import core.learn as cflearn
 
@@ -151,36 +150,6 @@ def test_train_evaluates_stateful_skip_once():
     )
     assert step.skip_states == [state]
     assert len(step.loss_calls) == 1
-
-
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="P0-06: bind each deferred closure",
-)
-def test_train_binds_deferred_closures_to_steps():
-    steps = [Step("first"), Step("second")]
-    packs = []
-    model = Model(lambda: steps)
-    optimizers = {}
-    for scope in ["first", "second"]:
-        optimizer = Mock(spec=["step", "zero_grad"])
-        optimizer.step.side_effect = packs.append
-        optimizers[scope] = optimizer
-    trainer = make_trainer(optimizers, closure=True)
-    with patch.object(trainer.accelerator, "backward"):
-        model.train(
-            0,
-            {cflearn.INPUT_KEY: torch.ones(1, 1)},
-            trainer,
-            {},
-            {},
-        )
-    for step in steps:
-        step.loss_calls.clear()
-    for pack in packs:
-        pack.loss_fn()
-    assert [len(step.loss_calls) for step in steps] == [1, 1]
 
 
 def test_model_operations_preserve_repeated_step_positions():

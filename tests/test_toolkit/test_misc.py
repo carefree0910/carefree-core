@@ -10,7 +10,6 @@ import numpy as np
 import core.toolkit.misc as misc
 
 from core.toolkit.misc import *
-from core.parameters import OPT
 from typing import Any
 from typing import Dict
 from typing import Tuple
@@ -1616,6 +1615,8 @@ class TestOPTBase(unittest.TestCase):
         self.opt_factory = lambda: OPTTest()
 
     def test_init(self):
+        from core.parameters import OPT
+
         self.assertEqual(OPT.env_key, "CFCORE_ENV")
         self.assertEqual(self.opt_factory().model_dump(), {"foo": {"bar": "bar"}})
 
