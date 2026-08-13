@@ -208,14 +208,16 @@ def show_or_save(
 
     """
 
-    if export_path is None:
-        fig.show(**kwargs) if fig is not None else plt.show(**kwargs)
-    else:
-        if fig is not None:
-            fig.savefig(export_path)
+    try:
+        if export_path is None:
+            fig.show(**kwargs) if fig is not None else plt.show(**kwargs)
         else:
-            plt.savefig(export_path, **kwargs)
-    plt.close()
+            if fig is not None:
+                fig.savefig(export_path, **kwargs)
+            else:
+                plt.savefig(export_path, **kwargs)
+    finally:
+        plt.close(fig)
 
 
 def show_or_return(return_canvas: bool) -> Union[None, np.ndarray]:
@@ -372,9 +374,9 @@ class WeightsStrategy:
         y = self(n)
         if y is None:
             raise RuntimeError("no strategy is set")
-        plt.figure()
+        fig = plt.figure()
         plt.plot(x, y)
-        show_or_save(export_path)
+        show_or_save(export_path, fig=fig)
 
 
 # dl

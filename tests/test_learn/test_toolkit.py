@@ -121,15 +121,37 @@ class TestToolkit(unittest.TestCase):
 
     @patch("core.learn.toolkit.plt.show")
     def test_show_or_save(self, mock_show) -> None:
-        show_or_save(None)
-        mock_show.assert_called_once()
+        current = plt.figure()
+        show_or_save(None, block=False)
+        mock_show.assert_called_once_with(block=False)
+        self.assertNotIn(current.number, plt.get_fignums())
 
         fig = plt.figure()
+        unrelated = plt.figure()
         export_path = self.tmp_path / "figure.png"
-        with patch.object(fig, "savefig", wraps=fig.savefig) as savefig:
-            show_or_save(str(export_path), fig=fig)
-        savefig.assert_called_once_with(str(export_path))
-        self.assertTrue(export_path.is_file())
+        try:
+            with patch.object(fig, "savefig", wraps=fig.savefig) as savefig:
+                show_or_save(str(export_path), fig=fig, dpi=72)
+            savefig.assert_called_once_with(str(export_path), dpi=72)
+            self.assertTrue(export_path.is_file())
+            self.assertNotIn(fig.number, plt.get_fignums())
+            self.assertIn(unrelated.number, plt.get_fignums())
+        finally:
+            plt.close(unrelated)
+
+    def test_show_or_save_closes_figure_after_save_error(self) -> None:
+        fig = plt.figure()
+        unrelated = plt.figure()
+        error = RuntimeError("save failed")
+        try:
+            with patch.object(fig, "savefig", side_effect=error):
+                with self.assertRaises(RuntimeError) as context:
+                    show_or_save("figure.png", fig=fig)
+            self.assertIs(context.exception, error)
+            self.assertNotIn(fig.number, plt.get_fignums())
+            self.assertIn(unrelated.number, plt.get_fignums())
+        finally:
+            plt.close(unrelated)
 
     @patch("core.learn.toolkit.plt.show")
     def test_show_or_return(self, mock_show) -> None:
@@ -913,14 +935,17 @@ class TestWeightsStrategy(unittest.TestCase):
             WeightsStrategy(None).visualize(str(self.tmp_path / "no_strategy.png"))
         ws = WeightsStrategy("linear_decay")
         export_path = self.tmp_path / "weights_strategy.png"
-        try:
-            import matplotlib.pyplot
-
+        with patch(
+            "core.learn.toolkit.show_or_save",
+            wraps=show_or_save,
+        ) as mock_show_or_save:
             ws.visualize(str(export_path))
-            self.assertTrue(export_path.is_file())
-        except:
-            with self.assertRaises(RuntimeError):
-                ws.visualize(str(export_path))
+        self.assertTrue(export_path.is_file())
+        mock_show_or_save.assert_called_once()
+        self.assertTupleEqual(mock_show_or_save.call_args.args, (str(export_path),))
+        fig = mock_show_or_save.call_args.kwargs["fig"]
+        self.assertIsInstance(fig, Figure)
+        self.assertNotIn(fig.number, plt.get_fignums())
 
 
 class TestWarnOnce(unittest.TestCase):
